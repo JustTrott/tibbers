@@ -201,6 +201,8 @@ def main() -> int:
     ap.add_argument("--stop-patcher", action="store_true",
                     help="stop a patcher left running by an earlier instance, "
                          "then exit")
+    ap.add_argument("--check-update", action="store_true",
+                    help="check GitHub Releases for a newer build, then exit")
     ap.add_argument("--quiet", action="store_true",
                     help="start without taking focus and without opening a "
                          "window -- for relaunching while a game is running")
@@ -238,6 +240,18 @@ def main() -> int:
     if sys.platform != "darwin":
         print("tibbers targets macOS.")
         return 2
+
+    if args.check_update:
+        from tibbers import update
+        result = update.check()
+        if result.get("error"):
+            print(f"could not check: {result['error']}")
+            return 1
+        if result.get("available"):
+            print(f"update available: {result['current']} -> {result['version']}")
+        else:
+            print(f"up to date ({result['current']})")
+        return 0
 
     from tibbers import privileged
     if args.helper_status:
@@ -1074,6 +1088,25 @@ def main() -> int:
                   f"-- {len(champions)} champions")
         return {"ok": True, "message": "rebuilding"}
 
+    # The result of the one startup update check, shared with the settings
+    # page. Filled by a background thread so a slow or unreachable GitHub never
+    # holds up launch, and only when running from an installed bundle -- a
+    # checkout updates itself with git.
+    update_state: dict = {}
+
+    def check_for_update() -> None:
+        from tibbers import update
+        if update.installed_app() is None:
+            return
+        result = update.check()
+        update_state.clear()
+        update_state.update(result)
+        if result.get("available"):
+            state.say(f"an update is available ({result['version']}) -- "
+                      "see Settings")
+
+    threading.Thread(target=check_for_update, daemon=True).start()
+
     def describe_settings() -> dict:
         from tibbers import privileged as priv
         try:
@@ -1090,6 +1123,7 @@ def main() -> int:
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
+            "update": dict(update_state),
             "version": __import__("tibbers").__version__,
         }
 
@@ -1109,6 +1143,26 @@ def main() -> int:
             return {"ok": ok, "message": message}
         if action == "rebuild":
             return start_rebuild()
+        if action == "update":
+            from tibbers import update
+            url = update_state.get("url")
+            if not update_state.get("available") or not url:
+                return {"ok": False, "error": "no update available"}
+
+            def work() -> None:
+                try:
+                    state.say("downloading the update...")
+                    update.apply(url)
+                except Exception as exc:  # noqa: BLE001
+                    state.say(f"update failed: {exc}")
+                    return
+                # The swap script is now waiting on this process; quitting lets
+                # it replace the bundle and reopen the new one.
+                state.say("installing -- tibbers will reopen in a moment")
+                quit_app()
+
+            threading.Thread(target=work, daemon=True).start()
+            return {"ok": True, "updating": True}
 
         name, value = payload.get("name"), payload.get("value")
         # Not every setting is a switch: the patch is a string, and coercing

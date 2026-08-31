@@ -247,6 +247,19 @@
     </section>
 
     <section>
+      <h2>Updates</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b id="update-title">tibbers</b>
+            <span id="update-note"></span>
+          </div>
+          <button class="btn" id="update-btn" hidden>Update &amp; restart</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <button class="btn gold" id="open-picker">Open picker now</button>
     </section>
   </main>
@@ -342,6 +355,22 @@ async function refresh() {
       + 'root-owned helper removes that; it can only run the injection command.';
   $('helper-btn').textContent = cfg.helper ? 'Remove' : 'Install';
   $('helper-btn').dataset.action = cfg.helper ? 'uninstall' : 'install';
+
+  // The one startup update check. `update` is empty while it is still in
+  // flight (or absent entirely when running from source, which never checks).
+  const up = cfg.update || {};
+  if (up.available) {
+    $('update-title').textContent = `Update available: ${up.version}`;
+    $('update-note').textContent = up.name && up.name !== up.version
+      ? up.name : 'A newer version is ready to install.';
+    $('update-btn').hidden = false;
+  } else {
+    $('update-title').textContent = up.error ? 'Updates' : 'You are up to date';
+    $('update-note').textContent = up.error
+      ? "Couldn't check for updates right now."
+      : `Version ${cfg.version}.`;
+    $('update-btn').hidden = true;
+  }
 }
 
 $('patch').addEventListener('change', async e => {
@@ -371,6 +400,19 @@ document.addEventListener('click', async e => {
     const r = await api('/api/settings', {action: 'rebuild'});
     if (!r.ok) { e.target.disabled = false; alert(r.message || 'Failed'); }
     nudge(); return;
+  }
+  if (e.target.id === 'update-btn') {
+    const btn = e.target;
+    btn.textContent = 'Updating…'; btn.disabled = true;
+    // The app quits and reopens as the new build, so this page will drop its
+    // connection mid-request; a failure to even start is the only thing to
+    // report here.
+    const r = await api('/api/settings', {action: 'update'});
+    if (r && r.ok === false) {
+      btn.disabled = false; btn.textContent = 'Update & restart';
+      alert(r.error || 'Update failed');
+    }
+    return;
   }
   if (e.target.id === 'open-picker') { await api('/api/window', {open: 'picker'}); return; }
   if (e.target.id === 'helper-btn') {
