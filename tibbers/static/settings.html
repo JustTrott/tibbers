@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tibbers</title>
+<style>
+  @font-face {
+    font-family: "Beaufort"; src: url("/fonts/BeaufortforLOL-Bold.ttf") format("truetype");
+    font-weight: 700; font-display: swap;
+  }
+  :root {
+    --void:   oklch(0.13 0.010 265);
+    --panel:  oklch(0.175 0.013 265);
+    --rule:   oklch(0.30 0.020 80);
+    --gold:   oklch(0.80 0.095 85);
+    --gold-b: oklch(0.90 0.070 88);
+    --ink:    oklch(0.96 0.005 85);
+    --ink-mid:oklch(0.78 0.010 85);
+    --ink-low:oklch(0.62 0.012 85);
+    --live:   oklch(0.74 0.13 155);
+    --warn:   oklch(0.66 0.17 30);
+    --ease:   cubic-bezier(0.165, 0.84, 0.44, 1);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--void); color: var(--ink);
+    font: 400 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; padding: 26px 28px 18px;
+  }
+  h1 {
+    margin: 0; font-family: "Beaufort", Georgia, serif; font-size: 21px;
+    font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--gold-b);
+  }
+  header .ver { font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+                color: var(--ink-low); }
+
+  main { padding: 0 28px 30px; max-width: 640px; }
+
+  .status {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 13px 16px;
+    border: 1px solid var(--rule); border-radius: 6px; background: var(--panel);
+    margin-bottom: 24px; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  }
+  .status div { display: flex; align-items: center; gap: 7px; color: var(--ink-mid); }
+  .lamp { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-low); }
+  .lamp.on { background: var(--live); box-shadow: 0 0 6px oklch(0.74 0.13 155 / .8); }
+  .lamp.bad { background: var(--warn); }
+
+  h2 {
+    margin: 0 0 3px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-low); font-weight: 600;
+  }
+  section { margin-bottom: 26px; }
+  .rows { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden;
+          background: var(--panel); margin-top: 10px; }
+  .row {
+    display: flex; align-items: center; gap: 16px; padding: 13px 16px;
+    border-bottom: 1px solid oklch(0.30 0.020 80 / .45);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .txt { flex: 1; min-width: 0; }
+  .row .txt b { display: block; font-weight: 600; font-size: 13.5px; }
+  .row .txt span { display: block; color: var(--ink-mid); font-size: 12.5px;
+                   margin-top: 2px; max-width: 60ch; }
+
+  /* switch */
+  .sw { position: relative; width: 38px; height: 22px; flex: none; padding: 0;
+        border: 1px solid var(--rule); border-radius: 999px; cursor: pointer;
+        background: oklch(0.22 0.014 265); transition: background-color 180ms var(--ease),
+        border-color 180ms var(--ease); }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px;
+               width: 16px; height: 16px; border-radius: 50%; background: var(--ink-low);
+               transition: transform 180ms var(--ease), background-color 180ms var(--ease); }
+  .sw[aria-checked="true"] { background: oklch(0.42 0.075 85); border-color: var(--gold); }
+  .sw[aria-checked="true"]::after { transform: translateX(16px); background: var(--gold-b); }
+  .sw:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .sel { font: inherit; font-size: 13px; padding: 6px 9px; cursor: pointer;
+         color: var(--ink); background: oklch(0.22 0.014 265);
+         border: 1px solid var(--rule); border-radius: 5px; flex: none; }
+  .sel:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .btn { font: inherit; font-size: 13px; padding: 7px 13px; cursor: pointer;
+         color: var(--ink); background: oklch(0.22 0.014 265);
+         border: 1px solid var(--rule); border-radius: 5px;
+         transition: border-color 160ms var(--ease), background-color 160ms var(--ease); }
+  .btn:hover { border-color: var(--gold); background: oklch(0.26 0.018 265); }
+  .btn.gold { color: var(--void); background: var(--gold); border-color: var(--gold); }
+  .btn.gold:hover { background: var(--gold-b); }
+  .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .memory { display: flex; align-items: center; gap: 12px; padding: 13px 16px;
+            font-size: 13px; color: var(--ink-mid); }
+  .memory b { color: var(--ink); }
+
+  footer { padding: 0 28px 26px; color: var(--ink-low); font-size: 12px;
+           max-width: 640px; }
+  footer code { font-family: ui-monospace, Menlo, monospace; color: var(--ink-mid); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <header><h1>tibbers</h1><span class="ver" id="ver"></span></header>
+
+  <main>
+    <div class="status">
+      <div><i class="lamp" id="l1"></i><span id="t1">client</span></div>
+      <div><i class="lamp" id="l2"></i><span id="t2">library</span></div>
+      <div><i class="lamp" id="l3"></i><span id="t3">patcher</span></div>
+      <div><i class="lamp" id="l4"></i><span id="t4">elevation</span></div>
+    </div>
+
+    <section>
+      <h2>Picker</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b>Show when a champion is locked</b>
+            <span>The picker opens by itself at lock-in so a skin is one click
+                  away, instead of sitting over the client the whole time.</span>
+          </div>
+          <button class="sw" role="switch" data-set="auto_show"></button>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <b>Close when champ select ends</b>
+            <span>Off by default: the picker stops floating when the game
+                  starts but stays open, so the build is still there to tab
+                  back to.</span>
+          </div>
+          <button class="sw" role="switch" data-set="auto_hide"></button>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <b>Keep it above other windows</b>
+            <span>The picker floats over the client while it is open. It is
+                  small and can still be moved or closed.</span>
+          </div>
+          <button class="sw" role="switch" data-set="always_on_top"></button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Build data</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b>Patch</b>
+            <span>A patch needs a week or two before there are enough games
+                  behind it. Reading an older one trades currency for
+                  evidence.</span>
+          </div>
+          <select class="sel" id="patch">
+            <option value="">Latest</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <b>Import summoner spells too</b>
+            <span>Sets the build's spells in champ select, keeping your keys:
+                  whichever key you flash on, you still flash on.</span>
+          </div>
+          <button class="sw" role="switch" data-set="import_spells"></button>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <b>Import when I lock in</b>
+            <span>Off by default. On, locking a champion writes the build
+                  showing in the picker without being asked. It never deletes
+                  a rune page to make room; if all three are full it says so
+                  and stops.</span>
+          </div>
+          <button class="sw" role="switch" data-set="auto_import"></button>
+        </div>
+        <div class="memory">
+          <span>Builds, runes and counters come from
+                <b>u.gg</b>; every name and icon is your own client's.
+                Importing writes one rune page named
+                <b>Tibbers: &lt;Champion&gt;</b> and one item set, and replaces
+                the same two every time. Your other pages and sets are left
+                alone.</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Memory</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b>Remember what I picked</b>
+            <span>Re-applies your last skin for a champion, and your last
+                  chroma for that skin, as soon as you lock in.</span>
+          </div>
+          <button class="sw" role="switch" data-set="remember_selections"></button>
+        </div>
+        <div class="memory">
+          <span>Remembered: <b id="mem-champs">0</b> champions,
+                <b id="mem-chromas">0</b> chromas</span>
+          <button class="btn" id="forget" style="margin-left:auto">Forget all</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Library</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b>Build on hover</b>
+            <span>Builds a champion's mods while you are still deciding, so
+                  they are there if you commit. They are made straight out of
+                  your game install &mdash; nothing is downloaded. About a
+                  second per champion.</span>
+          </div>
+          <button class="sw" role="switch" data-set="download_on_hover"></button>
+        </div>
+        <div class="memory">
+          <span><b id="lib-skins">0</b> skins across <b id="lib-champs">0</b> champions
+                &middot; <b id="lib-made">0</b> built here<span id="lib-foreign"></span></span>
+          <button class="btn" id="rebuild" style="margin-left:auto">Rebuild library</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Elevation</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b id="helper-title">Passwordless injection</b>
+            <span id="helper-note"></span>
+          </div>
+          <button class="btn" id="helper-btn">Install</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <button class="btn gold" id="open-picker">Open picker now</button>
+    </section>
+  </main>
+
+  <footer>
+    Nothing inside the League installation is modified. Injection hooks the
+    running game only, and the exact command is written to the log before it
+    runs.
+  </footer>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  } : undefined);
+  return r.json();
+}
+
+function lamp(el, txt, state, label) {
+  $(el).className = 'lamp' + (state === 'bad' ? ' bad' : state ? ' on' : '');
+  $(txt).textContent = label;
+}
+
+/* Every control in a row is described by that row's own heading, but nothing
+   connected the two: a switch with role="switch" and no accessible name
+   announces itself as "switch" and nothing more, and the patch select had no
+   name at all. Taken from the heading rather than written out again, so the
+   label and the sentence above it cannot drift apart. The ordinary buttons
+   are left alone -- their own text already names them. */
+for (const row of document.querySelectorAll('.row')) {
+  const heading = row.querySelector('.txt b');
+  const control = row.querySelector('[data-set], select');
+  if (heading && control) control.setAttribute('aria-label', heading.textContent.trim());
+}
+
+async function refresh() {
+  // Both in flight at once: they are independent, and one of them walks the
+  // whole skin library before it answers.
+  const [s, cfg] = await Promise.all([api('/api/state'), api('/api/settings')]);
+  lamp('l1', 't1', s.connected, s.connected ? (s.phase || 'idle') : 'no client');
+
+  /* One lamp, two jobs: a champion being prepared on hover, and a rebuild
+     of the whole library. The rebuild wins while it runs -- it is the one the
+     user just asked for and the only one they cannot see finish elsewhere. */
+  const d = s.download || {}, rb = s.rebuild || {};
+  const rebuilding = rb.state === 'rebuilding';
+  lamp('l2', 't2', true, rebuilding
+    ? `rebuilding ${rb.champions||0}/${rb.total_champions||0} · ${rb.made||0} built`
+    : d.state === 'downloading'
+    ? `building ${(d.fetched||0)+(d.missing||0)}/${d.total}` : 'library');
+  $('rebuild').disabled = rebuilding;
+  $('rebuild').textContent = rebuilding ? 'Rebuilding…' : 'Rebuild library';
+
+  const p = s.patcher || {}, live = Object.keys(p).length > 0;
+  lamp('l3', 't3', p.error ? 'bad' : live, p.error ? 'patcher error'
+    : p.patched ? 'skin applied' : p.found ? 'patching' : live ? 'watching' : 'patcher idle');
+
+  lamp('l4', 't4', cfg.helper, cfg.helper ? 'no password needed' : 'will prompt');
+
+  for (const b of document.querySelectorAll('[data-set]')) {
+    b.setAttribute('aria-checked', String(!!cfg.settings[b.dataset.set]));
+  }
+  const sel = $('patch');
+  if (cfg.patches && cfg.patches.length && sel.options.length <= 1) {
+    for (const p of cfg.patches) {
+      const o = document.createElement('option');
+      o.value = p; o.textContent = p.replace('_', '.');
+      sel.appendChild(o);
+    }
+  }
+  if (document.activeElement !== sel) sel.value = cfg.settings.patch || '';
+
+  $('mem-champs').textContent = cfg.memory.champions;
+  $('mem-chromas').textContent = cfg.memory.chromas;
+  $('lib-skins').textContent = cfg.library.skins;
+  $('lib-champs').textContent = cfg.library.champions;
+  $('lib-made').textContent = cfg.library.generated ?? 0;
+  /* Mods with no sidecar were not built here -- imported, or left from when
+     they were downloaded. Named only when there are some, so a library that
+     is entirely ours does not carry a permanent "0 foreign". */
+  const foreign = cfg.library.foreign ?? 0;
+  $('lib-foreign').textContent = foreign ? ` · ${foreign} not built here` : '';
+  $('ver').textContent = cfg.version;
+
+  $('helper-title').textContent = cfg.helper
+    ? 'Passwordless injection is on' : 'Passwordless injection';
+  $('helper-note').textContent = cfg.helper
+    ? 'Applying a skin no longer asks for your password.'
+    : 'Applying a skin asks for your password every time. Installing a small '
+      + 'root-owned helper removes that; it can only run the injection command.';
+  $('helper-btn').textContent = cfg.helper ? 'Remove' : 'Install';
+  $('helper-btn').dataset.action = cfg.helper ? 'uninstall' : 'install';
+}
+
+$('patch').addEventListener('change', async e => {
+  await api('/api/settings', {name: 'patch', value: e.target.value || null});
+});
+
+// A redraw asked for by a click, which must not become an unhandled
+// rejection if the app has gone away between the click and the answer.
+const nudge = () => refresh().catch(() => {});
+
+document.addEventListener('click', async e => {
+  const sw = e.target.closest('[data-set]');
+  if (sw) {
+    const next = sw.getAttribute('aria-checked') !== 'true';
+    sw.setAttribute('aria-checked', String(next));
+    await api('/api/settings', {name: sw.dataset.set, value: next});
+    return;
+  }
+  if (e.target.id === 'forget') {
+    await api('/api/settings', {action: 'forget'});
+    nudge(); return;
+  }
+  if (e.target.id === 'rebuild') {
+    /* Left disabled until the next poll reports the rebuild running, so a
+       second click cannot start while the first answer is in flight. */
+    e.target.disabled = true;
+    const r = await api('/api/settings', {action: 'rebuild'});
+    if (!r.ok) { e.target.disabled = false; alert(r.message || 'Failed'); }
+    nudge(); return;
+  }
+  if (e.target.id === 'open-picker') { await api('/api/window', {open: 'picker'}); return; }
+  if (e.target.id === 'helper-btn') {
+    const btn = e.target, was = btn.textContent;
+    btn.textContent = 'Working…'; btn.disabled = true;
+    const r = await api('/api/settings', {action: btn.dataset.action});
+    btn.disabled = false;
+    if (!r.ok) { btn.textContent = was; alert(r.message || 'Failed'); }
+    nudge(); return;
+  }
+});
+
+/* Scheduled after each pass rather than on a fixed interval: a slow answer
+   used to stack the next request on top of the one still in flight. An
+   unreachable app says so on the client lamp instead of throwing into the
+   console every two seconds and leaving the page frozen on stale numbers. */
+async function loop() {
+  try { await refresh(); }
+  catch (e) { lamp('l1', 't1', 'bad', 'app unreachable'); }
+  setTimeout(loop, 2000);
+}
+loop();
+</script>
+</body>
+</html>

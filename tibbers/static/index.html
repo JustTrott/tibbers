@@ -1,0 +1,2217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tibbers</title>
+<style>
+  @font-face {
+    font-family: "Beaufort"; src: url("/fonts/BeaufortforLOL-Regular.ttf") format("truetype");
+    font-weight: 400; font-display: swap;
+  }
+  @font-face {
+    font-family: "Beaufort"; src: url("/fonts/BeaufortforLOL-Bold.ttf") format("truetype");
+    font-weight: 700; font-display: swap;
+  }
+
+  :root {
+    --void:   oklch(0.13 0.010 265);
+    --raised: oklch(0.22 0.016 265);
+    --rule-d: oklch(0.28 0.022 80);
+
+    --gold:   oklch(0.80 0.095 85);
+    --gold-b: oklch(0.90 0.070 88);
+    --gold-d: oklch(0.52 0.060 85);
+
+    --ink:    oklch(0.97 0.005 85);
+    --ink-mid:oklch(0.80 0.010 85);
+    --ink-low:oklch(0.64 0.012 85);
+
+    --live:   oklch(0.74 0.13 155);
+    --warn:   oklch(0.66 0.17 30);
+
+    /* Augment rarity, and the only place hue carries meaning on its own.
+       It rides a hairline around the icon rather than a section heading,
+       which is what lets all 45 augments share one ranked list. Never the
+       sole carrier of anything: every row also names its rarity in its
+       title, and the filter chips say it in words. */
+    --silver: oklch(0.72 0.020 255);
+    --gld:    oklch(0.79 0.100 85);
+    --prism:  oklch(0.76 0.100 320);
+
+    /* The two grounds every small control shares -- the mode buttons, the
+       filter chips, the import button and the two switches. They were the
+       same two literals written out eight times, which is eight places to
+       miss when one of them moves. */
+    --ctl:    oklch(0.16 0.012 264);   /* resting */
+    --ctl-on: oklch(0.20 0.020 90);    /* chosen: gold-lit, not gold */
+    /* The hairline between rows inside a table: dimmer than --rule-d,
+       because forty of them in a column would otherwise draw a grid. */
+    --hair:   oklch(0.165 0.010 264);
+
+    --out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+    --inout:     cubic-bezier(0.645, 0.045, 0.355, 1);
+
+    --tile-w: 84px; --tile-gap: 8px;
+
+    /* Ground for the transparent chroma cutouts: a lit haze rather than a
+       flat fill, so the model reads against it at any size. */
+    --rift: radial-gradient(120% 100% at 50% 22%,
+              oklch(0.42 0.055 235) 0%,
+              oklch(0.27 0.040 245) 42%,
+              oklch(0.18 0.025 255) 78%,
+              oklch(0.14 0.018 260) 100%);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--void); color: var(--ink);
+    font: 400 15px/1.5 "Beaufort", "Optima", Georgia, serif;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ═══ splash: the hero ═════════════════════════════════════════════
+     Two stacked layers that alternate, so a change is a true crossfade
+     rather than a fade-out-then-in flicker. */
+  .splash { position: fixed; inset: 0; z-index: 0; background: var(--void); }
+  .splash img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: center 18%;
+    opacity: 0; transform: scale(1.035);
+    transition: opacity 420ms var(--out-quart), transform 1400ms var(--out-quart);
+  }
+  .splash img.on { opacity: 1; transform: scale(1); }
+  /* Only as much scrim as the type actually needs. */
+  .splash::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(to top, var(--void) 0%, oklch(0.13 0.010 265 / .82) 15%,
+                      oklch(0.13 0.010 265 / .28) 34%, transparent 52%),
+      linear-gradient(to right, oklch(0.13 0.010 265 / .72) 0%,
+                      oklch(0.13 0.010 265 / .18) 30%, transparent 52%),
+      linear-gradient(to bottom, oklch(0.13 0.010 265 / .7) 0%, transparent 14%);
+  }
+
+  /* ═══ top ══════════════════════════════════════════════════════════ */
+  .top { position: relative; z-index: 3; flex: none;
+         display: flex; align-items: center; gap: 11px; padding: 12px 22px; }
+  .who { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .frame { position: relative; width: 34px; height: 34px; flex: none;
+           border: 1px solid var(--gold-d); background: var(--raised); }
+  .frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .who strong { font-size: 14px; font-weight: 700; letter-spacing: .13em;
+                text-transform: uppercase; color: var(--gold-b); }
+  .who em { font-size: 12px; color: var(--ink-mid); font-style: italic; }
+  .pill { padding: 2px 8px; font-size: 9.5px; letter-spacing: .14em;
+          text-transform: uppercase; border: 1px solid var(--rule-d);
+          color: var(--ink-low); font-family: ui-monospace, Menlo, monospace;
+          transition: color 220ms ease, border-color 220ms ease; }
+  .pill.lit { color: var(--gold); border-color: var(--gold-d); }
+
+  .beats { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .beat { display: flex; align-items: center; gap: 6px; white-space: nowrap;
+          font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-mid); }
+  .lamp { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-low); flex: none;
+          transition: background-color 200ms ease, box-shadow 200ms ease; }
+  .lamp.on   { background: var(--live); box-shadow: 0 0 6px oklch(0.74 0.13 155 / .8); }
+  .lamp.bad  { background: var(--warn); box-shadow: 0 0 6px oklch(0.66 0.17 30 / .8); }
+  .lamp.busy { background: var(--gold); animation: breathe 1.5s var(--inout) infinite; }
+  @keyframes breathe { 50% { opacity: .25; transform: scale(.7); } }
+
+  /* The window has no title bar, so it needs its own way out. */
+  .dismiss { appearance: none; margin-left: 2px; padding: 0; width: 20px;
+             height: 20px; flex: none; display: grid; place-items: center;
+             font: 13px/1 ui-monospace, Menlo, monospace; cursor: pointer;
+             color: var(--ink-low); background: none;
+             border: 1px solid transparent; border-radius: 3px;
+             transition: color 160ms ease, border-color 160ms ease,
+                         background-color 160ms ease; }
+  .dismiss:hover { color: var(--ink); border-color: var(--rule-d);
+                   background: oklch(0.22 0.014 265); }
+  .dismiss:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+  /* ═══ tabs ═════════════════════════════════════════════════════════ */
+  .tabs { position: relative; z-index: 3; flex: none; display: flex;
+          align-items: center; gap: 2px; padding: 0 22px;
+          border-bottom: 1px solid var(--rule-d); }
+  .tab { appearance: none; position: relative; padding: 7px 13px 8px; cursor: pointer;
+         font-size: 10.5px; font-weight: 600; line-height: 1;
+         letter-spacing: .14em; text-transform: uppercase;
+         color: var(--ink-low); background: none; border: 0;
+         transition: color 160ms ease; }
+  /* The tab set is rebuilt per mode, so it needs a container -- but one that
+     does not become a layout box, or the buttons stop being flex items of
+     the bar and the travelling underline measures against the wrong parent. */
+  .tabset { display: contents; }
+  .tab:hover { color: var(--ink-mid); }
+  .tab.on { color: var(--gold-b); }
+  /* One underline that travels, rather than one appearing as another
+     vanishes: the two states read as a single movement, and the labels
+     themselves never shift. */
+  .tabline { position: absolute; bottom: -1px; left: 0; height: 2px;
+             background: var(--gold); border-radius: 1px;
+             transform-origin: left center;
+             transition: transform 220ms var(--inout), width 220ms var(--inout);
+             pointer-events: none; }
+  .tab:focus-visible { outline: 1px solid var(--gold); outline-offset: -3px; }
+  .stamp { margin-left: auto; display: flex; align-items: center; gap: 6px;
+           font: 9.5px ui-monospace, Menlo, monospace;
+           color: var(--ink-low); letter-spacing: .06em; }
+  .stamp:empty { display: none; }
+  /* The patch reads as part of the stamp but is a real select: u.gg-style,
+     an older patch has weeks of games behind it when a new one has days. */
+  .patch { appearance: none; -webkit-appearance: none; margin-left: auto;
+           padding: 2px 14px 2px 6px; border: 1px solid transparent;
+           border-radius: 3px; background: transparent; color: var(--ink-low);
+           font: 9.5px ui-monospace, Menlo, monospace; letter-spacing: .06em;
+           cursor: pointer; position: relative;
+           background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                             linear-gradient(135deg, currentColor 50%, transparent 50%);
+           background-position: right 7px top 50%, right 4px top 50%;
+           background-size: 3px 3px, 3px 3px; background-repeat: no-repeat;
+           transition: color 150ms ease, border-color 150ms ease; }
+  .patch:hover, .patch:focus-visible { color: var(--gold); border-color: var(--gold-d); outline: none; }
+  .patch.pinned { color: var(--gold); }
+  .patch[hidden], .patch.offpage { display: none; }
+
+  /* ═══ the build and counter sheets ═════════════════════════════════ */
+  /* Both sit over the splash, dimmed: the art is the skin page's job, and
+     here it would only compete with a page that is mostly small numbers. */
+  .sheet { position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
+           display: flex; flex-direction: column;
+           background: oklch(0.11 0.010 262 / .90); overflow: hidden; }
+  /* Entering, so ease-out; short, because this is switched under a timer. */
+  .sheet, main.stage { animation: viewIn 170ms var(--out-quart) both; }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } }
+  /* Sits under the sheet's own content (z-index -1 inside the sheet's
+     stacking context), or the blur lands on the headings instead of the art. */
+  .sheet::before { content: ""; position: absolute; inset: 0; z-index: -1;
+                   backdrop-filter: blur(3px); pointer-events: none; }
+
+  /* the enemy row: who the numbers are about */
+  .lane { position: relative; flex: none; display: flex; align-items: center;
+          gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--rule-d); }
+  .lane .lbl { font: 9px ui-monospace, Menlo, monospace; letter-spacing: .14em;
+               text-transform: uppercase; color: var(--ink-low); margin-right: 3px; }
+  .foe { appearance: none; position: relative; width: 27px; height: 27px; padding: 0;
+         flex: none; cursor: pointer; background: none; border-radius: 50%;
+         border: 1.5px solid transparent; opacity: .5;
+         transition: opacity 160ms ease, border-color 160ms ease,
+                     transform 160ms var(--out-quart); }
+  .foe img { width: 100%; height: 100%; border-radius: 50%; display: block;
+             object-fit: cover; }
+  .foe:hover { opacity: .85; transform: translateY(-1px); }
+  .foe[aria-pressed="true"] { opacity: 1;
+                              box-shadow: 0 2px 10px oklch(0.04 0 0 / .7); }
+  .foe:active { transform: scale(0.96); }
+  .foe:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  /* The ring grows out of the portrait it belongs to rather than blinking on. */
+  .foe::after { content: ""; position: absolute; inset: -3px; border-radius: 50%;
+                border: 1.5px solid var(--gold); opacity: 0; transform: scale(0.82);
+                transition: opacity 180ms var(--out-quart),
+                            transform 180ms var(--out-quart); }
+  .foe[aria-pressed="true"]::after { opacity: 1; transform: scale(1); }
+  /* The headline for the matchup on screen, on the row that names it: win
+     rate, the games behind it, and the gold swing at fifteen, which is the
+     one number that says how the lane will actually feel. It used to warn
+     about a thin sample and otherwise say nothing at all. */
+  .lane .note { margin-left: auto; text-align: right; white-space: nowrap;
+                font: 9.5px ui-monospace, Menlo, monospace; color: var(--ink-low);
+                font-variant-numeric: tabular-nums;
+                overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .lane .note b { color: var(--ink-mid); font-weight: 400; }
+  .lane .note b.warn { color: var(--warn); }
+
+  /* ═══ the guide itself ═════════════════════════════════════════════ */
+  .guide { position: relative; flex: 1 1 auto; min-height: 0;
+           overflow-y: auto; overflow-x: hidden; padding: 9px 16px 12px; }
+  .guide::-webkit-scrollbar { width: 7px; }
+  .guide::-webkit-scrollbar-thumb { background: var(--rule-d); border-radius: 4px; }
+  .guide:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+
+  /* general vs this matchup: the counts are part of the label, because
+     choosing between them is a judgement about sample size */
+  .modes { display: flex; gap: 3px; margin: 0 0 9px; }
+  /* The counters page has no scrolling guide to sit inside, so its switch
+     carries the padding the guide would have given it. */
+  .modes.inset { margin: 8px 16px 6px; }
+  .mode { appearance: none; padding: 4px 10px; cursor: pointer;
+          font-size: 10.5px; letter-spacing: .04em; color: var(--ink-low);
+          background: var(--ctl); border: 1px solid var(--rule-d);
+          border-radius: 3px; transition: color 160ms ease,
+          border-color 160ms ease, background-color 160ms ease; }
+  .mode em { font-style: normal; margin-left: 5px; opacity: .7;
+             font-family: ui-monospace, Menlo, monospace; font-size: 9px; }
+  .mode:hover { color: var(--ink-mid); }
+  /* Chosen is aria-pressed, not a class: these are the only two segmented
+     controls in the app and they were the only ones announcing nothing. The
+     chips and the switches already say it, so this says it the same way. */
+  .mode[aria-pressed="true"] { color: var(--gold-b); border-color: var(--gold-d);
+                               background: var(--ctl-on); }
+  .mode:active { transform: scale(0.97); }
+  .mode:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+  /* Staggering the sections of one page, rather than animating the page and
+     its sections both -- doubled entrances fight each other. Applied only
+     when the data actually changes, never on a poll. */
+  .fresh > .split > .block, .fresh > section.block, .fresh > .modes {
+    animation: blockIn 190ms var(--out-quart) both; }
+  .fresh > .modes { animation-delay: 0ms; }
+  .fresh > .split > .block:nth-child(1) { animation-delay: 30ms; }
+  .fresh > .split > .block:nth-child(2) { animation-delay: 65ms; }
+  .fresh > section.block { animation-delay: 95ms; }
+  @keyframes blockIn { from { opacity: 0; transform: translateY(7px); } }
+  /* A table enters as one object. Staggering forty rows under a champ-select
+     timer would be motion for its own sake, and the rows are what is being
+     read. */
+  .fresh.tbody { animation: blockIn 190ms var(--out-quart) both; }
+
+  /* ═══ table primitives ════════════════════════════════════════════
+     One row shape, used by the augment table, the champion tier list, the
+     Arena item lists and the counters page. Every column heading sits
+     directly over its own figures and the percent sign travels with the
+     number, so nothing depends on remembering a legend at the top. */
+
+  /* the filter row: chips carry live counts, so "how many are there" is
+     answered before the list is read */
+  .chips { flex: none; display: flex; align-items: center; gap: 5px;
+           padding: 7px 16px; border-bottom: 1px solid oklch(0.22 0.014 264); }
+  .chip { appearance: none; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+          font: 10.5px/1.35 "Beaufort", Georgia, serif; color: var(--ink-low);
+          background: var(--ctl);
+          border: 1px solid var(--rule-d); border-radius: 3px;
+          transition: color 160ms ease, border-color 160ms ease,
+                      background-color 160ms ease; }
+  .chip b { font: 500 9px ui-monospace, Menlo, monospace; color: var(--ink-low);
+            margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .chip:hover { color: var(--ink-mid); }
+  .chip[aria-pressed="true"] { color: var(--gold-b); border-color: var(--gold-d);
+                               background: var(--ctl-on); }
+  .chip[aria-pressed="true"] b { color: var(--gold); }
+  .chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .chips .sort { margin-left: auto; font: 9.5px ui-monospace, Menlo, monospace;
+                 color: var(--ink-low); }
+
+  /* the table: a sticky heading, then rows that scroll under it */
+  .thead, .trow { display: flex; align-items: center; gap: 9px; padding: 0 16px; }
+  .thead { flex: none; height: 19px; border-bottom: 1px solid var(--rule-d);
+           background: oklch(0.115 0.010 262); }
+  .thead .tnm, .thead .tn, .thead .tier {
+    font: 500 8.5px ui-monospace, Menlo, monospace; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--ink-low); }
+  .tbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+           scroll-behavior: smooth; }
+  .tbody::-webkit-scrollbar { width: 7px; }
+  .tbody::-webkit-scrollbar-thumb { background: var(--rule-d); border-radius: 4px; }
+  .tbody:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+  .trow { height: 27px; border-bottom: 1px solid var(--hair); }
+  .tic { position: relative; width: 21px; height: 21px; flex: none; }
+  .tic img { width: 100%; height: 100%; display: block; }
+  .tic.round img { border-radius: 50%; }
+  /* the rarity hairline, drawn over the icon rather than around the row */
+  .tic::after { content: ""; position: absolute; inset: 0;
+                border: 1.5px solid transparent; }
+  .tic.r-silver::after    { border-color: var(--silver); }
+  .tic.r-gold::after      { border-color: var(--gld); }
+  .tic.r-prismatic::after { border-color: var(--prism); }
+  .tnm { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tnm em { font: 9px ui-monospace, Menlo, monospace; font-style: normal;
+            color: var(--gold); margin-left: 8px; }
+  .tn { width: 46px; flex: none; text-align: right; color: var(--ink);
+        font: 500 11.5px ui-monospace, Menlo, monospace;
+        font-variant-numeric: tabular-nums; }
+  .tn i { font-style: normal; font-size: 8.5px; color: var(--ink-low); margin-left: 1px; }
+  .tn.dim { color: var(--ink-mid); font-weight: 400; }
+  .tn.rank { width: 26px; text-align: right; color: var(--ink-low);
+             font-size: 10.5px; }
+  /* the champion being hovered, found at its own rank in the tier list */
+  .trow.me { box-shadow: inset 0 0 0 1px var(--gold-d); }
+  .trow.me .tnm { color: var(--gold-b); }
+  .trow.me .tn:first-of-type, .trow.me .tn.lead { color: var(--gold-b); }
+
+  /* tier badge: gold is spent only on the top band, so it stays scarce */
+  .tier { width: 30px; flex: none; text-align: center;
+          font: 600 11px/16px ui-monospace, Menlo, monospace;
+          font-variant-numeric: tabular-nums; }
+  .tier.hi  { color: var(--void); background: var(--gold); }
+  .tier.s   { color: var(--gold-b); }
+  .tier.mid { color: var(--ink); }
+  .tier.lo  { color: var(--ink-low); }
+  /* Below the gate there is no letter, only the count that is the reason. */
+  .tier.none { color: var(--ink-low); font-size: 9px; font-weight: 400; }
+
+  /* the line under a table that says what it is measured against */
+  .tnote { flex: none; padding: 7px 16px 9px; border-top: 1px solid var(--rule-d);
+           font: 10px/1.5 ui-monospace, Menlo, monospace; color: var(--ink-low); }
+  .tnote b { color: var(--ink-mid); font-weight: 400; }
+
+  /* The credit: whose numbers these are, linking to the exact page they came
+     from. A footnote, not a control, so it earns no colour until hovered. */
+  .srca { color: var(--ink-low); text-decoration: none; white-space: nowrap; }
+  .srca:hover, .srca:focus-visible { color: var(--gold-b);
+           text-decoration: underline; text-underline-offset: 2px; }
+  /* The build sheet has no table to sit under, so its credit stands alone. */
+  .gsrc { padding: 0 2px 10px; font: 10px/1.5 ui-monospace, Menlo, monospace;
+          text-align: right; }
+
+  .band { display: flex; align-items: baseline; gap: 8px; margin: 0 0 5px; }
+  .band h2 { margin: 0; font-size: 9.5px; font-weight: 600; line-height: 1;
+             letter-spacing: .15em;
+             text-transform: uppercase; color: var(--ink-low); }
+  .band .wr { font: 11px ui-monospace, Menlo, monospace; color: var(--gold); }
+  .band .n { font: 9.5px ui-monospace, Menlo, monospace; color: var(--ink-low); }
+  .band + .band { margin-top: 10px; }
+  section.block + section.block { margin-top: 11px; }
+
+  /* runes, drawn as the tree they belong to */
+  .split { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px;
+           align-items: start; }
+  .split .block + .block { margin-top: 0; }
+  .trees { display: flex; gap: 10px; align-items: flex-start; }
+  .tree { display: flex; flex-direction: column; gap: 5px; }
+  .tree .head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .tree .head img { width: 15px; height: 15px; }
+  .tree .head span { font: 9.5px ui-monospace, Menlo, monospace;
+                     letter-spacing: .08em; color: var(--ink-mid); }
+  .row { display: flex; gap: 4px; }
+  .perk { position: relative; width: 22px; height: 22px; border-radius: 50%;
+          opacity: .22; filter: grayscale(1);
+          transition: opacity 200ms ease, filter 200ms ease; }
+  .perk img { width: 100%; height: 100%; display: block; }
+  .perk.on { opacity: 1; filter: none; }
+  /* The keystone is the one choice that changes how a champion is played. */
+  .perk.key { width: 28px; height: 28px; }
+  .perk.on.key { box-shadow: 0 0 0 1.5px var(--gold), 0 0 12px oklch(0.80 0.09 85 / .35); }
+  .perk.on:not(.key) { box-shadow: 0 0 0 1.5px var(--gold-d); }
+  .shards { display: flex; gap: 5px; margin-top: 7px; }
+  .shard { width: 18px; height: 18px; border-radius: 50%;
+           box-shadow: 0 0 0 1.5px var(--gold-d); }
+  .shard img { width: 100%; height: 100%; display: block; }
+
+  /* spells + skills */
+  .duo { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .spells { display: flex; gap: 5px; }
+  .spells img { width: 27px; height: 27px; border: 1px solid var(--rule-d); }
+  .skills { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .skill { display: flex; align-items: center; gap: 7px; }
+  .skill > img { width: 20px; height: 20px; flex: none; border: 1px solid var(--rule-d); }
+  .skill .key { width: 11px; font: 700 10px ui-monospace, Menlo, monospace;
+                color: var(--ink-mid); flex: none; }
+  .levels { display: flex; gap: 2px; flex-wrap: nowrap; }
+  .lv { width: 12px; height: 12px; display: grid; place-items: center;
+        font: 8px ui-monospace, Menlo, monospace; color: var(--ink-low);
+        border: 1px solid oklch(0.26 0.018 265); border-radius: 2px; }
+  .lv.on { color: var(--void); background: var(--gold); border-color: var(--gold);
+           font-weight: 700; }
+  .prio { font: 10px ui-monospace, Menlo, monospace; color: var(--gold); }
+
+  /* items */
+  .items { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .it { position: relative; width: 29px; height: 29px; flex: none;
+        border: 1px solid var(--rule-d); background: var(--raised); }
+  .it img { width: 100%; height: 100%; display: block; }
+  .it.small { width: 22px; height: 22px; }
+  .arrowto { color: var(--ink-low); font-size: 10px; }
+  /* the divider between what you start with and what you build */
+  .arrowto.sep { margin: 0 4px; }
+  /* The built items and the slot options sit side by side, not stacked.
+     Rift is the tallest page in the app and this is what makes it fit: the
+     start-and-core row is only about 250px wide, so the three option blocks
+     ride alongside it instead of costing another 60px of height. */
+  .igrid { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .opts { display: flex; gap: 14px; flex-wrap: wrap; }
+  .opt { display: flex; flex-direction: column; gap: 3px; }
+  .opt .cap { font: 500 9px ui-monospace, Menlo, monospace; letter-spacing: .1em;
+              text-transform: uppercase; color: var(--ink-low); }
+  .opt .picks { display: flex; gap: 6px; }
+  /* The percent sign travels with the figure and the game count sits under
+     it: these were two bare numbers with nothing to say which was which. */
+  .pick { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .pick .wr { font: 500 10px ui-monospace, Menlo, monospace; color: var(--ink);
+              font-variant-numeric: tabular-nums; }
+  .pick .wr i { font-style: normal; font-size: 8px; color: var(--ink-low); }
+  .pick .n { font: 8px ui-monospace, Menlo, monospace; color: var(--ink-low);
+             font-variant-numeric: tabular-nums; }
+  .pick.thin { opacity: .62; }
+  .pick.thin .n { color: var(--warn); opacity: 1; }
+
+  /* ARAM spends the room the lane row and the matchup switch used to take
+     on names for the fourth, fifth and sixth options. An unnamed item is
+     the same failure as an unnamed augment; Rift cannot afford the space
+     and its six-item core is common knowledge, ARAM's is not. */
+  .aopts { margin-top: 9px; display: flex; flex-direction: column; }
+  .aoptrow { display: flex; align-items: center; gap: 10px; padding: 3px 0;
+             border-bottom: 1px solid var(--hair); }
+  .aoptrow .cap { width: 42px; flex: none; font: 500 9px ui-monospace, Menlo, monospace;
+                  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-low); }
+  .aopt { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
+  .aopt .nm { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--ink);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aopt .wr { flex: none; width: 46px; text-align: right; color: var(--ink);
+              font: 500 11px ui-monospace, Menlo, monospace;
+              font-variant-numeric: tabular-nums; }
+  .aopt .wr i { font-style: normal; font-size: 8.5px; color: var(--ink-low); }
+  .aopt .n { flex: none; width: 64px; text-align: right; color: var(--ink-low);
+             font: 9px ui-monospace, Menlo, monospace;
+             font-variant-numeric: tabular-nums; }
+  .aopt .n i { font-style: normal; margin-left: 3px; }
+  .aopt.thin .wr { color: var(--ink-low); }
+  .aopt.thin .n { color: var(--warn); }
+
+  /* ═══ counters ═════════════════════════════════════════════════════
+     One question at a time. The two directions are the same table with the
+     subject swapped, so they share a column set and a switch, rather than
+     being two designs stacked down the page. */
+  .crow { height: 30px; }
+  .cic { width: 24px; height: 24px; flex: none; }
+  .cic img { width: 100%; height: 100%; border-radius: 50%; display: block; }
+  .cfig { width: 52px; flex: none; text-align: right;
+          font-variant-numeric: tabular-nums; }
+  .cfig b { font: 600 12.5px ui-monospace, Menlo, monospace; color: var(--ink); }
+  .cfig i, .cshare i, .cgold i { font-style: normal; font-size: 8.5px;
+                                 color: var(--ink-low); margin-left: 1px; }
+  /* Pick share, with the bar the number alone does not give: the top of any
+     counter list is otherwise a row of off-role picks recommended with total
+     confidence, and the bar is what makes that visible at a glance. */
+  .cshare { width: 66px; flex: none; display: flex; flex-direction: column;
+            align-items: flex-end; gap: 3px; font-variant-numeric: tabular-nums; }
+  .cshare b { font: 11px ui-monospace, Menlo, monospace; color: var(--ink-mid);
+              font-weight: 400; }
+  .cshare .prop { display: block; width: 62px; height: 3px;
+                  background: oklch(0.285 0.012 264); }
+  .cshare .prop i { display: block; height: 100%; background: var(--ink-low); }
+  .crow.me .cshare .prop i { background: var(--gold); }
+  .thead .cshare { display: block; text-align: right; }
+  .cgold { width: 62px; flex: none; text-align: right; color: var(--ink-mid);
+           font: 11px ui-monospace, Menlo, monospace;
+           font-variant-numeric: tabular-nums; }
+  .crow.me .cfig b { color: var(--gold-b); }
+
+  /* ═══ import: one row, under the build it writes ═══════════════════
+     Outside the scrolling guide, because it is the action for whatever is
+     currently in it and must not scroll away from the numbers it applies to.
+     Same furniture as the mode buttons above: 1px rules, mono labels, gold
+     for the one control that does something. */
+  /* Tight, because it is a footer on the app's tallest page: Rift fills the
+     sheet exactly and every pixel here comes out of the build above it. */
+  .ibar { position: relative; z-index: 1; flex: none; display: flex;
+          align-items: center; gap: 7px; padding: 5px 16px 6px;
+          border-top: 1px solid var(--rule-d); }
+  .igo { appearance: none; padding: 4px 12px; cursor: pointer; flex: none;
+         font: 600 10.5px/1 ui-monospace, Menlo, monospace;
+         letter-spacing: .12em; text-transform: uppercase;
+         color: var(--gold-b); background: var(--ctl-on);
+         border: 1px solid var(--gold-d); border-radius: 3px;
+         transition: color 180ms var(--out-quart),
+                     border-color 180ms var(--out-quart),
+                     background-color 180ms var(--out-quart),
+                     transform 150ms var(--out-quart); }
+  .igo:hover:not(:disabled) { border-color: var(--gold); color: var(--ink); }
+  .igo:active:not(:disabled) { transform: scale(0.97); }
+  .igo:disabled { cursor: default; color: var(--ink-low);
+                  border-color: var(--rule-d); background: var(--ctl); }
+  .igo:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  /* The confirm carries a page name, which is data and keeps its own case. */
+  .igo.named { text-transform: none; letter-spacing: .04em;
+               font-family: "Beaufort", Georgia, serif; font-size: 11.5px; }
+
+  /* The outcome, in the space beside the button rather than over the build. */
+  .isay { flex: 1; min-width: 0; font: 9.5px ui-monospace, Menlo, monospace;
+          letter-spacing: .04em; color: var(--ink-mid);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          opacity: 0; transition: opacity 200ms var(--out-quart); }
+  .isay.in { opacity: 1; }
+  .isay.bad { color: var(--warn); }
+
+  .tog { appearance: none; padding: 4px 8px; cursor: pointer; flex: none;
+         font: 9px ui-monospace, Menlo, monospace; letter-spacing: .1em;
+         text-transform: uppercase; color: var(--ink-low);
+         background: var(--ctl); border: 1px solid var(--rule-d);
+         border-radius: 3px; transition: color 160ms ease,
+         border-color 160ms ease, background-color 160ms ease; }
+  .tog:hover { color: var(--ink-mid); }
+  .tog[aria-checked="true"] { color: var(--gold-b); border-color: var(--gold-d);
+                              background: var(--ctl-on); }
+  .tog:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  /* A dot rather than colour alone: the two switches sit next to each other
+     and "on" has to survive being glanced at. Only the switches get one --
+     the same class dresses the chooser's Cancel, which is not one -- and both
+     carry an aria-label, because generated content lands in the accessible
+     name and "●SPELLS" is not what a switch should announce itself as. */
+  .tog[role="switch"]::before { content: "○"; margin-right: 5px; font-size: 8px; }
+  .tog[aria-checked="true"]::before { content: "●"; }
+
+  /* All three rune slots are the player's. Choosing which one Tibbers takes
+     is the only destructive step in the app, so it is asked here, in place,
+     and never implied by the button that started it. */
+  .chooser { flex: none; padding: 8px 16px 9px; border-top: 1px solid var(--rule-d);
+             background: oklch(0.15 0.014 264);
+             animation: chooseIn 200ms var(--out-quart) both; }
+  @keyframes chooseIn { from { opacity: 0; transform: translateY(5px); } }
+  .chooser p { margin: 0 0 6px; font: 9.5px ui-monospace, Menlo, monospace;
+               letter-spacing: .06em; color: var(--ink-mid); }
+  .picks-pages { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+  .pgpick { appearance: none; display: flex; flex-direction: column; gap: 1px;
+            padding: 4px 9px; cursor: pointer; text-align: left;
+            background: oklch(0.18 0.014 264); border: 1px solid var(--rule-d);
+            border-radius: 3px; transition: border-color 160ms ease,
+            background-color 160ms ease; }
+  .pgpick b { font: 600 10.5px "Beaufort", Georgia, serif; color: var(--ink-mid); }
+  .pgpick em { font: 8.5px ui-monospace, Menlo, monospace; font-style: normal;
+               color: var(--ink-low); }
+  .pgpick[aria-pressed="true"] { border-color: var(--gold); }
+  .pgpick[aria-pressed="true"] b { color: var(--gold-b); }
+  .pgpick:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .chooser .acts { display: flex; align-items: center; gap: 6px; }
+
+  .note-empty { display: grid; place-items: center; height: 100%; text-align: center;
+                gap: 6px; color: var(--ink-low); font-size: 12px; padding: 20px; }
+  .note-empty b { color: var(--ink-mid); font-weight: 600; font-size: 13px; }
+
+  /* ═══ the splash owns the middle ═══════════════════════════════════ */
+  .stage { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0;
+           display: flex; align-items: flex-end; padding: 0 24px 4px; }
+
+  .plate { display: flex; align-items: flex-end; gap: 16px; max-width: 78%;
+           opacity: 0; transform: translateY(10px);
+           transition: opacity 300ms var(--out-quart), transform 300ms var(--out-quart); }
+  .plate.in { opacity: 1; transform: none; }
+
+  /* Small by default so it never competes with the splash, but it is also
+     the only place to actually look at the model, so it grows on hover.
+     Origin is its own bottom-left corner: it expands up and to the right into
+     empty space instead of shoving the name or leaving the window. */
+  /* The panel is laid out at the size it reaches when enlarged and scaled
+     DOWN to rest, never up. A composited layer is rasterised once at its
+     layout size, so growing a 96px panel to 220px was stretching 96px worth
+     of pixels: the client only ships these at 270px, and blowing an already
+     downsampled raster up 2.7x is what made the chroma look washed out.
+     Scaling down samples the full image at both ends. */
+  .preview { position: relative; width: 0; height: 0; flex: none;
+             transition: width 280ms var(--out-quart), height 280ms var(--out-quart); }
+  .preview.show { width: 96px; height: 108px; }
+  .preview .box { position: absolute; left: 0; bottom: 0;
+                  width: 220px; aspect-ratio: 270/303; overflow: hidden;
+                  background: var(--rift); border: 2px solid var(--gold-d);
+                  transform: scale(0.4364); transform-origin: left bottom;
+                  will-change: transform; opacity: 0; pointer-events: none;
+                  transition: transform 280ms var(--out-quart),
+                              opacity 200ms var(--out-quart),
+                              border-color 200ms ease,
+                              box-shadow 280ms var(--out-quart); }
+  /* Not every skin ships an icon. The panel sits outside the flow now, so
+     without this it paints over the skin name instead of collapsing. */
+  .preview.show .box { opacity: 1; pointer-events: auto; }
+  .preview img { position: absolute; inset: 0; width: 100%; height: 100%;
+                 object-fit: contain; opacity: 0;
+                 transition: opacity 200ms var(--out-quart); }
+  .preview img.on { opacity: 1; }
+  /* The load-screen card is a tall portrait; fill the frame from the top so
+     the face stays in, rather than letterboxing a strip down the middle. */
+  .preview .box.card img { object-fit: cover; object-position: 50% 18%; }
+  @media (hover: hover) and (pointer: fine) {
+    .preview.show:hover { z-index: 6; }
+    .preview.show:hover .box {
+      transform: scale(1);
+      border-color: var(--gold);
+      box-shadow: 0 10px 34px oklch(0.04 0 0 / .8);
+    }
+    /* The name would otherwise sit on top of the enlarged panel. */
+    .plate:has(.preview.show:hover) .naming { opacity: .25; }
+  }
+  .preview.show::after {
+    content: "hover to enlarge"; position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 3px 4px; font: 7.5px ui-monospace, Menlo, monospace;
+    letter-spacing: .06em; text-align: center; color: var(--ink-mid);
+    background: oklch(0.10 0.010 260 / .82);
+    opacity: 1; transition: opacity 180ms var(--out-quart);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .preview.show:hover::after { opacity: 0; }
+  }
+
+  .naming { min-width: 0; padding-bottom: 2px;
+            transition: opacity 240ms var(--out-quart); }
+  .skinname { margin: 0; font-size: clamp(26px, 3.4vw, 42px); font-weight: 700;
+              line-height: 1.04; letter-spacing: -0.005em; text-wrap: balance;
+              text-shadow: 0 3px 18px oklch(0.05 0 0 / .9); }
+  .meta { display: flex; align-items: center; gap: 10px; margin-top: 7px;
+          font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+          color: var(--ink-mid); text-shadow: 0 1px 6px oklch(0.05 0 0 / .9); }
+  .meta .dash { width: 20px; height: 1px; background: var(--gold-d); }
+
+  /* chroma strip, on the splash */
+  .strip { display: flex; align-items: center; gap: 8px; margin-top: 13px;
+           flex-wrap: wrap; }
+  .chroma { position: relative; width: 24px; height: 24px; flex: none; padding: 0;
+            border: 0; background: none; cursor: pointer;
+            transform: rotate(45deg); transition: transform 160ms var(--out-quart); }
+  .chroma i { position: absolute; inset: 0; display: block; overflow: hidden;
+              border: 1px solid oklch(0.97 0.005 85 / .35);
+              background: var(--rift);
+              box-shadow: 0 2px 8px oklch(0.05 0 0 / .6);
+              transition: border-color 160ms ease, box-shadow 160ms ease; }
+  /* The chroma's own colour tints the ground, so near-identical models stay
+     distinguishable, without hiding the ground behind a flat block. */
+  .chroma i::before { content: ""; position: absolute; inset: 0;
+                      background: var(--tint, transparent); opacity: .45; }
+  .chroma i b { position: absolute; inset: -30%; display: block;
+                background-size: contain; background-repeat: no-repeat;
+                background-position: center; transform: rotate(-45deg); }
+  @media (hover: hover) and (pointer: fine) { .chroma:hover { transform: rotate(45deg) scale(1.14); } }
+  .chroma[aria-pressed="true"] { transform: rotate(45deg) scale(1.14); }
+  .chroma[aria-pressed="true"] i { border-color: var(--gold-b);
+    box-shadow: 0 0 0 1px var(--gold), 0 0 12px oklch(0.80 0.095 85 / .5); }
+  .chroma:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  /* the base swatch: always present, so the champion's own look is one click
+     away even for a skin that ships no chromas */
+  .chroma.base { border-radius: 50%; transform: none; }
+  .chroma.base i { border-radius: 50%; }
+  @media (hover: hover) and (pointer: fine) { .chroma.base:hover { transform: scale(1.14); } }
+  .chroma.base[aria-pressed="true"] { transform: scale(1.14); }
+  .strip .lbl { font: 10px ui-monospace, Menlo, monospace; color: var(--ink-low);
+                letter-spacing: .14em; margin-right: 2px; }
+
+  /* ═══ carousel ═════════════════════════════════════════════════════ */
+  .rail { position: relative; z-index: 2; flex: none; padding: 12px 0 12px; }
+  .viewport { position: relative; overflow: hidden; margin: 0 44px; }
+  .track { display: flex; gap: var(--tile-gap); will-change: transform;
+           transition: transform 340ms var(--inout); }
+
+  .tile { position: relative; flex: none; width: var(--tile-w); padding: 0;
+          border: 1px solid transparent; background: var(--raised); cursor: pointer;
+          overflow: hidden;
+          transition: border-color 160ms ease, transform 160ms ease; }
+  /* The rise is a one-shot for a freshly built rail. A CSS animation restarts
+     every time its element comes back from display:none, so it must not live
+     on the tile itself or every return to this tab replays the whole
+     stagger and reads as the skins loading again. */
+  .track.fresh .tile { opacity: 0; transform: translateY(10px);
+                       animation: rise 260ms var(--out-quart) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .tile img { display: block; width: 100%; aspect-ratio: 308/560; object-fit: cover;
+              object-position: center 18%; filter: saturate(.85) brightness(.86);
+              transition: filter 180ms ease; }
+  @media (hover: hover) and (pointer: fine) {
+    .tile:hover { border-color: var(--gold-d); transform: scale(1.02); }
+    .tile:hover img { filter: none; }
+  }
+  .tile[aria-current="true"] { border-color: var(--gold); transform: scale(1.05); }
+  .tile[aria-current="true"] img { filter: none; }
+  .tile[aria-current="true"]::after { content: ""; position: absolute; left: 50%; bottom: 0;
+    width: 8px; height: 8px; background: var(--gold);
+    transform: translate(-50%, 50%) rotate(45deg); }
+  .tile:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .tile.locked { cursor: not-allowed; }
+  .tile.locked img { filter: grayscale(1) brightness(.4); }
+  .tile.locked:hover { border-color: transparent; transform: none; }
+
+  .arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+           width: 28px; height: 44px; padding: 0; cursor: pointer; background: none;
+           border: 0; color: var(--gold-d); display: grid; place-items: center;
+           transition: color 160ms ease, transform 160ms var(--out-quart); }
+  .arrow:hover:not(:disabled) { color: var(--gold-b); }
+  .arrow.prev { left: 8px; } .arrow.next { right: 8px; }
+  .arrow.prev:hover:not(:disabled) { transform: translateY(-50%) translateX(-2px); }
+  .arrow.next:hover:not(:disabled) { transform: translateY(-50%) translateX(2px); }
+  .arrow:disabled { opacity: .18; cursor: default; }
+  .arrow svg { width: 12px; height: 12px; }
+  .arrow:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ═══ status ═══════════════════════════════════════════════════════ */
+  .status { position: relative; z-index: 2; flex: none; display: flex; align-items: center;
+            gap: 12px; padding: 6px 22px 8px; font-family: ui-monospace, Menlo, monospace;
+            font-size: 10.5px; color: var(--ink-mid); }
+  .bar { flex: 1; height: 1px; background: var(--rule-d); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--gold);
+           transition: width 300ms var(--out-quart); }
+  .count { color: var(--ink-low); }
+  /* Dev instances only. Dimmer than the status it sits beside, because it is
+     addressed to whoever is working on the app, not to whoever is playing. */
+  .mockat { color: var(--ink-low); font-size: 9.5px; letter-spacing: .04em;
+            white-space: nowrap; }
+
+  /* ═══ empty ════════════════════════════════════════════════════════ */
+  .empty { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; gap: 9px; text-align: center;
+           padding: 24px; animation: fade 320ms var(--out-quart); }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+  .empty b { font-size: 18px; font-weight: 700; letter-spacing: .14em;
+             text-transform: uppercase; color: var(--ink); }
+  .empty span { color: var(--ink-mid); max-width: 46ch; }
+  .empty .orn { width: 130px; height: 1px; margin-bottom: 5px;
+    background: linear-gradient(to right, transparent, var(--rule-d), transparent); }
+
+  /* Compact: the picker window is small on purpose, so it must not simply
+     be the full layout squeezed. */
+  @media (max-height: 620px), (max-width: 780px) {
+    .top { padding: 9px 14px; gap: 9px; }
+    .frame { width: 28px; height: 28px; }
+    .who strong { font-size: 12px; }
+    .who em { display: none; }
+    .beats { gap: 10px; }
+    .beat span { display: none; }
+    .stage { padding: 0 14px 2px; }
+    .skinname { font-size: clamp(19px, 4.6vw, 26px); }
+    .meta { margin-top: 4px; font-size: 10px; }
+    .strip { margin-top: 9px; gap: 6px; }
+    .chroma { width: 20px; height: 20px; }
+    /* The panel keeps its 220px raster; only the resting scale shrinks. */
+    .preview.show { width: 62px; height: 70px; }
+    .preview .box { transform: scale(0.2818); }
+    .rail { padding: 8px 0 9px; }
+    .viewport { margin: 0 32px; }
+    :root { --tile-w: 60px; --tile-gap: 6px; }
+    .status { padding: 4px 14px 6px; font-size: 9.5px; }
+    .arrow { width: 22px; height: 34px; }
+    .arrow.prev { left: 4px; } .arrow.next { right: 4px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    /* .track.fresh .tile outweighs a bare .tile, so the rail's start state
+       has to be undone at its own specificity or the tiles rely on the
+       animation's fill to become visible at all. */
+    .plate, .tile, .track.fresh .tile { opacity: 1; transform: none; }
+    .tile[aria-current="true"] { transform: none; }
+    .sheet, main.stage, .track.fresh .tile,
+    .fresh > .split > .block, .fresh > section.block,
+    .fresh > .modes, .fresh.tbody { animation: none; }
+    .foe::after { transition: none; }
+    .chooser { animation: none; }
+    /* The tables and the tier list scroll themselves to a row; do it without
+       the smooth scroll when motion is unwelcome. */
+    .tbody { scroll-behavior: auto; }
+    .isay { transition: none; }
+    .igo:active:not(:disabled) { transform: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="splash"><img id="sp0" alt=""><img id="sp1" alt=""></div>
+
+  <header class="top">
+    <span class="who" id="who" hidden>
+      <span class="frame"><img id="portrait" alt=""></span>
+      <strong id="cname"></strong><em id="ctitle"></em>
+    </span>
+    <span class="pill" id="lockpill" hidden>hovering</span>
+    <span class="beats">
+      <span class="beat"><i class="lamp" id="l1"></i><span id="t1">client</span></span>
+      <span class="beat"><i class="lamp" id="l2"></i><span id="t2">library</span></span>
+      <span class="beat"><i class="lamp" id="l3"></i><span id="t3">patcher</span></span>
+      <button class="dismiss" id="dismiss" title="Hide (esc)"
+              aria-label="Hide the picker">&#10005;</button>
+    </span>
+  </header>
+
+  <!-- The tabs are built from the mode, never hard coded: see paintTabs. -->
+  <nav class="tabs" id="tabs" hidden>
+    <span class="tabset" id="tabset"></span>
+    <span class="stamp" id="stamp"></span>
+    <select class="patch offpage" id="patch" title="Which patch the build and counters are read from" hidden>
+      <option value="">latest</option>
+    </select>
+    <i class="tabline" id="tabline"></i>
+  </nav>
+
+  <main class="stage" id="view-skin">
+    <div class="plate" id="plate" hidden>
+      <div class="preview" id="preview"><div class="box"><img id="pvimg" alt=""></div></div>
+      <div class="naming">
+        <h1 class="skinname" id="skinname"></h1>
+        <div class="meta"><span class="dash"></span><span id="skinmeta"></span></div>
+        <div class="strip" id="strip"></div>
+      </div>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </main>
+
+  <nav class="rail" id="rail" hidden>
+    <button class="arrow prev" id="prev" aria-label="Previous skin">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M11 2 L4 8 L11 14"/></svg>
+    </button>
+    <div class="viewport" id="viewport"><div class="track" id="track"></div></div>
+    <button class="arrow next" id="next" aria-label="Next skin">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M5 2 L12 8 L5 14"/></svg>
+    </button>
+  </nav>
+
+  <section class="sheet" id="view-build" hidden>
+    <div class="lane" id="lane"></div>
+    <div class="guide" id="guide"></div>
+    <div class="chooser" id="ichoose" hidden></div>
+    <div class="ibar" id="ibar" hidden>
+      <button class="igo" id="igo">Import build</button>
+      <span class="isay" id="isay" role="status" aria-live="polite"></span>
+      <button class="tog" id="ispells" role="switch" aria-checked="false"
+              aria-label="Import summoner spells too"
+              title="Set your summoner spells too, in champ select">spells</button>
+      <button class="tog" id="iauto" role="switch" aria-checked="false"
+              aria-label="Import automatically when you lock in"
+              title="Import by itself when you lock a champion in">auto on lock</button>
+    </div>
+  </section>
+
+  <section class="sheet" id="view-counters" hidden>
+    <div class="lane" id="lane2"></div>
+    <div class="modes inset" id="csegs"></div>
+    <div class="thead" id="chead"></div>
+    <div class="tbody" id="crows" tabindex="0"
+         aria-label="Counter picks, scrollable"></div>
+    <div class="tnote" id="cnote"></div>
+  </section>
+
+  <!-- Arena, in champ select: the roster, as op.gg ranks it. The question
+       here is not how to build this champion, it is whether to pick it. -->
+  <section class="sheet" id="view-tiers" hidden>
+    <div class="thead" id="thead"></div>
+    <div class="tbody" id="trows" tabindex="0"
+         aria-label="Arena champion tier list, scrollable"></div>
+    <div class="tnote" id="tnote"></div>
+  </section>
+
+  <!-- Arena augments: one ranked table, all 45, filtered by rarity. -->
+  <section class="sheet" id="view-augments" hidden>
+    <div class="chips" id="achips"></div>
+    <div class="thead" id="ahead"></div>
+    <div class="tbody" id="arows" tabindex="0"
+         aria-label="Augments, scrollable"></div>
+    <div class="tnote" id="anote"></div>
+  </section>
+
+  <!-- Arena items, in their own right rather than as the augment page's
+       footer, which is where they were being crushed. -->
+  <section class="sheet" id="view-items" hidden>
+    <div class="guide" id="aitems" tabindex="0"
+         aria-label="Arena items, scrollable"></div>
+  </section>
+
+  <footer class="status">
+    <span id="msg">starting</span>
+    <span class="bar" id="bar" hidden><i></i></span>
+    <!-- Only in a --mock instance, and only ever a line of text: the mock
+         client is a window of its own now, so nothing is drawn over the page
+         being looked at. -->
+    <span class="mockat" id="mockat" hidden></span>
+    <span class="count" id="count"></span>
+  </footer>
+
+<script>
+let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
+let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* The credit line under a page of numbers: who published them, as a link to
+   the exact page they came from. The payload carries the URL, so what is
+   opened is what was fetched, never a reconstruction. */
+const srcline = src => !src || !src.url ? '' :
+  `<a class="srca" href="${esc(src.url)}"
+      title="Open the ${esc(src.name)} page these numbers come from">numbers
+      from ${esc(src.name)}&#8202;&#8599;</a>`;
+/* The picker window is not a browser, so the click is handed to the server
+   to open in the real one; cmd-click and middle-click keep the plain href. */
+document.addEventListener('click', e => {
+  const a = e.target.closest('.srca');
+  if (!a || e.metaKey || e.ctrlKey || e.button !== 0) return;
+  e.preventDefault();
+  fetch('/api/browse', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ url: a.href }),
+  });
+});
+
+/* The patch selector. The list and the choice are the same `patch` setting
+   the Settings window edits, so the two never disagree. "latest" is the
+   default and shows which patch that currently resolves to. */
+let PATCHES = [], PATCH_PREF = null, PATCH_NOW = '', SETTINGS = {};
+/* Whether the mode on screen has anywhere to read a build from. Nexus Blitz
+   has no source, so there is no patch to choose and the select would sit
+   there offering "latest" with no number behind it. */
+let PATCH_SRC = false, SETTINGS_AT = 0;
+async function loadSettings() {
+  SETTINGS_AT = Date.now();
+  try {
+    const cfg = await (await fetch('/api/settings')).json();
+    PATCHES = cfg.patches || [];
+    SETTINGS = cfg.settings || {};
+    PATCH_PREF = SETTINGS.patch || null;
+  } catch (e) { PATCHES = []; }
+  paintPatch(PATCH_NOW);
+  paintToggles();
+}
+function paintPatch(now) {
+  PATCH_NOW = now || '';
+  const sel = $('patch');
+  const dot = v => (v || '').replace('_', '.');
+  const want = [''].concat(PATCHES.filter(v => v !== ''));
+  const have = Array.from(sel.options).map(o => o.value);
+  if (want.join(',') !== have.join(',')) {
+    sel.innerHTML = want.map(v => `<option value="${esc(v)}"></option>`).join('');
+  }
+  for (const o of sel.options) {
+    o.textContent = o.value ? 'patch ' + dot(o.value)
+      : 'latest' + (PATCH_NOW && !PATCH_PREF ? ' · ' + dot(PATCH_NOW) : '');
+  }
+  if (document.activeElement !== sel) sel.value = PATCH_PREF || '';
+  sel.classList.toggle('pinned', !!PATCH_PREF);
+  sel.hidden = !PATCH_SRC || (!PATCH_NOW && !PATCHES.length);
+}
+$('patch').addEventListener('change', async e => {
+  PATCH_PREF = e.target.value || null;
+  paintPatch(PATCH_NOW);
+  try {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'patch', value: PATCH_PREF }) });
+  } catch (err) { /* the next state poll shows what actually happened */ }
+});
+/* The list is cheap and rarely changes, but a picker opened before the
+   client had a network is a picker with one option: refresh on open. */
+$('patch').addEventListener('mousedown', () => { if (PATCHES.length < 2) loadSettings(); });
+
+function art(p) {
+  if (!p) return '';
+  const m = '/lol-game-data/assets/';
+  const i = p.toLowerCase().indexOf(m);
+  return '/api/art/' + (i >= 0 ? p.slice(i + m.length) : p.replace(/^\/+/, ''));
+}
+
+/* True crossfade. A single <img> can only fade out and back in, which reads
+   as a flicker; two layers alternate so the outgoing splash is still there
+   while the incoming one arrives. */
+const layers = [$('sp0'), $('sp1')];
+let front = 0, splashSrc = '';
+function showSplash(src) {
+  if (!src || src === splashSrc) return;
+  splashSrc = src;
+  const next = new Image();
+  next.onload = () => {
+    if (splashSrc !== src) return;              // superseded mid-load
+    const back = layers[1 - front];
+    back.src = src;
+    requestAnimationFrame(() => {
+      back.classList.add('on');
+      layers[front].classList.remove('on');
+      front = 1 - front;
+    });
+  };
+  next.src = src;
+}
+
+function fadeInto(el, src) {
+  if (!src || el.dataset.src === src) return;
+  el.dataset.src = src;
+  const next = new Image();
+  next.onload = () => {
+    if (el.dataset.src !== src) return;
+    el.classList.remove('on');
+    el.src = src;
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
+  };
+  next.src = src;
+}
+
+/* One tick: ask for the state, and draw only if the answer moved.
+
+   The snapshot is byte-stable while nothing is happening -- it is assembled
+   from the same values every time, with no timestamp in it -- so a body
+   identical to the last one is proof there is nothing to redraw. Comparing
+   the raw text is a native string compare over ~30KB (80KB in Arena) and it
+   buys the whole render: the JSON.parse, and the render signatures, which
+   between them JSON.stringify the guide and then each of its parts again --
+   about 155KB of stringify per tick on the Arena pages, for a page that
+   changes perhaps twice a minute.
+
+   The per-renderer signatures stay, because they are also what stops a
+   display-only change (switching build mode) redrawing pages it did not
+   touch. This only stops the polls that changed nothing from reaching them. */
+let SEEN_STATE = '';
+
+async function poll() {
+  // /api/settings is not free on the server: it walks the whole skin library
+  // and re-verifies the privileged helper on every call, and it was being
+  // asked on every tick for a patch list and two switches that only move by
+  // hand. Once a quarter minute is enough to notice a change made in the
+  // Settings window; every other path that changes one refreshes it itself.
+  if (Date.now() - SETTINGS_AT > 15000) loadSettings();
+  try {
+    const text = await (await fetch('/api/state')).text();
+    if (text !== SEEN_STATE) {
+      SEEN_STATE = text;
+      render(JSON.parse(text));
+    }
+  } catch {
+    $('msg').textContent = 'backend unreachable';
+    // Whatever comes back next must be drawn, even if it is identical to the
+    // last thing drawn before the app went away.
+    SEEN_STATE = '';
+  }
+  setTimeout(poll, 900);
+}
+
+// Kept so a display-only change -- switching build modes -- can redraw
+// without waiting for the next poll.
+let LAST = {};
+
+function render(s) {
+  LAST = s;
+  $('l1').className = 'lamp' + (s.connected ? ' on' : '');
+  $('t1').textContent = s.connected ? (s.phase || 'idle') : 'no client';
+
+  const d = s.download || {}, busy = d.state === 'downloading';
+  $('l2').className = 'lamp' + (busy ? ' busy' : ' on');
+  $('t2').textContent = busy ? `${(d.fetched||0)+(d.missing||0)}/${d.total}` : 'library';
+
+  const p = s.patcher || {}, live = Object.keys(p).length > 0;
+  $('l3').className = 'lamp' + (p.error ? ' bad' : live ? ' on' : '');
+  $('t3').textContent = p.error ? 'error' : p.patched ? 'applied'
+    : p.found ? 'patching' : live ? 'watching' : 'idle';
+
+  $('msg').textContent = s.status || '';
+  const bar = $('bar');
+  bar.hidden = !busy || !d.total;
+  if (!bar.hidden) bar.querySelector('i').style.width =
+    Math.round(((d.fetched||0)+(d.missing||0)) / d.total * 100) + '%';
+
+  // Driven before the skin view's early returns: every data page has its own
+  // empty state and must still update without one.
+  const tabsWere = $('tabs').hidden;
+  $('tabs').hidden = !s.connected;
+  const rebuilt = paintTabs(tabsOf(s));
+  // Measured only once the bar is actually laid out: while it is hidden every
+  // width is zero, so an early measurement would place the underline nowhere.
+  // Re-run after a rebuild too, or it measures the labels that just left.
+  if (rebuilt || (tabsWere && !$('tabs').hidden)) moveTabline();
+  followPhase(s);
+  // Arena has no lanes and no enemy team -- the client puts all eighteen
+  // players in myTeam and leaves theirTeam empty -- so the row would only
+  // ever say that nobody has locked in.
+  // A mode with no build source has no patch to read one from.
+  PATCH_SRC = !!(s.queue || {}).source;
+
+  const lanes = (s.queue || {}).roles !== false;
+  for (const id of ['lane', 'lane2']) $(id).hidden = !lanes;
+  // The note is the same sentence on both rows, so it is written once.
+  if (lanes) {
+    const note = laneNote(s);
+    renderLane(s, $('lane'), note);
+    renderLane(s, $('lane2'), note);
+  }
+  renderGuide(s);
+  renderCounters(s);
+  renderArenaViews(s);
+  renderImport(s);
+
+  const has = s.connected && s.championId && s.skins.length;
+  HAS = !!has;
+  $('who').hidden = !has; $('lockpill').hidden = !has;
+  $('plate').hidden = !has; $('empty').hidden = !!has;
+  placeRail();
+
+  if (!has) {
+    for (const l of layers) l.classList.remove('on');
+    splashSrc = '';
+    $('count').textContent = '';
+    // Two sentences, and the app sits in one of them for most of its life.
+    // Rebuilding it whenever anything else in the state moved threw away
+    // nodes to write back the same ones.
+    const empty = $('empty'), which = s.connected ? 'champ' : 'client';
+    if (empty.dataset.sig !== which) {
+      empty.dataset.sig = which;
+      empty.innerHTML = !s.connected
+        ? '<span class="orn"></span><b>Waiting for League</b>' +
+          '<span>Nothing in your install is modified. Launch it however you like.</span>'
+        : '<span class="orn"></span><b>Hover a champion</b>' +
+          '<span>Skins appear as soon as you hover, before you lock in.</span>';
+    }
+    return;
+  }
+
+  SKINS = s.skins;
+  if (s.championId !== CHAMP) {
+    CHAMP = s.championId; SEL = null; CHROMA = null; PEEK = null;
+    RAIL_SIG = ''; STRIP_SIG = '';
+    $('plate').classList.remove('in');
+  }
+  if (s.selectedSkinId && !SEL) SEL = s.selectedSkinId;
+  const cur = SKINS.find(k => k.id === SEL) || SKINS.find(k => k.available) || SKINS[0];
+  SEL = cur.id;
+
+  $('portrait').src = art(s.championIcon);
+  $('cname').textContent = s.championName || '';
+  $('ctitle').textContent = s.championTitle || '';
+  const pill = $('lockpill');
+  // The champion stays on screen after champ select so the grid does not
+  // vanish mid-loading, which left the pill claiming "hovering" during the
+  // game. Past champ select there is nothing left to hover.
+  const inSelect = s.phase === 'ChampSelect';
+  pill.textContent = inSelect ? (s.locked ? 'locked in' : 'hovering') : 'in game';
+  pill.classList.toggle('lit', !inSelect || !!s.locked);
+  $('count').textContent = SKINS.filter(k => k.available).length + ' / ' + SKINS.length;
+
+  renderRail();
+  paint();
+  requestAnimationFrame(() => $('plate').classList.add('in'));
+}
+
+/* The splash always shows the skin, full size. A chroma changes only the small
+   preview beside the name, so the art is never covered up. */
+function paint() {
+  const cur = SKINS.find(k => k.id === SEL);
+  if (!cur) return;
+  /* Hovering a chroma previews it without choosing it: PEEK is the hovered
+     disc (0 for the base), null when the pointer is elsewhere. */
+  const want = PEEK === null ? CHROMA : (PEEK || null);
+  const ch = want ? (cur.chromas || []).find(c => c.id === want) : null;
+
+  showSplash(art(cur.splash || cur.tile));
+  $('skinname').textContent = ch ? ch.name : cur.name;
+  $('skinmeta').textContent = [
+    cur.id, cur.available ? 'ready' : 'no mod available',
+  ].filter(Boolean).join('   ·   ');
+
+  /* Chromas (and the base of a skin that has them) come with a model render.
+     A skin with no chromas has none, so it shows its load-screen card instead:
+     the closest thing the client ships to the skin as you will see it in game. */
+  const pv = $('preview');
+  const icon = ch ? ch.icon : cur.icon;
+  const src = icon || cur.loadScreen;
+  pv.querySelector('.box').classList.toggle('card', !icon && !!cur.loadScreen);
+  if (src) { fadeInto($('pvimg'), art(src)); pv.classList.add('show'); }
+  else { pv.classList.remove('show'); }
+
+  renderStrip(cur);
+}
+
+function renderStrip(skin) {
+  const box = $('strip');
+  const list = (skin.chromas || []).filter(c => c.available);
+  const sig = skin.id + ':' + CHROMA + ':' + list.map(c => c.id).join(',');
+  if (sig === STRIP_SIG) return;
+  STRIP_SIG = sig;
+
+  /* The base swatch is always drawn, even for a skin with no chromas: it is
+     how you get back to the champion's own look, and a strip that vanishes
+     entirely reads as a missing feature rather than an empty one. */
+  box.innerHTML =
+    `<span class="lbl">${list.length ? 'CHROMA' : 'BASE'}</span>
+     <button class="chroma base" data-c="0" aria-pressed="${!CHROMA}"
+             title="${esc(skin.name)} (base)">
+       <i><b style="background-image:url('${art(skin.icon || skin.tile)}')"></b></i>
+     </button>` +
+    list.map(c => `
+      <button class="chroma" data-c="${c.id}" aria-pressed="${CHROMA === c.id}"
+              title="${esc(c.name)}">
+        <i style="--tint:${esc(c.colors?.[0] || 'transparent')}">
+           <b style="background-image:url('${art(c.icon)}')"></b></i>
+      </button>`).join('');
+
+  for (const b of box.querySelectorAll('[data-c]')) {
+    b.onclick = () => {
+      const id = parseInt(b.dataset.c, 10);
+      CHROMA = id === 0 ? null : id;
+      PEEK = null; STRIP_SIG = ''; queue(); paint();
+    };
+    b.onmouseenter = () => { PEEK = parseInt(b.dataset.c, 10); paint(); };
+    b.onmouseleave = () => { PEEK = null; paint(); };
+  }
+  // The strip itself is rebuilt when the skin changes, so a stale hover
+  // cannot outlive the discs it pointed at.
+  box.onmouseleave = () => { if (PEEK !== null) { PEEK = null; paint(); } };
+}
+
+function renderRail() {
+  const t = $('track');
+  const sig = SKINS.map(k => k.id + (k.available ? '1' : '0') +
+    (k.chromas || []).filter(c => c.available).length).join(',');
+
+  if (sig !== RAIL_SIG) {
+    RAIL_SIG = sig;
+    t.innerHTML = SKINS.map((k, i) => `
+      <button class="tile ${k.available ? '' : 'locked'}" data-skin="${k.id}"
+              style="animation-delay:${Math.min(i * 18, 300)}ms"
+              ${k.available ? '' : 'disabled'} title="${esc(k.name)}">
+        <img loading="lazy" src="${art(k.tile || k.splash)}" alt="">
+      </button>`).join('');
+    for (const el of t.querySelectorAll('.tile:not(.locked)')) {
+      el.onclick = () => select(parseInt(el.dataset.skin, 10));
+    }
+    t.classList.add('fresh');
+    clearTimeout(RAIL_T);
+    RAIL_T = setTimeout(() => t.classList.remove('fresh'), 700);
+  }
+  mark();
+}
+
+function mark() {
+  const t = $('track'), vp = $('viewport');
+  let index = 0, i = 0;
+  for (const el of t.querySelectorAll('.tile')) {
+    const on = parseInt(el.dataset.skin, 10) === SEL;
+    el.setAttribute('aria-current', String(on));
+    if (on) index = i;
+    i++;
+  }
+  const st = getComputedStyle(document.documentElement);
+  const w = parseFloat(st.getPropertyValue('--tile-w'));
+  const gap = parseFloat(st.getPropertyValue('--tile-gap'));
+  const step = w + gap, total = SKINS.length * step - gap;
+  const offset = vp.clientWidth / 2 - w / 2 - index * step;
+  t.style.transform = `translateX(${
+    total <= vp.clientWidth ? (vp.clientWidth - total) / 2
+                            : Math.min(0, Math.max(vp.clientWidth - total, offset))}px)`;
+
+  const usable = SKINS.filter(k => k.available);
+  const at = usable.findIndex(k => k.id === SEL);
+  $('prev').disabled = at <= 0;
+  $('next').disabled = at < 0 || at >= usable.length - 1;
+}
+
+function select(id) { SEL = id; CHROMA = null; PEEK = null; STRIP_SIG = ''; queue(); paint(); mark(); }
+function step(delta) {
+  const usable = SKINS.filter(k => k.available);
+  const at = usable.findIndex(k => k.id === SEL);
+  const next = usable[at + delta];
+  if (next) select(next.id);
+}
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+
+async function queue() {
+  await fetch('/api/select', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ skinId: SEL, chromaId: CHROMA }),
+  });
+}
+
+/* ═══ tabs, build and counters ══════════════════════════════════════ */
+
+let VIEW = 'skin', GUIDE_SIG = '', LANE_SIG = '', COUNT_SIG = '', HAS = false;
+
+/* The rail sits outside the views (it is the skin page's footer, not its
+   content), so both a state poll and a tab switch decide whether it shows.
+   Leaving it to the poll alone left it over the build page for up to one
+   poll, and missing from the skin page for the same. */
+function placeRail() { $('rail').hidden = !(HAS && VIEW === 'skin'); }
+
+/* ═══ the tab set ═══════════════════════════════════════════════════
+   A property of the mode, not a constant. The server derives which tabs a
+   mode earns (modes.py) and sends them with the queue; nothing here holds a
+   list of three. A tab that could only ever render an empty state is not
+   sent at all, because it would teach that tabs are allowed to be dead. */
+
+let TABS = [{ key: 'skin', label: 'Skin' }];
+const VIEW_IDS = ['skin', 'build', 'counters', 'tiers', 'augments', 'items'];
+const viewId = key => 'view-' + key;
+
+function tabsOf(s) {
+  const list = (s.queue || {}).tabs;
+  return (Array.isArray(list) && list.length) ? list : [{ key: 'skin', label: 'Skin' }];
+}
+
+function paintTabs(list) {
+  const sig = list.map(t => t.key + ':' + t.label).join(',');
+  const bar = $('tabset');
+  if (bar.dataset.sig === sig) return false;
+  bar.dataset.sig = sig;
+  TABS = list;
+  bar.innerHTML = list.map((t, i) => `
+    <button class="tab ${t.key === VIEW ? 'on' : ''}" data-view="${esc(t.key)}"
+            title="${esc(t.label)} (${i + 1})">${esc(t.label)}</button>`).join('');
+  for (const b of bar.querySelectorAll('.tab')) b.onclick = () => showView(b.dataset.view);
+  // The view that was open may not exist in this mode any more.
+  if (!list.some(t => t.key === VIEW)) showView(list[0].key);
+  return true;
+}
+
+/* Which page the app opens on, per moment rather than per session.
+
+   Champ select starts on Skin because picking one is what the window is
+   for and the timer is running. When the game starts the skin is already
+   applied and the decision has moved on: in Arena that means augments,
+   which are chosen three times a match. Only ever moved on a real
+   transition, so it never fights a tab the user just pressed. */
+let PHASE_WAS = null;
+function followPhase(s) {
+  const now = s.phase || null;
+  if (now === PHASE_WAS) return;
+  const before = PHASE_WAS;
+  PHASE_WAS = now;
+  const has = key => TABS.some(t => t.key === key);
+  if (now === 'ChampSelect' && before !== 'ChampSelect') showView('skin');
+  else if (now === 'InProgress' && has('augments')) showView('augments');
+}
+
+function moveTabline() {
+  const on = document.querySelector('.tab.on');
+  const line = $('tabline');
+  if (!on || !line) return;
+  // Measured rather than guessed: the labels are different widths, and a
+  // fixed step would drift.
+  line.style.width = (on.offsetWidth - 20) + 'px';
+  line.style.transform = `translateX(${on.offsetLeft + 10}px)`;
+}
+
+function showView(name) {
+  const changed = VIEW !== name;
+  VIEW = name;
+  for (const b of document.querySelectorAll('.tab'))
+    b.classList.toggle('on', b.dataset.view === name);
+  moveTabline();
+  for (const key of VIEW_IDS) {
+    const el = $(viewId(key));
+    if (el) el.hidden = key !== name;
+  }
+  placeRail();
+  // The rail measures nothing while display:none, so the selected tile is
+  // centred again once it is back on screen.
+  if (changed && name === 'skin') requestAnimationFrame(mark);
+  if (changed) {
+    // Replay the incoming view's entrance, which is otherwise a one-shot on
+    // load. Only the incoming one: restarting the outgoing view's animation
+    // as it leaves is a frame of it fading back in over the new page.
+    const el = $(viewId(name));
+    if (el) { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; }
+  }
+  // The splash is the skin page's subject; elsewhere it is only a backdrop.
+  document.querySelector('.splash').style.opacity = name === 'skin' ? '' : '.35';
+  // The patch only governs the build and counter pages; on the skin page it
+  // is furniture with nothing to steer.
+  $('patch').classList.toggle('offpage', name === 'skin');
+}
+
+const pct = v => (v === undefined || v === null) ? '' : v.toFixed(1) + '%';
+const num = v => (v || 0).toLocaleString();
+/* The percent sign travels with its figure and is drawn smaller, so a column
+   of numbers still reads as a column while every one of them stays labelled. */
+const fig = (v, places = 1) => (v === undefined || v === null) ? '<i>&mdash;</i>'
+  : `${v.toFixed(places)}<i>%</i>`;
+
+/* A content signature, so a repaint happens when the data changes and never
+   on a poll that changed nothing. Hashed rather than compared, because the
+   Arena payload is 45 augments and 60 item rows and keeping a copy of it to
+   diff against would cost more than rebuilding.
+
+   Built over the whole object rather than a hand-picked tuple: the old
+   signature listed six fields, none of which mentioned the mode or anything
+   inside the Arena payload, so an Arena response arriving while the state
+   was already `ready` repainted nothing. */
+function hash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+const sigOf = (...parts) => parts.map(p =>
+  typeof p === 'object' ? hash(JSON.stringify(p) || '') : String(p)).join('|');
+
+/* Every data page has the same two empty states: still reading, or read and
+   there was nothing there. Written in one place so five pages cannot drift
+   into five voices for the same two moments. Callers pass text that is
+   already safe to insert. */
+function noteEmpty(box, loading, subject, title, text) {
+  $(box).innerHTML = '<div class="note-empty">' + (loading
+    ? `<span>Reading ${subject}&hellip;</span>`
+    : `${title ? `<b>${title}</b>` : ''}<span>${text}</span>`) + '</div>';
+}
+
+function bandHTML(title, block, note) {
+  const wr = block && block.winRate ? `<span class="wr">${pct(block.winRate)}</span>` : '';
+  const n  = block && block.matches ? `<span class="n">${num(block.matches)} games</span>`
+    : (note ? `<span class="n">${esc(note)}</span>` : '');
+  return `<div class="band"><h2>${title}</h2>${wr}${n}</div>`;
+}
+
+/* The headline for the matchup on screen: win rate, the games behind it, and
+   the gold swing at fifteen. Everything here belongs to the pairing the row
+   already names, which is why it lives on the row rather than in the sheet. */
+function laneNote(s) {
+  const g = s.guide || {};
+  const foe = (s.enemies || []).find(e => e.championId === g.opponentId);
+  if (!foe) return '<span class="note">assumed &middot; champ select hides roles</span>';
+  const m = g.matchup;
+  if (!m || g.state !== 'ready') return '';
+  const wr = (m.overall || {}).winRate;
+  const seen = (s.guide.against || []).find(a => a.championId === g.opponentId) || {};
+  const bits = [esc(foe.name)];
+  if (wr !== undefined && wr !== null)
+    bits.push(`<b>${pct(wr)}</b> over ${num(m.matches)} games`);
+  if (seen.goldAt15 !== undefined && seen.goldAt15 !== null) {
+    const g15 = Math.round(seen.goldAt15);
+    bits.push(`<b>${num(Math.abs(g15))}g ${g15 < 0 ? 'behind' : 'ahead'}</b> at 15`);
+  }
+  // A win rate over a few dozen games says nothing, so the count that makes
+  // it doubtful is the part that is coloured, not the rate itself.
+  if (m.thin) bits.push(`<b class="warn">thin sample</b>`);
+  return `<span class="note">${bits.join(' &middot; ')}</span>`;
+}
+
+function renderLane(s, into, note) {
+  const foes = (s.enemies || []).filter(e => e.championId);
+  const sig = foes.map(e => e.championId).join(',') + '|' + s.opponentId
+    + '|' + into.id + '|' + note;
+  if (sig === into.dataset.sig) return;
+  into.dataset.sig = sig;
+
+  if (!foes.length) {
+    into.innerHTML = '<span class="lbl">lane opponent</span>'
+      + '<span class="note">no enemy has locked in yet</span>';
+    return;
+  }
+  into.innerHTML = '<span class="lbl">lane opponent</span>' + foes.map(e => `
+    <button class="foe" data-champ="${e.championId}"
+            aria-pressed="${e.championId === s.opponentId}"
+            title="Show the matchup against ${esc(e.name)}">
+      <img src="${esc(art(e.icon))}" alt="">
+    </button>`).join('') + note;
+  for (const b of into.querySelectorAll('.foe')) {
+    b.onclick = () => fetch('/api/opponent', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ championId: parseInt(b.dataset.champ, 10) }),
+    });
+  }
+}
+
+/* The keystone is the first row's picked perk, which the payload already
+   marks, so the tree draws itself from `picked` alone. */
+function treeHTML(tree) {
+  const rows = (tree.rows || []).map((row, i) => `<div class="row">` + row.map(p => `
+    <span class="perk ${p.picked ? 'on' : ''} ${i === 0 ? 'key' : ''}"
+          title="${esc(p.name)}"><img src="${esc(art(p.icon))}" alt=""></span>`
+  ).join('') + `</div>`).join('');
+  return `<div class="tree">
+    <div class="head"><img src="${esc(art(tree.icon))}" alt=""><span>${esc(tree.name)}</span></div>
+    ${rows}</div>`;
+}
+
+// Which of the two builds is on screen. Both arrive together, so this is a
+// pure display choice with nothing to fetch.
+let BUILD_MODE = 'matchup';
+
+function renderGuide(s) {
+  const g = s.guide || {}, box = $('guide');
+  const q = s.queue || {};
+  // Mode plus a hash of the payload itself. Anything that changes what the
+  // page should say now changes the signature.
+  const sig = sigOf(q.kind, BUILD_MODE, g);
+  if (sig === GUIDE_SIG) return;
+  GUIDE_SIG = sig;
+  const stamp = [q.label && q.kind !== 'rift' ? q.label : '',
+                 q.borrowed ? 'borrowed' : ''];
+  $('stamp').textContent = stamp.filter(Boolean).join(' · ');
+  $('stamp').title = q.borrowed
+    ? `${q.label} has no data of its own; these are ${
+        q.kind === 'mayhem' ? 'ARAM' : "Summoner's Rift"} numbers.` : '';
+  paintPatch(g.patch);
+
+  if (!s.championId) {
+    noteEmpty('guide', false, '', 'No champion yet',
+              'Hover one and the build appears.');
+    return;
+  }
+  if (g.state === 'unsupported') {
+    noteEmpty('guide', false, '', esc(g.label || 'This mode'),
+              'Skins work here. Nobody publishes build data for it.');
+    return;
+  }
+  if (g.state === 'loading' || !g.state) {
+    noteEmpty('guide', true, 'the build');
+    return;
+  }
+  if (g.state !== 'ready') {
+    noteEmpty('guide', false, '', 'No build data',
+              esc(g.error || 'u.gg had nothing for this.'));
+    return;
+  }
+
+  // Arena spends its tabs differently: augments, items and the roster each
+  // have their own page, so there is no combined build sheet to draw.
+  if (g.mode === 'arena') return;
+
+  // The matchup build unless there is no opponent, or it was asked for.
+  const opponent = (s.enemies || []).find(e => e.championId === g.opponentId);
+  // A boolean, not the matchup object: it is written into aria-pressed.
+  const useMatchup = BUILD_MODE === 'matchup' && !!g.matchup;
+  const b = useMatchup ? g.matchup : (g.general || {});
+
+  // The counts stay in the labels: choosing between these two is a judgement
+  // about sample size, and the label is where that judgement is made.
+  const toggle = !g.matchup ? '' : `
+    <div class="modes">
+      <button class="mode" aria-pressed="${!useMatchup}" data-mode="general">General
+        <em>${num((g.general || {}).matches)}</em></button>
+      <button class="mode" aria-pressed="${useMatchup}" data-mode="matchup">
+        vs ${esc(opponent ? opponent.name : 'opponent')}
+        <em>${num(g.matchup.matches)}</em></button>
+    </div>`;
+
+  const runes = b.runes || {}, sk = b.skills || {}, sp = b.spells || {};
+  const shards = (b.shards || []).map(x =>
+    `<span class="shard" title="${esc(x.name)}"><img src="${esc(art(x.icon))}" alt=""></span>`).join('');
+
+  const skillRows = (sk.rows || []).map(r => {
+    const cells = Array.from({length: 18}, (_, i) => {
+      const on = (r.levels || []).includes(i + 1);
+      return `<span class="lv ${on ? 'on' : ''}">${on ? i + 1 : ''}</span>`;
+    }).join('');
+    return `<div class="skill"><img src="${esc(art(r.icon))}" alt="" title="${esc(r.name)}">
+      <span class="key">${r.key}</span><span class="levels">${cells}</span></div>`;
+  }).join('');
+
+  const itemRow = (block, cls) => (block ? block.items : []).map((i, n) => `
+    ${n ? '<span class="arrowto">&rsaquo;</span>' : ''}
+    <span class="it ${cls}" title="${esc(i.name)}"><img src="${esc(art(i.icon))}" alt=""></span>`
+  ).join('');
+
+  // A sample this thin is the reason to distrust the rate above it, so the
+  // count is what carries the warning colour.
+  const THIN = 1000;
+
+  /* Rift: icons, because there is no room for names and a six-item core is
+     common knowledge. The figures gain the percent sign and the game count
+     they were missing, so a 64.86% over 37 games cannot read as the best
+     option on the row. */
+  const optBlock = (cap, rows) => !rows || !rows.length ? '' : `
+    <div class="opt"><span class="cap">${cap}</span><div class="picks">` +
+    rows.slice(0, 2).map(o => `<span class="pick ${o.matches < THIN ? 'thin' : ''}"
+        title="${esc(o.name)} &mdash; ${num(o.matches)} games">
+      <span class="it small"><img src="${esc(art(o.icon))}" alt=""></span>
+      <span class="wr">${fig(o.winRate, 2)}</span>
+      <span class="n">${num(o.matches)}</span></span>`).join('') + `</div></div>`;
+
+  /* ARAM: the same options with their names, paid for by the lane row and
+     the matchup switch this mode does not draw. An unnamed item is the same
+     failure as an unnamed augment, and ARAM item choices are the less
+     rehearsed of the two. */
+  const namedOpts = (cap, rows) => !rows || !rows.length ? '' : `
+    <div class="aoptrow"><span class="cap">${cap}</span>` +
+    rows.slice(0, 2).map(o => `<span class="aopt ${o.matches < THIN ? 'thin' : ''}">
+      <span class="it small" title="${esc(o.name)}"><img src="${esc(art(o.icon))}" alt=""></span>
+      <span class="nm">${esc(o.name)}</span>
+      <span class="wr">${fig(o.winRate, 2)}</span>
+      <span class="n">${num(o.matches)}<i>games</i></span></span>`).join('') + `</div>`;
+
+  const wide = q.roles === false;
+
+  freshen(box);
+  box.innerHTML = toggle + `
+    <div class="split">
+      <section class="block">
+        ${bandHTML('Runes', runes)}
+        <div class="trees">
+          ${runes.primary ? treeHTML(runes.primary) : ''}
+          ${runes.secondary ? treeHTML(runes.secondary) : ''}
+        </div>
+        <div class="shards">${shards}</div>
+      </section>
+      <section class="block">
+        ${bandHTML('Skills', sk)}
+        <div class="duo">
+          <div class="spells">${(sp.spells || []).map(x =>
+            `<img src="${esc(art(x.icon))}" alt="" title="${esc(x.name)}">`).join('')}</div>
+          <div class="prio">${(sk.priority || []).join(' &rsaquo; ')}</div>
+        </div>
+        <div class="skills">${skillRows}</div>
+      </section>
+    </div>
+    <section class="block">
+      ${bandHTML('Items', b.core)}
+      ${wide ? `
+      <div class="items">${itemRow(b.start, 'small')}
+        <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
+      <div class="aopts">
+        ${namedOpts('Fourth', b.fourth)}${namedOpts('Fifth', b.fifth)}
+        ${namedOpts('Sixth', b.sixth)}
+      </div>` : `
+      <div class="igrid">
+        <div class="items">${itemRow(b.start, 'small')}
+          <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
+        <div class="opts">
+          ${optBlock('4th', b.fourth)}${optBlock('5th', b.fifth)}${optBlock('6th', b.sixth)}
+        </div>
+      </div>`}
+    </section>
+    ${g.source ? `<div class="gsrc">${srcline(g.source)}</div>` : ''}`;
+
+  for (const btn of box.querySelectorAll('.mode')) {
+    btn.onclick = () => { BUILD_MODE = btn.dataset.mode; GUIDE_SIG = ''; render(LAST); };
+  }
+}
+
+/* Re-arms the stagger for content that has genuinely changed. Without the
+   reflow the class is already present and the animation never restarts; and
+   because every caller bails on an unchanged signature, a poll that changes
+   nothing never reaches here.
+
+   The class is then taken off again, which is the whole point: a CSS
+   animation restarts every time its element comes back from display:none,
+   and all five of these boxes live inside a view that is hidden when another
+   tab is open. Leaving `fresh` on meant every return to the build, tier
+   list, augments, items or counters page replayed the entrance -- the same
+   thing the rail was doing, and it reads the same way: as though the page
+   were being fetched again. The longest of these animations is 190ms after a
+   95ms delay, so 400ms clears them all. */
+const FRESH_T = new WeakMap();
+function freshen(box) {
+  box.classList.remove('fresh');
+  void box.offsetWidth;
+  box.classList.add('fresh');
+  clearTimeout(FRESH_T.get(box));
+  FRESH_T.set(box, setTimeout(() => box.classList.remove('fresh'), 400));
+}
+
+/* Arena is a different game: augments are chosen three times a match and
+   change how a champion works, so they lead. Placement is the measure, not
+   wins -- one team of four takes first, so a 50% win rate would be absurd. */
+/* ═══ Arena ════════════════════════════════════════════════════════
+   Three pages, because Arena asks three questions and none of them is the
+   footer of another. In champ select: is this champion worth picking. In
+   game: which of the three augments on offer to take. Beside both: what to
+   buy. */
+
+let AUG_FILTER = 'all', TIER_SIG = '', AUG_SIG = '', ITEM_SIG = '';
+
+const RARITIES = ['prismatic', 'gold', 'silver'];
+
+/* op.gg's numeric tier, shown as op.gg publishes it. Nothing in the payload
+   maps 1 to 5 onto letters, so inventing an S/A/B scale would be dressing a
+   rank up as a grade it never claimed to be. The rank column carries the
+   ordering that the tier only bands. */
+const tierClass = t => t == 1 ? 'hi' : t == 2 ? 's' : t == 3 ? 'mid' : 'lo';
+
+/* The augment letters ARE derived here, from placement, so they get the
+   letter treatment. Gold is spent only on the top band, so it stays scarce. */
+const bandClass = t => t === 'S+' ? 'hi' : t === 'S' ? 's'
+  : t === 'A' ? 'mid' : 'lo';
+
+function renderArenaViews(s) {
+  const g = s.guide || {};
+  if ((s.queue || {}).source !== 'opgg') return;
+  renderTiers(s, g);
+  renderAugments(s, g);
+  renderArenaItems(s, g);
+}
+
+/* The roster, as op.gg ranks it. Sorted by rank, with the champion being
+   hovered found at its own place and scrolled to, so "is this worth picking"
+   is answered by position rather than by a number beside a list. */
+function renderTiers(s, g) {
+  const t = g.tierList, rows = (t || {}).champions || [];
+  const sig = sigOf(s.championId, g.state, t);
+  if (sig === TIER_SIG) return;
+  TIER_SIG = sig;
+
+  $('thead').innerHTML = rows.length ? `
+    <span class="tn rank">#</span><span class="tic"></span>
+    <span class="tnm">Champion</span>
+    <span class="tier">Tier</span>
+    <span class="tn">1st</span><span class="tn">Top 3</span>
+    <span class="tn">Place</span><span class="tn">Picked</span>` : '';
+
+  if (!rows.length) {
+    noteEmpty('trows', g.state === 'loading', 'the tier list',
+              'No tier list', 'op.gg had nothing for this patch.');
+    $('tnote').textContent = '';
+    return;
+  }
+
+  const mine = s.championId;
+  freshen($('trows'));
+  $('trows').innerHTML = rows.map(c => `
+    <div class="trow ${c.championId === mine ? 'me' : ''}"
+         ${c.championId === mine ? 'data-me="1"' : ''}
+         title="${esc(c.name)} &mdash; ${num(c.matches)} games, banned ${c.banRate}%">
+      <span class="tn rank">${c.rank || ''}</span>
+      <span class="tic round"><img src="${esc(art(c.icon))}" alt=""></span>
+      <span class="tnm">${esc(c.name)}${c.championId === mine
+        ? '<em>hovering</em>' : ''}</span>
+      <span class="tier ${tierClass(c.tier)}">${c.tier == null ? '' : c.tier}</span>
+      <span class="tn lead">${fig(c.firstRate)}</span>
+      <span class="tn dim">${fig(c.topRate)}</span>
+      <span class="tn dim">${c.avgFinish == null ? '&mdash;' : c.avgFinish.toFixed(2)}</span>
+      <span class="tn dim">${fig(c.pickRate)}</span>
+    </div>`).join('');
+
+  // What the columns are measured against, said once, under them.
+  $('tnote').innerHTML = 'Six teams of three, so an average place of <b>3.50</b>'
+    + ' is the middle and a top 3 is the top half.'
+    + ` <b>${rows.length}</b> champions played on patch ${esc(t.patch || '')}.`
+    + (t.source ? ' &middot; ' + srcline(t.source) : '');
+
+  const row = $('trows').querySelector('[data-me]');
+  if (row) row.scrollIntoView({ block: 'center' });
+}
+
+/* All 45, in one ranked table. The rarity rides a hairline on the icon
+   rather than a section heading, which is what lets them share a ranking;
+   the chips narrow it to the pool you are actually choosing from. */
+function renderAugments(s, g) {
+  const all = g.augments || [];
+  const sig = sigOf(g.state, AUG_FILTER, all);
+  if (sig === AUG_SIG) return;
+  AUG_SIG = sig;
+
+  const counts = { all: all.length };
+  for (const r of RARITIES) counts[r] = all.filter(a => a.rarity === r).length;
+
+  $('achips').innerHTML = ['all'].concat(RARITIES).map(k => `
+    <button class="chip" data-rarity="${k}" aria-pressed="${AUG_FILTER === k}">
+      ${k === 'all' ? 'All' : k[0].toUpperCase() + k.slice(1)}
+      <b>${counts[k] || 0}</b></button>`).join('')
+    + '<span class="sort">by tier</span>';
+  for (const b of $('achips').querySelectorAll('.chip'))
+    b.onclick = () => { AUG_FILTER = b.dataset.rarity; AUG_SIG = ''; render(LAST); };
+
+  $('ahead').innerHTML = all.length ? `
+    <span class="tic"></span><span class="tnm">Augment</span>
+    <span class="tier">Tier</span>
+    <span class="tn">1st</span><span class="tn">Picked</span>` : '';
+
+  if (!all.length) {
+    noteEmpty('arows', g.state === 'loading', 'the augments',
+              'No augment data', 'op.gg had nothing for this champion.');
+    $('anote').textContent = '';
+    return;
+  }
+
+  const rows = AUG_FILTER === 'all' ? all : all.filter(a => a.rarity === AUG_FILTER);
+  freshen($('arows'));
+  $('arows').innerHTML = rows.map(a => `
+    <div class="trow" title="${esc(a.name)} &mdash; ${esc(a.rarity)}, ${
+      num(a.matches)} games, finishes ${a.avgFinish} against a ${
+      esc(a.rarity)} average of ${a.baseline}">
+      <span class="tic r-${esc(a.rarity)}"><img src="${esc(art(a.icon))}" alt=""></span>
+      <span class="tnm">${esc(a.name)}</span>
+      ${a.tier ? `<span class="tier ${bandClass(a.tier)}">${a.tier}</span>`
+        : `<span class="tier none" title="too few games to rate">${num(a.matches)}</span>`}
+      <span class="tn">${fig(a.firstRate)}</span>
+      <span class="tn dim">${fig(a.pickRate)}</span>
+    </div>`).join('');
+
+  // The letter is a claim about a pool, and the page has to say which pool.
+  $('anote').innerHTML = 'Tier is average finish against the same rarity for'
+    + ' this champion, so it means <b>best among ' + (AUG_FILTER === 'all'
+      ? 'its own rarity' : esc(AUG_FILTER) + 's') + '</b>, not best in the game.'
+    + ' Under <b>50</b> games the count is shown instead of a letter.'
+    + (g.source ? ' &middot; ' + srcline(g.source) : '');
+}
+
+function renderArenaItems(s, g) {
+  const items = g.arenaItems || {}, sk = g.arenaSkills || {};
+  const sig = sigOf(g.state, items, sk);
+  if (sig === ITEM_SIG) return;
+  ITEM_SIG = sig;
+  const box = $('aitems');
+
+  if (!Object.keys(items).length) {
+    noteEmpty('aitems', g.state === 'loading', 'the items',
+              'No item data', 'op.gg had nothing for this champion.');
+    return;
+  }
+
+  /* Named rows, not a strip of anonymous icons. op.gg publishes builds as
+     sets rather than as one recommendation, so a row that is a combination
+     spells the whole combination out and carries the first item's icon. */
+  const list = (rows, limit) => (rows || []).slice(0, limit).map(r => {
+    const name = (r.items || []).map(i => i.name).join(' › ');
+    return `<div class="aoptrow"><span class="aopt"
+        title="${esc(name)} &mdash; ${num(r.matches)} games">
+      <span class="it small"><img src="${esc(art(r.icon))}" alt=""></span>
+      <span class="nm">${esc(name)}</span>
+      <span class="wr">${fig(r.firstRate)}</span>
+      <span class="n">${fig(r.pickRate)}<i>picked</i></span>
+    </span></div>`;
+  }).join('');
+
+  const section = (title, note, rows, limit) => !rows || !rows.length ? '' : `
+    <section class="block">${bandHTML(title, null, note)}
+      <div class="aopts">${list(rows, limit)}</div></section>`;
+
+  freshen(box);
+  box.innerHTML =
+    // Round 2 is the one round op.gg's data and the game's structure agree
+    // on, so it is the one round this page names.
+    section('Prismatic', 'free anvil, round 2 · 1st place · picked',
+            items.prismatic, 6)
+    + section('Core build', '1st place · picked', items.core, 4)
+    + section('Boots', '1st place · picked', items.boots, 3)
+    + section('Late items', '1st place · picked', items.late, 5)
+    + ((sk.priority || []).length ? `<section class="block">
+        <div class="band"><h2>Skill max order</h2>
+          <span class="wr">${fig(sk.firstRate)}</span>
+          <span class="n">${num(sk.matches)} games · 1st place</span></div>
+        <div class="prio">${(sk.priority || []).join(' &rsaquo; ')}</div>
+      </section>` : '')
+    + (g.source ? `<div class="gsrc">${srcline(g.source)}</div>` : '');
+}
+
+/* ═══ import: putting the build on screen into the client ═══════════
+   The server resolves the build from the same state this page renders, so
+   the only thing sent is which of the two it is showing. Everything else --
+   which rune page to overwrite, whether spells are in scope -- is decided
+   there, and comes back as one result to display. */
+
+let IMPORT_BUSY = false, IMPORT_SEEN = 0, CHOICE = null, SAY_TIMER = 0;
+
+function paintToggles() {
+  $('ispells').setAttribute('aria-checked',
+    String(SETTINGS.import_spells !== false));
+  $('iauto').setAttribute('aria-checked', String(!!SETTINGS.auto_import));
+}
+
+async function flipSetting(button, name) {
+  const next = button.getAttribute('aria-checked') !== 'true';
+  // Painted before the round trip: this is a switch, and a switch that waits
+  // on a fetch to move reads as a broken one.
+  button.setAttribute('aria-checked', String(next));
+  SETTINGS[name] = next;
+  try {
+    const r = await (await fetch('/api/settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, value: next }),
+    })).json();
+    if (r && r.settings) { SETTINGS = r.settings; paintToggles(); }
+  } catch (e) { loadSettings(); }
+}
+
+function noteImport(text, bad) {
+  const el = $('isay');
+  clearTimeout(SAY_TIMER);
+  el.textContent = text;
+  el.classList.toggle('bad', !!bad);
+  el.classList.toggle('in', !!text);
+  // A failure is read; a success is only confirmed, so it goes sooner.
+  if (text) SAY_TIMER = setTimeout(() => el.classList.remove('in'),
+                                   bad ? 9000 : 4500);
+}
+
+function renderImport(s) {
+  const g = s.guide || {}, bar = $('ibar');
+  const arena = g.mode === 'arena';
+  const ready = g.state === 'ready' && !!s.championId;
+  bar.hidden = !ready;
+  if (!ready) { closeChooser(); return; }
+
+  // Arena publishes no runes and no spells, so the button is honest about
+  // writing only the shop's item set there.
+  $('igo').textContent = IMPORT_BUSY ? 'importing…'
+    : arena ? 'Import items' : 'Import build';
+  $('igo').disabled = IMPORT_BUSY;
+  $('ispells').hidden = arena;
+
+  // Auto-import has no caller to answer, so its outcome arrives here. Only a
+  // genuinely new result opens anything: the same one arriving on every poll
+  // must not reopen a chooser that was just cancelled, and a result the
+  // server has dropped -- it does that when the champion changes -- takes its
+  // question away with it.
+  const done = s.import || {};
+  if (done.at && done.at !== IMPORT_SEEN) {
+    IMPORT_SEEN = done.at;
+    showImport(done);
+  } else if (!done.needsSlot) {
+    closeChooser();
+  }
+}
+
+function showImport(r) {
+  if (r.needsSlot) {
+    openChooser(r.pages || []);
+    noteImport('all three rune pages are in use', true);
+    return;
+  }
+  closeChooser();
+  if (r.ok) {
+    noteImport((r.dryRun ? 'would write ' : 'imported ')
+               + ((r.done || []).join(' · ') || 'nothing'), false);
+  } else {
+    noteImport(r.error || 'import failed', true);
+  }
+}
+
+async function runImport(replacePageId) {
+  if (IMPORT_BUSY) return;
+  IMPORT_BUSY = true;
+  $('igo').disabled = true;
+  $('igo').textContent = 'importing…';
+  noteImport('', false);
+  let r;
+  try {
+    r = await (await fetch('/api/import', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(replacePageId
+        ? { what: 'all', mode: BUILD_MODE, confirmReplacePageId: replacePageId }
+        : { what: 'all', mode: BUILD_MODE }),
+    })).json();
+  } catch (e) { r = { ok: false, error: 'the app did not answer' }; }
+  IMPORT_BUSY = false;
+  IMPORT_SEEN = r.at || IMPORT_SEEN;
+  showImport(r);
+  render(LAST);
+}
+
+/* The only destructive step in the app: making room means deleting a page
+   that is not ours. It is asked in place, one page named at a time, and the
+   confirm carries that page's name rather than the word "OK". */
+function openChooser(pages) {
+  const box = $('ichoose');
+  if (!pages.length) { closeChooser(); return; }
+  if (!pages.some(p => p.id === CHOICE)) {
+    // The one in use is what the other importers overwrite, and it is the
+    // one the player is least likely to be keeping for a different champion.
+    CHOICE = (pages.find(p => p.current) || pages[0]).id;
+  }
+  const sig = pages.map(p => p.id).join(',');
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML =
+      '<p>All three rune pages are in use. Choose the one Tibbers takes over.</p>'
+      + '<div class="picks-pages">' + pages.map(p => `
+        <button class="pgpick" data-id="${p.id}" data-name="${esc(p.name)}"
+                aria-pressed="${p.id === CHOICE}">
+          <b>${esc(p.name)}</b>
+          <em>${esc(p.keystone || 'no keystone')}${p.current ? ' · in use now' : ''}</em>
+        </button>`).join('') + '</div>'
+      + '<div class="acts"><button class="igo named" id="iconfirm"></button>'
+      + '<button class="tog" id="icancel">Cancel</button></div>';
+    for (const b of box.querySelectorAll('.pgpick')) {
+      b.onclick = () => { CHOICE = parseInt(b.dataset.id, 10); markChoice(box); };
+    }
+    $('iconfirm').onclick = () => { closeChooser(); runImport(CHOICE); };
+    $('icancel').onclick = () => { closeChooser(); noteImport('', false); };
+  }
+  markChoice(box);
+  box.hidden = false;
+  // Reachable without a mouse from the moment it appears.
+  if (!box.contains(document.activeElement))
+    (box.querySelector('.pgpick[aria-pressed="true"]') || box).focus();
+}
+
+function markChoice(box) {
+  let name = '';
+  for (const b of box.querySelectorAll('.pgpick')) {
+    const mine = parseInt(b.dataset.id, 10) === CHOICE;
+    b.setAttribute('aria-pressed', String(mine));
+    if (mine) name = b.dataset.name;
+  }
+  const confirm = $('iconfirm');
+  if (confirm) confirm.textContent = 'Replace ' + name;
+}
+
+function closeChooser() {
+  const box = $('ichoose');
+  if (!box.hidden && box.contains(document.activeElement)) $('igo').focus();
+  box.hidden = true;
+}
+
+$('igo').onclick = () => runImport(null);
+$('ispells').onclick = () => flipSetting($('ispells'), 'import_spells');
+$('iauto').onclick = () => flipSetting($('iauto'), 'auto_import');
+
+/* ═══ counters ═════════════════════════════════════════════════════
+   One question at a time. "What beats them" and "what beats you" are the
+   same table with the subject swapped, so they are one table with a switch
+   above it rather than two designs stacked down a page nobody scrolls.
+
+   Your own champion is inserted at its true rank rather than exiled to a
+   widget in the margin: "where do I actually sit" is a question about
+   position, and only position answers it. */
+
+let COUNTER_SIDE = 'them';
+
+function renderCounters(s) {
+  const g = s.guide || {}, tables = g.counterTables || {};
+  // Only one direction exists before an opponent is nominated.
+  const side = tables[COUNTER_SIDE] ? COUNTER_SIDE
+    : (tables.them ? 'them' : 'you');
+  const sig = sigOf(g.state, side, tables);
+  if (sig === COUNT_SIG) return;
+  COUNT_SIG = sig;
+  COUNTER_SIDE = side;
+
+  const t = tables[side];
+  const me = (s.championName || 'you');
+
+  $('csegs').innerHTML = (tables.them || tables.you) ? `
+    ${tables.them ? `<button class="mode" aria-pressed="${side === 'them'}"
+        data-side="them">Beats ${esc(tables.them.name)}</button>` : ''}
+    ${tables.you ? `<button class="mode" aria-pressed="${side === 'you'}"
+        data-side="you">Beats ${esc(tables.you.name || me)}</button>` : ''}` : '';
+  for (const b of $('csegs').querySelectorAll('.mode'))
+    b.onclick = () => { COUNTER_SIDE = b.dataset.side; COUNT_SIG = ''; render(LAST); };
+
+  if (!t || !(t.rows || []).length) {
+    $('chead').innerHTML = '';
+    noteEmpty('crows', g.state === 'loading', 'counters',
+              'No counter data', 'Lock a champion to see what beats it.');
+    $('cnote').textContent = '';
+    return;
+  }
+
+  const role = s.role ? s.role.replace('utility', 'support').replace('middle', 'mid')
+                          .replace('bottom', 'bot') : 'your lane';
+  $('chead').innerHTML = `
+    <span class="cic"></span>
+    <span class="tnm">${esc(role[0].toUpperCase() + role.slice(1))} picks,
+      best against ${esc(t.name)}</span>
+    <span class="cfig">Win</span>
+    <span class="cshare">Pick share</span>
+    <span class="cgold">Gold @15</span>`;
+
+  // The widest share on screen sets the bar's full length, so the bars
+  // compare with each other rather than with an invisible 100%.
+  // Your own champion sits at its true rank among the others, not pinned
+  // to the end: "where do I actually sit" is answered by position.
+  const rows = t.rows.slice();
+  if (t.mine && !rows.some(r => r.championId === t.mine.championId)) {
+    const at = Math.min(Math.max((t.mine.rank || rows.length + 1) - 1, 0), rows.length);
+    rows.splice(at, 0, t.mine);
+  }
+  const top = Math.max(...rows.map(r => r.pickShare || 0), 0.01);
+
+  const line = (c, mine) => `
+    <div class="trow crow ${mine ? 'me' : ''}" ${mine ? 'data-me="1"' : ''}
+         title="${esc(c.name)} &mdash; ${num(c.matches)} games">
+      <span class="cic"><img src="${esc(art(c.icon))}" alt=""></span>
+      <span class="tnm">${esc(c.name)}${mine
+        ? `<em>your pick &middot; ranked ${c.rank} of ${c.of}</em>` : ''}</span>
+      <span class="cfig"><b>${fig(c.winRate, 2)}</b></span>
+      <span class="cshare"><b>${fig(c.pickShare, 2)}</b>
+        <span class="prop"><i style="width:${
+          Math.round((c.pickShare || 0) / top * 100)}%"></i></span></span>
+      <span class="cgold">${c.goldAt15 === undefined || c.goldAt15 === null ? '&mdash;'
+        : (c.goldAt15 >= 0 ? '+' : '') + num(Math.round(c.goldAt15)) + '<i>g</i>'}</span>
+    </div>`;
+
+  freshen($('crows'));
+  $('crows').innerHTML = rows.map(c => line(c, c === t.mine)).join('');
+
+  /* The note is computed, not written: the reason the top of a counter list
+     is usually unactionable is that the champions on it are barely played in
+     this lane, and that is a fact about the numbers beside it. */
+  if (t.mine) {
+    const above = t.rows.filter(r => r.winRate > t.mine.winRate);
+    const rare = above.filter(r => (r.pickShare || 0) < 2).length;
+    $('cnote').innerHTML = (rare
+      ? `<b>${rare}</b> of the ${above.length} above ${esc(t.mine.name)} are picked in`
+        + ` under 2% of ${esc(t.name)}'s games.`
+        + ` ${esc(t.mine.name)} sits ${t.mine.rank} of ${t.mine.of}.`
+      : `${esc(t.mine.name)} ranks <b>${t.mine.rank}</b> of ${t.mine.of}`
+        + ` against ${esc(t.name)}.`)
+      + (t.source ? ' &middot; ' + srcline(t.source) : '');
+  } else {
+    $('cnote').innerHTML = `Win rate is the listed champion's, over`
+      + ` <b>${t.total}</b> opponents played in this lane.`
+      + (t.source ? ' &middot; ' + srcline(t.source) : '');
+  }
+}
+
+function dismiss() {
+  fetch('/api/window', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ close: 'picker' }),
+  });
+}
+document.getElementById('dismiss').addEventListener('click', dismiss);
+
+/* Tab moves between the views this mode has, which is what it is for here. The
+   import row is the one place that also needs ordinary tabbing -- its button,
+   two switches and the page chooser all have to be reachable without a mouse
+   -- so Tab steps into the row, walks it natively, and hands itself back to
+   the view cycle on the way out. Nothing ever traps focus. */
+function importControls() {
+  const box = $('ichoose').hidden ? null : $('ichoose');
+  const bar = $('ibar').hidden ? null : $('ibar');
+  // A disabled button cannot take focus, so listing one leaves Tab pointing
+  // at nothing: the import button is disabled for as long as an import is in
+  // flight, and tabbing into the row during one dropped focus on the floor.
+  const live = 'button:not([hidden]):not(:disabled)';
+  return [...(box ? box.querySelectorAll(live) : []),
+          ...(bar ? bar.querySelectorAll(live) : [])];
+}
+
+/* What Tab walks through before it goes back to cycling views. Every page
+   that holds a control or a scrolling table puts them here, so a filter chip
+   and a table are reachable without a mouse; the tables are focusable so the
+   arrow and page keys scroll them once Tab has arrived. */
+const inView = sel => {
+  const el = $(viewId(VIEW));
+  return el && !el.hidden ? [...el.querySelectorAll(sel)] : [];
+};
+function viewControls() {
+  if (VIEW === 'build') return importControls();
+  if (VIEW === 'augments') return [...inView('.chip'), ...inView('.tbody')];
+  if (VIEW === 'counters') return [...inView('.mode'), ...inView('.tbody')];
+  if (VIEW === 'tiers') return inView('.tbody');
+  if (VIEW === 'items') return inView('.guide');
+  return [];
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    // A chooser open over the build is what Escape is about at that moment;
+    // taking the window away instead would lose the question.
+    if (!$('ichoose').hidden) { closeChooser(); noteImport('', false); return; }
+    dismiss();
+    return;
+  }
+  if (e.key === 'Tab') {
+    const controls = viewControls();
+    const at = controls.indexOf(document.activeElement);
+    if (at >= 0) {
+      // Inside the row: let the browser move, except off its far end, where
+      // Tab goes back to being the view switch.
+      if (at !== (e.shiftKey ? 0 : controls.length - 1)) return;
+      document.activeElement.blur();
+    } else if (controls.length) {
+      e.preventDefault();
+      controls[e.shiftKey ? controls.length - 1 : 0].focus();
+      return;
+    }
+    e.preventDefault();
+    const keys = TABS.map(t => t.key);
+    const here = keys.indexOf(VIEW);
+    showView(keys[(here + (e.shiftKey ? keys.length - 1 : 1)) % keys.length]);
+    return;
+  }
+  // As many number keys as this mode has tabs, never a fixed three.
+  if (e.key >= '1' && e.key <= String(Math.min(TABS.length, 9))) {
+    const pick = TABS[+e.key - 1];
+    if (pick) showView(pick.key);
+    return;
+  }
+  if (e.key === 'i' && VIEW === 'build' && !$('ibar').hidden
+      && (document.activeElement || {}).tagName !== 'SELECT') {
+    e.preventDefault();
+    // With the chooser open the answer is a page, not another attempt.
+    if ($('ichoose').hidden) runImport(null);
+    return;
+  }
+  if (VIEW !== 'skin') return;
+  if (!SKINS.length) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1); }
+});
+addEventListener('resize', () => { if (SKINS.length) mark(); });
+
+addEventListener('resize', moveTabline);
+
+
+
+poll();
+</script>
+</body>
+</html>

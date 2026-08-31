@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tibbers mock client</title>
+<!--
+  A stand-in for the League client, in its own window.
+
+  It used to be an overlay injected into the picker itself, which meant the
+  developer tool sat on top of the interface being judged: it covered the
+  bottom-right corner of every screenshot, and hiding it to look at the page
+  meant losing the controls that got the page into that state.
+
+  Served only by an instance running with --mock. Deliberately styled as a
+  developer tool and NOT in the product's own language, so a screenshot of
+  this can never be mistaken for a screenshot of Tibbers.
+-->
+<style>
+  :root {
+    --bg:    #0d0f14;
+    --panel: #161a22;
+    --panel2:#1d222c;
+    --line:  #2a3140;
+    --line2: #3a4356;
+    --ink:   #cfd6e0;
+    --dim:   #7f8ba0;
+    --label: #5d6779;
+    --gold:  #e4b95b;
+    --green: #2a8a57;
+    --red:   #e0685c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column;
+  }
+
+  header {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+    gap: 10px; padding: 10px 14px; background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  header b { color: var(--gold); font-weight: 700; letter-spacing: .08em; }
+  header .sub { color: var(--label); }
+
+  /* What the app currently believes, so the effect of a button is visible
+     without tabbing to the picker to find out. */
+  .live {
+    display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 8px 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .live div { display: flex; gap: 6px; }
+  .live dt { color: var(--label); }
+  .live dd { margin: 0; color: var(--ink); }
+  .live dd.off { color: var(--label); }
+  .live dd.bad { color: var(--red); }
+
+  main { flex: 1 1 auto; padding: 12px 14px 20px;
+         display: flex; flex-direction: column; gap: 13px; }
+  .group { display: flex; flex-direction: column; gap: 5px; }
+  .group > span {
+    color: var(--label); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+  button, select, input[type=range] {
+    font: inherit; padding: 4px 8px; cursor: pointer; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  }
+  button:hover { background: var(--panel2); border-color: var(--line2); }
+  button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 1px;
+  }
+  button.go { background: var(--green); border-color: var(--green); color: #eafff2; }
+  button.go:hover { background: #34a468; }
+  select { flex: 1 1 190px; min-width: 0; }
+  input[type=range] { flex: 1 1 160px; padding: 3px; }
+
+  /* The button matching what the app is actually in right now. Colour is not
+     the only signal: it is also the one carrying aria-pressed. */
+  button[aria-pressed="true"] {
+    background: var(--gold); border-color: var(--gold); color: var(--bg);
+  }
+  button[aria-pressed="true"]:hover { background: #f0ca70; }
+
+  footer {
+    position: sticky; bottom: 0; padding: 8px 14px; min-height: 31px;
+    background: var(--bg); border-top: 1px solid var(--line); color: var(--dim);
+  }
+  footer.err { color: var(--red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <b>MOCK CLIENT</b>
+    <span class="sub" id="where"></span>
+  </header>
+
+  <dl class="live" id="live">
+    <div><dt>phase</dt><dd id="v-phase">-</dd></div>
+    <div><dt>queue</dt><dd id="v-queue">-</dd></div>
+    <div><dt>champion</dt><dd id="v-champ">-</dd></div>
+    <div><dt>role</dt><dd id="v-role">-</dd></div>
+    <div><dt>enemies</dt><dd id="v-enemies">-</dd></div>
+    <div><dt>build</dt><dd id="v-guide">-</dd></div>
+    <div><dt>patcher</dt><dd id="v-patcher">-</dd></div>
+  </dl>
+
+  <main>
+    <div class="group">
+      <span>Client</span>
+      <div class="row">
+        <button data-a="launch_client">Launch</button>
+        <button data-a="close_client">Close</button>
+        <button data-a="script" class="go">Run full sequence</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Queue</span>
+      <div class="row" id="queues"></div>
+    </div>
+
+    <div class="group">
+      <span>Phase</span>
+      <div class="row" id="phases"></div>
+    </div>
+
+    <div class="group">
+      <span>Champion</span>
+      <div class="row">
+        <select id="champ" aria-label="Champion"></select>
+      </div>
+      <div class="row">
+        <button id="hover">Hover</button>
+        <button data-a="lock">Lock in</button>
+        <button id="as-enemy">Lock as enemy</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Champ select</span>
+      <div class="row" id="roles"></div>
+      <div class="row">
+        <button data-a="enemy">Lock next enemy</button>
+        <button data-a="bans">Fill bans</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Game</span>
+      <div class="row">
+        <button data-a="start_game">Start game</button>
+        <button data-a="end_game">End game</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Skins with mods</span>
+      <div class="row">
+        <button data-a="availability" data-v="all">All</button>
+        <button data-a="availability" data-v="some">Some</button>
+        <button data-a="availability" data-v="none">None</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Download</span>
+      <div class="row">
+        <input type="range" id="dl" min="0" max="100" value="0"
+               aria-label="Download progress">
+        <button data-a="download" data-v="idle">Idle</button>
+        <button data-a="download" data-v="complete">Complete</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span>Patcher</span>
+      <div class="row" id="patcher"></div>
+    </div>
+  </main>
+
+  <footer id="out"></footer>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* The same lists the server knows, kept in one place each. */
+const PHASES  = ['None', 'Lobby', 'Matchmaking', 'ReadyCheck', 'ChampSelect',
+                 'InProgress', 'Reconnect'];
+const PATCHER = ['idle', 'watching', 'found', 'patching', 'error'];
+const QUEUES  = ['rift', 'draft', 'swiftplay', 'urf', 'aram', 'mayhem',
+                 'arena', 'nexus'];
+const ROLES   = ['top', 'jungle', 'middle', 'bottom', 'utility'];
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const buttons = (into, action, values) => {
+  $(into).innerHTML = values.map(v =>
+    `<button data-a="${action}" data-v="${esc(v)}">${esc(v)}</button>`).join('');
+};
+buttons('phases', 'phase', PHASES);
+buttons('patcher', 'patcher', PATCHER);
+buttons('queues', 'queue', QUEUES);
+buttons('roles', 'role', ROLES);
+
+$('where').textContent = location.host;
+
+function say(text, bad) {
+  $('out').textContent = text;
+  $('out').className = bad ? 'err' : '';
+}
+
+async function send(action, value) {
+  try {
+    const r = await fetch('/api/mock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, value }),
+    });
+    const j = await r.json();
+    say(j.ok ? j.message : j.error, !j.ok);
+  } catch (e) {
+    say(String(e), true);
+  }
+  look();
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-a]');
+  if (b) send(b.dataset.a, b.dataset.v ?? null);
+});
+
+const champ = $('champ');
+$('hover').onclick = () => send('hover', parseInt(champ.value, 10));
+$('as-enemy').onclick = () => send('enemy', parseInt(champ.value, 10));
+// Debounced: dragging the slider fires oninput per pixel, and each one is a
+// POST plus a state read.
+let DL_TIMER = 0;
+$('dl').oninput = () => {
+  clearTimeout(DL_TIMER);
+  DL_TIMER = setTimeout(() => send('download', parseInt($('dl').value, 10)), 120);
+};
+
+// The champion list comes from the server, which reads it from the client.
+fetch('/api/mock/champions').then(r => r.json()).then(list => {
+  champ.innerHTML = list
+    .map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const seen = list.find(c => c.id === 202) || list[0];
+  if (seen) champ.value = seen.id;
+}).catch(() => {
+  champ.innerHTML = '<option value="202">Jhin</option>';
+});
+
+/* What the app currently believes. This window is a developer tool with
+   nothing else to do, so it reads the same state the picker does and shows
+   the handful of fields a button is meant to move -- otherwise the only way
+   to check an action landed is to go and look at the picker. */
+let SEEN = '';
+function set(id, text, cls) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = cls || '';
+}
+
+async function look() {
+  let s;
+  try { s = await (await fetch('/api/state')).json(); }
+  catch { set('v-phase', 'app unreachable', 'bad'); return; }
+
+  const q = s.queue || {}, g = s.guide || {}, p = s.patcher || {};
+  set('v-phase', s.connected ? (s.phase || 'None') : 'no client',
+      s.connected ? '' : 'off');
+  set('v-queue', q.label || '-', q.label ? '' : 'off');
+  set('v-champ', s.championName
+    ? `${s.championName} (${s.championId})${s.locked ? ' locked' : ''}` : '-',
+    s.championName ? '' : 'off');
+  set('v-role', s.role || '-', s.role ? '' : 'off');
+
+  const foes = (s.enemies || []).filter(e => e.championId).length;
+  set('v-enemies', foes ? String(foes) : '-', foes ? '' : 'off');
+  set('v-guide', g.state || '-', g.state === 'ready' ? ''
+    : g.state === 'loading' ? 'off' : g.state ? 'bad' : 'off');
+
+  const live = Object.keys(p).length > 0;
+  set('v-patcher', p.error ? 'error' : p.patched ? 'applied' : p.found
+    ? 'patching' : live ? 'watching' : 'idle', p.error ? 'bad'
+    : live ? '' : 'off');
+
+  /* The button for the state the app is actually in, so the panel reads as a
+     display of the client rather than only as a set of levers. Queue is not
+     among them: several queues resolve to one mode (draft and ranked are both
+     the Rift build), so lighting a button by mode would light the wrong one.
+     The live row above names the queue exactly. */
+  const now = { phase: s.connected ? (s.phase || 'None') : '',
+                role: s.role || '' };
+  const sig = JSON.stringify(now);
+  if (sig === SEEN) return;
+  SEEN = sig;
+  for (const b of document.querySelectorAll('button[data-a][data-v]')) {
+    const key = b.dataset.a;
+    if (key in now) b.setAttribute('aria-pressed', String(b.dataset.v === now[key]));
+  }
+}
+
+look();
+setInterval(look, 2000);
+</script>
+</body>
+</html>
