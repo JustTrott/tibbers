@@ -1386,14 +1386,32 @@ def main() -> int:
     # only ever a menu bar item until a champion is locked.
     windows.prepare()
 
+    # The passwordless setup is the one thing a friend has to decide, so it is
+    # offered on launch rather than deferred to the first skin apply: whenever
+    # injection is live, no helper is installed, and the choice has never been
+    # made. The picker carries the card, and it takes the place of the
+    # first-run settings window -- the card is the priority; settings stays one
+    # click away in the menu bar. --quiet (a silent relaunch) offers nothing.
+    from tibbers import privileged as _priv
+    offer_elevation = (inject.enabled and not args.quiet
+                       and prefs.get("elevation_choice") is None
+                       and not _priv.available())
+    if offer_elevation:
+        with state.lock:
+            state.ask_elevation = True
+
     # Settings are shown once, on the launch that has nothing configured yet.
     # After that the menu bar item is the way in; popping a window open on
     # every launch is noise for something that runs at login.
     # --quiet is a relaunch of an app that was already running: it opens
     # nothing that was not already open, whatever the first-run rule says.
-    show_settings = (prefs.first_run or args.settings) and not args.quiet
+    show_settings = ((prefs.first_run or args.settings)
+                     and not args.quiet and not offer_elevation)
+    opened_window = show_settings or offer_elevation
     if show_settings:
         windows.open_settings()
+    if offer_elevation:
+        windows.open_picker(raise_it=True)
 
     def after_start() -> None:
         # Settle the activation policy BEFORE creating the status item.
@@ -1404,7 +1422,7 @@ def main() -> int:
         # Dock, with the app insisting it had installed one.
         if args.overlay:
             windows.open_picker(raise_it=False)
-        elif not show_settings:
+        elif not opened_window:
             # No window to show: go straight to living in the menu bar.
             windows.go_background()
         if args.quiet:
