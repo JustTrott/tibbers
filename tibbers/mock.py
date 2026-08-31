@@ -101,6 +101,17 @@ class MockClient:
                 log.exception("mock listener failed")
         return {"ok": True, "message": message}
 
+    def _do_elevation_ask(self, value) -> str:
+        """Show or hide the one-time passwordless card, for looking at it.
+
+        Injection is off in a dev instance, so the real first-apply path never
+        raises this card; this is the only way to see it rendered.
+        """
+        on = value not in (0, "0", "off", False, None)
+        with self.state.lock:
+            self.state.ask_elevation = on
+        return f"elevation card {'shown' if on else 'hidden'}"
+
     def _do_launch_client(self, _value) -> str:
         with self.state.lock:
             self.state.connected = True

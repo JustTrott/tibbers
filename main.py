@@ -617,12 +617,15 @@ def main() -> int:
         if reason:
             state.say(reason)
 
-    def arm() -> None:
+    def arm(skip_ask: bool = False) -> None:
         """Build the overlay and start the patcher, ready for the next game.
 
         Done at selection time, not at game start: runoverlay has its own loop
         that waits for the game and patches it when it is ready, so it needs to
         be running beforehand and then left alone.
+
+        `skip_ask` is set when resuming after the one-time elevation choice, so
+        the choice is not asked for again while acting on it.
         """
         skin_id = session.selected
         champ = session.champion_id
@@ -651,6 +654,21 @@ def main() -> int:
         if inject.overlay_in_use():
             state.say("a patcher is already serving the running game -- "
                       "leaving it and its overlay alone")
+            return
+
+        # The first real injection with no passwordless helper: offer to set it
+        # up once, instead of prompting for a password every single game. The
+        # picker shows the choice; applying resumes through choose_elevation.
+        # Asked only when injection is actually live (never in a dev instance)
+        # and only until the user has answered once.
+        from tibbers import privileged as priv
+        if (inject.enabled and not skip_ask
+                and prefs.get("elevation_choice") is None
+                and not priv.available()):
+            with state.lock:
+                state.ask_elevation = True
+            state.say("first skin -- set tibbers up so it won't ask for your "
+                      "password every game?")
             return
 
         meta = {"championId": champ, "skinId": skin_id, "chromaId": chroma_id,
@@ -1117,6 +1135,45 @@ def main() -> int:
                 start_guide(champion, role, opponent)
         return {"ok": True, "settings": prefs.settings()}
 
+    def choose_elevation(payload: dict) -> dict:
+        """Answer the one-time "how should injection get permission" question.
+
+        `auto` installs the passwordless helper (one prompt, once) and then
+        applies the skin through it; `prompt` records that choice and applies
+        with the ordinary per-game password prompt. Either way the pending
+        selection is resumed with `skip_ask` so it is not asked for again.
+        """
+        from tibbers import privileged as priv
+        choice = payload.get("choice")
+        with state.lock:
+            state.ask_elevation = False
+
+        if choice == "prompt":
+            prefs.set("elevation_choice", "prompt")
+            state.say("okay -- tibbers will ask for your password each time")
+            arm(skip_ask=True)
+            return {"ok": True}
+
+        if choice == "auto":
+            def work() -> None:
+                state.say("setting up -- approve the one prompt...")
+                ok, message = priv.install(Path(__file__).parent / "tools")
+                state.say(message)
+                # Record the choice only on success: a cancelled or failed
+                # install leaves it unanswered, so the offer comes back next
+                # time rather than silently prompting forever.
+                if ok:
+                    prefs.set("elevation_choice", "auto")
+                # Apply the skin regardless -- through the helper if it went in,
+                # otherwise with the ordinary prompt for this one game.
+                arm(skip_ask=True)
+            threading.Thread(target=work, daemon=True).start()
+            return {"ok": True, "installing": True}
+
+        with state.lock:
+            state.ask_elevation = True
+        return {"ok": False, "error": "unknown choice"}
+
     def choose_opponent(payload: dict) -> dict:
         """Nominate an enemy as the lane opponent.
 
@@ -1169,6 +1226,7 @@ def main() -> int:
                                     "change_setting": change_setting,
                                     "window_action": window_action,
                                     "choose_opponent": choose_opponent,
+                                    "choose_elevation": choose_elevation,
                                     "import_build": import_build})
     except server.PortInUse as exc:
         print(f"Port {exc.port} is already in use -- most likely another "

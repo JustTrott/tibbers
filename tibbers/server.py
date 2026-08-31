@@ -248,6 +248,11 @@ class State:
         # from settings and outlives whatever champ select is doing.
         self.rebuild: dict = {}
         self.patcher: dict = {}
+        # True when the app is waiting for the user's one-time answer to how
+        # injection should get permission (set the helper up, or prompt each
+        # time). The picker shows a card while this holds, and applying the
+        # skin resumes once they choose.
+        self.ask_elevation = False
         self.log_lines: list = []
         # Champ select, for the build guide. `role` is what the client
         # assigned; `opponent` is the enemy the user nominated as their lane,
@@ -288,6 +293,7 @@ class State:
                 "download": self.download,
                 "rebuild": self.rebuild,
                 "patcher": self.patcher,
+                "askElevation": self.ask_elevation,
                 "status": self.status,
                 "log": self.log_lines[-40:],
                 "role": self.role,
@@ -466,6 +472,14 @@ def make_handler(state: State, get_lcu, on_select, mock=None,
 
             if path == "/api/import":
                 hook = hooks.get("import_build")
+                if hook is None:
+                    self._json({"ok": False, "error": "unavailable"}, 404)
+                    return
+                self._json(hook(payload))
+                return
+
+            if path == "/api/elevation":
+                hook = hooks.get("choose_elevation")
                 if hook is None:
                     self._json({"ok": False, "error": "unavailable"}, 404)
                     return

@@ -58,6 +58,12 @@ DEFAULTS: Dict[str, Any] = {
     # page and your spells, and doing that unasked on the first game after an
     # update would be a nasty surprise.
     "auto_import": False,
+    # The one-time answer to "how should injection get permission": None until
+    # the user is first asked, then "auto" (a helper is installed, so no
+    # prompt) or "prompt" (ask each time). Not a switch on the settings page --
+    # it records the first-run choice so the question is asked only once. The
+    # Elevation section governs it after that.
+    "elevation_choice": None,
 }
 
 #: How long a geometry change waits before it is written. The picker is

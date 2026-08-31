@@ -133,6 +133,32 @@
                    background: oklch(0.22 0.014 265); }
   .dismiss:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
+  /* The one-time "set up passwordless, or ask each time" card. Shown over the
+     picker on the first skin apply, because a friend who installed the app
+     would never find the terminal command or the settings toggle. */
+  .elevate { position: fixed; inset: 0; z-index: 20; display: grid;
+             place-items: center; background: oklch(0.13 0.010 265 / .74);
+             backdrop-filter: blur(3px); }
+  .ecard { width: min(420px, calc(100% - 40px)); padding: 20px 22px 18px;
+           background: var(--raised); border: 1px solid var(--gold-d);
+           border-radius: 10px; box-shadow: 0 18px 50px oklch(0 0 0 / .5); }
+  .ecard h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600;
+              color: var(--ink); }
+  .ecard p { margin: 0 0 16px; font-size: 12px; line-height: 1.55;
+             color: var(--ink-mid); }
+  .erow { display: flex; gap: 8px; }
+  .ebtn { appearance: none; flex: 1; padding: 9px 12px; cursor: pointer;
+          font: inherit; font-size: 12px; border-radius: 6px;
+          color: var(--ink-mid); background: oklch(0.26 0.016 265);
+          border: 1px solid var(--rule-d);
+          transition: color 140ms ease, border-color 140ms ease,
+                      background-color 140ms ease; }
+  .ebtn:hover { color: var(--ink); border-color: var(--gold-d); }
+  .ebtn.primary { color: var(--void); background: var(--gold);
+                  border-color: var(--gold); font-weight: 600; }
+  .ebtn.primary:hover { background: var(--gold-b); }
+  .ebtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
   /* ═══ tabs ═════════════════════════════════════════════════════════ */
   .tabs { position: relative; z-index: 3; flex: none; display: flex;
           align-items: center; gap: 2px; padding: 0 22px;
@@ -907,6 +933,22 @@
     <span class="count" id="count"></span>
   </footer>
 
+  <!-- First skin apply, no passwordless helper yet: offer to set it up once
+       rather than prompt for a password every game. Driven by state.askElevation
+       and answered through /api/elevation. -->
+  <div class="elevate" id="elevate" hidden>
+    <div class="ecard" role="dialog" aria-modal="true" aria-labelledby="e-title">
+      <h2 id="e-title">Skip the password each game?</h2>
+      <p>To apply a skin, tibbers asks macOS for permission. Set it up once and
+         it won&rsquo;t ask again &mdash; or have it ask each time. You can
+         change this later in Settings.</p>
+      <div class="erow">
+        <button class="ebtn primary" id="e-auto">Set up &middot; one prompt</button>
+        <button class="ebtn" id="e-prompt">Ask each time</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
 let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
@@ -1082,6 +1124,9 @@ function render(s) {
     : p.found ? 'patching' : live ? 'watching' : 'idle';
 
   $('msg').textContent = s.status || '';
+  // The one-time passwordless offer. The server clears the flag once answered,
+  // and the click hides it optimistically so there is no flash on the way.
+  $('elevate').hidden = !s.askElevation;
   const bar = $('bar');
   bar.hidden = !busy || !d.total;
   if (!bar.hidden) bar.querySelector('i').style.width =
@@ -2125,6 +2170,19 @@ function dismiss() {
   });
 }
 document.getElementById('dismiss').addEventListener('click', dismiss);
+
+/* The one-time elevation choice. Both answers resume the pending skin apply on
+   the server; "auto" additionally installs the passwordless helper (one OS
+   prompt). Hidden optimistically so the card does not linger for a poll. */
+function chooseElevation(choice) {
+  $('elevate').hidden = true;
+  fetch('/api/elevation', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ choice }),
+  });
+}
+$('e-auto').addEventListener('click', () => chooseElevation('auto'));
+$('e-prompt').addEventListener('click', () => chooseElevation('prompt'));
 
 /* Tab moves between the views this mode has, which is what it is for here. The
    import row is the one place that also needs ordinary tabbing -- its button,
