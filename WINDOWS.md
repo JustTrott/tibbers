@@ -15,7 +15,7 @@ in only a few places, all behind `tibbers/system.py`:
 |---|---|---|
 | Injection | cslol `mod-tools runoverlay`, needs **root** (`task_for_pid`) | cslol `mod-tools.exe runoverlay`, **no elevation** — the DLL is injected into the same-user game process |
 | Passwordless setup | a sudoers helper | not needed; there's nothing to elevate |
-| App shell | native menu-bar app | runs in a **browser tab** for now (no tray yet) |
+| App shell | native window + menu-bar item | native window (pywebview / WebView2) + **system-tray icon** (pystray) |
 | Updates | in-app OTA | re-download for now (OTA is macOS-only so far) |
 
 The injection is the **same** cslol `mod-tools.exe` that cslol-manager and Rose
@@ -31,7 +31,7 @@ timing choice on top of the identical injection, not a different technique).
 git clone https://github.com/JustTrott/tibbers.git
 cd tibbers
 py -3 -m venv .venv
-.\.venv\Scripts\pip install psutil xxhash zstandard pywebview
+.\.venv\Scripts\pip install psutil xxhash zstandard pywebview pystray Pillow
 
 # mod-tools.exe (from cslol-manager). If this fails, run
 # cslol-manager-windows.exe yourself and copy its mod-tools.exe into tools\
@@ -40,8 +40,12 @@ powershell -ExecutionPolicy Bypass -File scripts\fetch_modtools.ps1
 .\.venv\Scripts\python main.py
 ```
 
-`main.py` opens the picker in your browser (there's no native window on Windows
-yet). Start League as usual, hover a champion, pick a skin, launch the game —
+`main.py` opens the picker as a native window (WebView2) and puts a tibbers
+icon in the system tray; closing the window leaves it running in the tray,
+watching champ select. `pywebview` needs the WebView2 runtime, which ships with
+Windows 11 and installs on Windows 10 from Microsoft's Evergreen installer. If
+`pywebview` is not installed, `main.py` falls back to opening the picker in your
+browser. Start League as usual, hover a champion, pick a skin, launch the game —
 no password prompt, unlike macOS.
 
 ## What to check when testing
@@ -59,9 +63,20 @@ no password prompt, unlike macOS.
    Python holder; closing and reopening tibbers should keep the skin on a
    running game.
 
+## What to check about the shell
+
+The native window + tray lifecycle is the part written most blind, so watch:
+
+- The picker and settings open as real windows; the frameless picker drags by
+  its body.
+- Closing a window leaves the app alive in the tray (it does not quit).
+- The tray menu (Open picker / Settings / Quit) works — the tray runs on its
+  own thread while WebView2 owns the main thread, so a window op from a tray
+  click is the interesting case.
+- "Always on top" for the picker.
+
 ## Not done yet (follow-ups)
 
-- A native Windows shell / system-tray item (currently browser-only).
 - Packaging to a `.exe` (PyInstaller) and a Windows release + OTA.
 - If the pre-armed hook ever misses (game reads its WADs before the hook lands),
   add Rose's freeze-at-launch as a fallback.

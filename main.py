@@ -1342,12 +1342,8 @@ def main() -> int:
             shutdown()
         return 0
 
-    # The native menu-bar shell is macOS-only (AppKit). Everywhere else the UI
-    # is the same pages in a browser tab, which is also what --browser asks for
-    # explicitly. Non-macOS opens the picker; --browser opens settings.
-    if args.browser or not IS_MACOS:
-        webbrowser.open(url + "settings" if args.browser else url)
-        state.say("open in your browser: " + url)
+    if args.browser:
+        webbrowser.open(url + "settings")
         try:
             while True:
                 time.sleep(1)
@@ -1357,6 +1353,9 @@ def main() -> int:
             shutdown()
         return 0
 
+    # The native desktop shell -- pywebview windows on both platforms, with a
+    # macOS menu-bar item or a Windows system-tray icon. If pywebview is not
+    # installed, fall back to a browser tab below.
     try:
         import webview
     except ImportError:
@@ -1381,12 +1380,10 @@ def main() -> int:
         # bar, so quitting has to lift that first or terminate_ never lands.
         windows.begin_quit()
         shutdown()
-
-        def terminate():
-            import AppKit
-            AppKit.NSApplication.sharedApplication().terminate_(None)
-
-        shell.on_main(terminate)
+        # macOS lands this on the main queue; Windows runs it in place. Either
+        # way it drops the background presence and destroys the windows, which
+        # returns control from webview.start().
+        shell.on_main(shell.terminate)
 
     bar = shell.MenuBar(on_settings=windows.open_settings,
                         on_picker=lambda: windows.open_picker(True),
@@ -1405,7 +1402,9 @@ def main() -> int:
     # first-run settings window -- the card is the priority; settings stays one
     # click away in the menu bar. --quiet (a silent relaunch) offers nothing.
     from tibbers import privileged as _priv
-    offer_elevation = (inject.enabled and not args.quiet
+    # macOS-only: Windows injects with no elevation, so there is nothing to set
+    # up and no card to show.
+    offer_elevation = (IS_MACOS and inject.enabled and not args.quiet
                        and prefs.get("elevation_choice") is None
                        and not _priv.available())
     if offer_elevation:
@@ -1449,7 +1448,7 @@ def main() -> int:
         shell.quiet_launch()
 
     try:
-        webview.start(after_start, gui="cocoa")
+        webview.start(after_start, gui=shell.gui_backend())
     finally:
         state.say("shutting down")
         shutdown()
