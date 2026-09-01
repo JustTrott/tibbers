@@ -36,6 +36,11 @@ from tibbers import (downloader, importer, injector, lcu, library, modes,
 
 log = logging.getLogger("tibbers")
 
+#: macOS has the native menu-bar shell and the only elevated injection path;
+#: Windows runs the same pages in a browser tab and needs no elevation. The
+#: platform-specific bits key off this rather than sprinkling `sys.platform`.
+IS_MACOS = sys.platform == "darwin"
+
 #: How many guides to remember. Switching between the enemies in one champ
 #: select should never refetch, and nothing older than this game is worth
 #: holding.
@@ -1123,6 +1128,9 @@ def main() -> int:
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
+            # Windows injects with no elevation, so the whole passwordless
+            # section is macOS-only.
+            "elevationSupported": IS_MACOS,
             "update": dict(update_state),
             "version": __import__("tibbers").__version__,
         }
@@ -1334,8 +1342,12 @@ def main() -> int:
             shutdown()
         return 0
 
-    if args.browser:
-        webbrowser.open(url + "settings")
+    # The native menu-bar shell is macOS-only (AppKit). Everywhere else the UI
+    # is the same pages in a browser tab, which is also what --browser asks for
+    # explicitly. Non-macOS opens the picker; --browser opens settings.
+    if args.browser or not IS_MACOS:
+        webbrowser.open(url + "settings" if args.browser else url)
+        state.say("open in your browser: " + url)
         try:
             while True:
                 time.sleep(1)

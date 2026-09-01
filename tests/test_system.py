@@ -19,7 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tibbers import system  # noqa: E402
+# These exercise the macOS implementation directly -- they patch and read
+# module-internal names (_look_for_install, _DATA_DIRS) that the platform
+# dispatcher in `system` deliberately does not re-export.
+from tibbers import _system_macos as system  # noqa: E402
 
 
 class InstallLookup(unittest.TestCase):
