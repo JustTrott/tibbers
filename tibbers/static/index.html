@@ -1604,7 +1604,10 @@ function treeHTML(tree) {
 
 // Which of the two builds is on screen. Both arrive together, so this is a
 // pure display choice with nothing to fetch.
-let BUILD_MODE = 'matchup';
+// The general build is the default: it is what the champion wants, on the
+// larger sample. The matchup (vs this opponent) is one click away for when its
+// count is worth trusting over the general one.
+let BUILD_MODE = 'general';
 
 function renderGuide(s) {
   const g = s.guide || {}, box = $('guide');
@@ -2135,9 +2138,24 @@ $('iauto').onclick = () => flipSetting($('iauto'), 'auto_import');
    position, and only position answers it. */
 
 let COUNTER_SIDE = 'them';
+//: The opponent the side was last snapped for, so a manual switch to "beats
+//: you" sticks -- until a better opponent is surfaced (the backend nominates
+//: the enemy with the most games and re-nominates as they lock), at which
+//: point the page snaps back to that opponent, the actionable side.
+let COUNTER_OPP;
 
 function renderCounters(s) {
   const g = s.guide || {}, tables = g.counterTables || {};
+  // Snap to the opponent's page whenever the surfaced opponent changes -- on
+  // first sight of one, and again when a better one takes over. Done the moment
+  // the id changes, not when the tables arrive: the guide reloads on a new
+  // opponent, so its tables are briefly empty, and waiting for them would let a
+  // manual "beats you" outlast the opponent it was chosen against.
+  const opp = g.opponentId != null ? g.opponentId : null;
+  if (opp !== COUNTER_OPP) {
+    COUNTER_OPP = opp;
+    if (opp != null) COUNTER_SIDE = 'them';
+  }
   // Only one direction exists before an opponent is nominated.
   const side = tables[COUNTER_SIDE] ? COUNTER_SIDE
     : (tables.them ? 'them' : 'you');
