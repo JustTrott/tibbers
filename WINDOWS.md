@@ -87,10 +87,12 @@ preferences live in the data dir and survive an uninstall.
 
 ## Releasing (and OTA)
 
-OTA mirrors macOS: `tibbers/update.py` checks the repo's latest GitHub Release,
-and on request downloads the platform asset and swaps it in via a detached
-script that waits for the app to exit, replaces the install, and relaunches
-`--quiet`. Windows looks for **`Tibbers-windows.zip`**; macOS for `Tibbers.zip`.
+OTA mirrors macOS: `tibbers/update.py` checks the repo's latest GitHub Release
+at launch, every six hours after, and when Settings is opened. With the
+`auto_update` preference on (the default) it downloads the platform asset and,
+once League is idle, swaps it in via a detached script that waits for the app
+to exit, replaces the install, and relaunches `--quiet`; the Settings button
+does the same on request. Windows looks for **`Tibbers-windows.zip`**; macOS for `Tibbers.zip`.
 
 To cut a release: bump `tibbers/__version__`, build with `-Installer`, and
 attach both `Tibbers-windows.zip` (OTA) and `Tibbers-<ver>-setup.exe` (first

@@ -6,10 +6,17 @@ Self-update from GitHub Releases.
 The installed app is a frozen snapshot -- a `.app` on macOS, a PyInstaller
 folder under `%LOCALAPPDATA%\\Programs\\Tibbers` on Windows -- published on the
 repo's Releases (`Tibbers.zip` for macOS, `Tibbers-windows.zip` for Windows).
-This checks the latest release, and -- when the user asks -- downloads it and
-swaps it into place. The swap is done by a tiny detached script that waits for
-this process to exit first, because a running app cannot overwrite itself; the
-app quits right after launching it, and the script reopens the new one.
+This checks the latest release, and downloads it and swaps it into place --
+by itself once League is idle when the `auto_update` preference is on, or when
+the user presses the button. The swap is done by a tiny detached script that
+waits for this process to exit first, because a running app cannot overwrite
+itself; the app quits right after launching it, and the script reopens the new
+one.
+
+The two halves are separate on purpose: `stage` downloads and unpacks, which
+can be done any time and backed out of; `launch_swap` starts the script, after
+which the install *will* be replaced. The app decides between them whether it
+is still a good moment to quit.
 
 Nothing here elevates. Both install locations are writable by the ordinary
 user, and the patcher is detached, so a mid-game update leaves the skin on the
@@ -36,6 +43,32 @@ log = logging.getLogger("tibbers.update")
 
 REPO = "JustTrott/tibbers"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+
+#: How long the running app waits before asking GitHub again. Releases are
+#: days apart, and the unauthenticated API allows sixty calls an hour per
+#: address, which every other app on the machine shares.
+CHECK_INTERVAL = 6 * 60 * 60
+#: Opening Settings re-checks too, but not more often than this: the page
+#: polls every two seconds and must not turn into a request per poll.
+SETTINGS_RECHECK = 10 * 60
+#: How often the loop looks whether a found update can be installed yet.
+TICK = 30
+
+#: Client phases in which nothing is going on that a restart would cut into.
+#: Matchmaking is deliberately not here: a queue pop while the app is being
+#: swapped would open champ select with no picker.
+IDLE_PHASES = (None, "None", "Lobby")
+
+
+def league_idle(phase: Optional[str], game_running: bool) -> bool:
+    """Whether the app can quit and reopen now without anyone noticing.
+
+    Champ select is where tibbers is in use, and a running game is being
+    served by the patcher -- which survives the app (it is detached), but the
+    picker and its build do not, so both wait. No client at all, or the client
+    sitting in the lobby, is fine.
+    """
+    return phase in IDLE_PHASES and not game_running
 
 _IS_WINDOWS = sys.platform.startswith("win")
 
@@ -206,27 +239,48 @@ def _swap_script_windows(new_dir: Path, target: Path) -> Path:
 _DETACHED = 0x00000008 | 0x00000200 | 0x08000000  # detached, new group, no window
 
 
-def apply(url: str, target: Optional[Path] = None) -> None:
-    """Download the new build and launch the detached swap.
+def stage(url: str) -> Path:
+    """Download and unpack the new build into a temporary directory.
+
+    Nothing is touched yet: the result can sit there until it is a good
+    moment to swap, or be thrown away with `discard`.
+    """
+    return _stage_windows(url) if _IS_WINDOWS else _stage(url)
+
+
+def discard(staged: Path) -> None:
+    """Drop a staged build that will not be installed after all."""
+    shutil.rmtree(staged.parent, ignore_errors=True)
+
+
+def launch_swap(staged: Path, target: Optional[Path] = None) -> None:
+    """Start the detached swap of a staged build over the install.
 
     The caller must quit the app immediately after this returns, so the swap
     script -- already waiting on this PID -- can replace the install and reopen
-    it.
+    it. It waits only so long: after that it replaces the install regardless.
     """
     target = target or installed_app()
     if target is None:
         raise RuntimeError("not running from an installed build")
 
     if _IS_WINDOWS:
-        new_dir = _stage_windows(url)
-        script = _swap_script_windows(new_dir, target)
+        script = _swap_script_windows(staged, target)
         subprocess.Popen(["cmd", "/c", str(script), str(os.getpid())],
                          creationflags=_DETACHED, close_fds=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return
 
-    new_app = _stage(url)
-    script = _swap_script(new_app, target)
+    script = _swap_script(staged, target)
     subprocess.Popen(["/bin/bash", str(script), str(os.getpid())],
                      start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def apply(url: str, target: Optional[Path] = None) -> None:
+    """Download the new build and launch the swap, in one go.
+
+    The button's path: the user asked, so there is no waiting for a good
+    moment. The caller quits right after, as for `launch_swap`.
+    """
+    launch_swap(stage(url), target)

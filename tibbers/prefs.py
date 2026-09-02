@@ -58,6 +58,10 @@ DEFAULTS: Dict[str, Any] = {
     # page and your spells, and doing that unasked on the first game after an
     # update would be a nasty surprise.
     "auto_import": False,
+    # Download a new release and swap it in by itself, once League is idle.
+    # On: the alternative is a "you are up to date" that goes stale for
+    # anyone who never opens Settings. Never in champ select or a game.
+    "auto_update": True,
     # The one-time answer to "how should injection get permission": None until
     # the user is first asked, then "auto" (a helper is installed, so no
     # prompt) or "prompt" (ask each time). Not a switch on the settings page --

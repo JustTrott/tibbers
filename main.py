@@ -1166,24 +1166,102 @@ def main() -> int:
                   f"-- {len(champions)} champions")
         return {"ok": True, "message": "rebuilding"}
 
-    # The result of the one startup update check, shared with the settings
-    # page. Filled by a background thread so a slow or unreachable GitHub never
-    # holds up launch, and only when running from an installed bundle -- a
-    # checkout updates itself with git.
+    # Updates. The latest check's result is shared with the settings page;
+    # a background loop re-checks on a schedule (and Settings asks for a
+    # fresh one when opened), and when `auto_update` is on it downloads the
+    # new build and swaps it in the moment League is idle. All of it only
+    # from an installed bundle -- a checkout updates itself with git -- and
+    # all of it off the startup path, so an unreachable GitHub never holds up
+    # launch.
+    from tibbers import update
     update_state: dict = {}
+    update_checked: Optional[float] = None    # time.monotonic() of last check
+    update_check_lock = threading.Lock()      # one check in flight at a time
+    update_staged: Optional[tuple] = None     # (version, unpacked build path)
+    update_declined: Optional[str] = None     # version whose auto-install failed
 
     def check_for_update() -> None:
-        from tibbers import update
+        nonlocal update_checked
+        if not update_check_lock.acquire(blocking=False):
+            return
+        try:
+            update_checked = time.monotonic()
+            result = update.check()
+            new = (result.get("available")
+                   and result.get("version") != update_state.get("version"))
+            update_state.clear()
+            update_state.update(result)
+        finally:
+            update_check_lock.release()
+        if new:
+            state.say(f"tibbers {result['version']} is available -- "
+                      + ("it installs itself once League is idle"
+                         if prefs.get("auto_update") else "see Settings"))
+
+    def request_update_check() -> None:
+        """A fresh check in the background, unless the last one is recent."""
         if update.installed_app() is None:
             return
-        result = update.check()
-        update_state.clear()
-        update_state.update(result)
-        if result.get("available"):
-            state.say(f"an update is available ({result['version']}) -- "
-                      "see Settings")
+        if (update_checked is not None
+                and time.monotonic() - update_checked < update.SETTINGS_RECHECK):
+            return
+        threading.Thread(target=check_for_update, daemon=True).start()
 
-    threading.Thread(target=check_for_update, daemon=True).start()
+    def league_idle() -> bool:
+        with state.lock:
+            phase = state.phase
+        return update.league_idle(phase, system.game_pid() is not None)
+
+    def install_update(url: str, version: str, wait_for_idle: bool) -> None:
+        """Download the build, launch the swap, and quit so it can run.
+
+        `wait_for_idle` is the automatic path: the download happens anyway,
+        but the swap -- after which the install *will* be replaced -- is only
+        launched if League is still idle once the download is done. If it is
+        not, the unpacked build is kept for a later tick. The button skips
+        that check: the user asked now.
+        """
+        nonlocal update_staged
+        if update_staged is not None and update_staged[0] != version:
+            update.discard(update_staged[1])
+            update_staged = None
+        if update_staged is None:
+            state.say(f"downloading tibbers {version}...")
+            update_staged = (version, update.stage(url))
+        if wait_for_idle and not league_idle():
+            log.info("update %s downloaded; League woke up, waiting", version)
+            return
+        update_state["installing"] = True
+        update.launch_swap(update_staged[1])
+        # The swap script is now waiting on this process; quitting lets it
+        # replace the bundle and reopen the new one.
+        state.say(f"installing tibbers {version} -- reopening in a moment")
+        quit_app()
+
+    def update_loop() -> None:
+        nonlocal update_declined
+        if update.installed_app() is None:
+            return
+        while True:
+            if (update_checked is None
+                    or time.monotonic() - update_checked >= update.CHECK_INTERVAL):
+                check_for_update()
+            version, url = update_state.get("version"), update_state.get("url")
+            if (update_state.get("available") and url
+                    and not update_state.get("installing")
+                    and version != update_declined
+                    and prefs.get("auto_update") and league_idle()):
+                try:
+                    install_update(url, version, wait_for_idle=True)
+                except Exception as exc:  # noqa: BLE001 -- reported, not fatal
+                    # Left for the button; retrying every tick would hammer
+                    # GitHub for a download that is not going to work.
+                    update_declined = version
+                    update_state.pop("installing", None)
+                    state.say(f"update failed: {exc}")
+            time.sleep(update.TICK)
+
+    threading.Thread(target=update_loop, daemon=True).start()
 
     def provision_tools() -> None:
         """Fetch the Windows injection tools in the background, on first run.
@@ -1231,6 +1309,9 @@ def main() -> int:
 
     def describe_settings() -> dict:
         from tibbers import privileged as priv
+        # Opening Settings is the one time someone is looking at the update
+        # line, so it is the one time a stale answer matters.
+        request_update_check()
         try:
             patches = guides.ugg.patches()
         except Exception as exc:  # noqa: BLE001
@@ -1248,7 +1329,14 @@ def main() -> int:
             # Windows injects with no elevation, so the whole passwordless
             # section is macOS-only.
             "elevationSupported": IS_MACOS,
-            "update": dict(update_state),
+            # Empty from a checkout, which never checks; the page says so.
+            "update": {} if update.installed_app() is None else {
+                **update_state,
+                # Seconds since the last check, so the page can say how fresh
+                # "up to date" is instead of leaving it looking permanent.
+                "checked": (None if update_checked is None
+                            else int(time.monotonic() - update_checked)),
+            },
             "version": __import__("tibbers").__version__,
         }
 
@@ -1269,22 +1357,18 @@ def main() -> int:
         if action == "rebuild":
             return start_rebuild()
         if action == "update":
-            from tibbers import update
-            url = update_state.get("url")
+            url, version = update_state.get("url"), update_state.get("version")
             if not update_state.get("available") or not url:
                 return {"ok": False, "error": "no update available"}
+            if update_state.get("installing"):
+                return {"ok": True, "updating": True}
 
             def work() -> None:
                 try:
-                    state.say("downloading the update...")
-                    update.apply(url)
+                    install_update(url, version, wait_for_idle=False)
                 except Exception as exc:  # noqa: BLE001
+                    update_state.pop("installing", None)
                     state.say(f"update failed: {exc}")
-                    return
-                # The swap script is now waiting on this process; quitting lets
-                # it replace the bundle and reopen the new one.
-                state.say("installing -- tibbers will reopen in a moment")
-                quit_app()
 
             threading.Thread(target=work, daemon=True).start()
             return {"ok": True, "updating": True}
@@ -1459,11 +1543,28 @@ def main() -> int:
             inject.stop_patcher()
         httpd.shutdown()
 
+    # Set by quit_app when there is no window loop to unwind: the headless
+    # loops below watch it, so a self-update can restart a headless run too.
+    quit_requested = threading.Event()
+
+    def quit_app() -> None:
+        if windows is None:
+            quit_requested.set()
+            return
+        # The windows veto their own close to keep the app alive in the menu
+        # bar, so quitting has to lift that first or terminate_ never lands.
+        windows.begin_quit()
+        shutdown()
+        # macOS lands this on the main queue; Windows runs it in place. Either
+        # way it drops the background presence and destroys the windows, which
+        # returns control from webview.start().
+        shell.on_main(shell.terminate)
+
     headless = args.no_ui or args.no_browser or args.no_window
     if headless:
         state.say("running without a window")
         try:
-            while True:
+            while not quit_requested.is_set():
                 time.sleep(1)
         except KeyboardInterrupt:
             pass
@@ -1491,7 +1592,7 @@ def main() -> int:
         state.say("pywebview is not installed; opening in the browser")
         webbrowser.open(url + "settings")
         try:
-            while True:
+            while not quit_requested.is_set():
                 time.sleep(1)
         finally:
             shutdown()
@@ -1503,16 +1604,6 @@ def main() -> int:
     # reports changes; without this, a launch during champ select misses the
     # lock-in entirely and the picker never appears.
     watcher.resync()
-
-    def quit_app() -> None:
-        # The windows veto their own close to keep the app alive in the menu
-        # bar, so quitting has to lift that first or terminate_ never lands.
-        windows.begin_quit()
-        shutdown()
-        # macOS lands this on the main queue; Windows runs it in place. Either
-        # way it drops the background presence and destroys the windows, which
-        # returns control from webview.start().
-        shell.on_main(shell.terminate)
 
     bar = shell.MenuBar(on_settings=windows.open_settings,
                         on_picker=lambda: windows.open_picker(True),

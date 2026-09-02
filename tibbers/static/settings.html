@@ -251,6 +251,15 @@
       <div class="rows">
         <div class="row">
           <div class="txt">
+            <b>Install updates by itself</b>
+            <span>New releases are checked for every few hours. A new build
+                  is downloaded and swapped in while League is idle, never
+                  during champ select or a game.</span>
+          </div>
+          <button class="sw" role="switch" data-set="auto_update"></button>
+        </div>
+        <div class="row">
+          <div class="txt">
             <b id="update-title">tibbers</b>
             <span id="update-note"></span>
           </div>
@@ -363,21 +372,44 @@ async function refresh() {
   $('helper-btn').textContent = cfg.helper ? 'Remove' : 'Install';
   $('helper-btn').dataset.action = cfg.helper ? 'uninstall' : 'install';
 
-  // The one startup update check. `update` is empty while it is still in
-  // flight (or absent entirely when running from source, which never checks).
+  // The latest update check. Empty from a checkout, which never checks;
+  // `checked` is null while the first one is still in flight.
   const up = cfg.update || {};
-  if (up.available) {
+  const auto = !!cfg.settings.auto_update;
+  const btn = $('update-btn');
+  if (!('checked' in up)) {
+    $('update-title').textContent = 'Running from a checkout';
+    $('update-note').textContent = 'Updates come with git, not from here.';
+    btn.hidden = true;
+  } else if (up.installing) {
+    $('update-title').textContent = `Installing ${up.version}…`;
+    $('update-note').textContent = 'tibbers will reopen in a moment.';
+    btn.hidden = true;
+  } else if (up.available) {
     $('update-title').textContent = `Update available: ${up.version}`;
-    $('update-note').textContent = up.name && up.name !== up.version
-      ? up.name : 'A newer version is ready to install.';
-    $('update-btn').hidden = false;
+    $('update-note').textContent = auto
+      ? 'It installs itself once League is idle, or now if you like.'
+      : 'A newer version is ready to install.';
+    if (!btn.disabled) btn.textContent = auto ? 'Update now' : 'Update & restart';
+    btn.hidden = false;
   } else {
-    $('update-title').textContent = up.error ? 'Updates' : 'You are up to date';
+    $('update-title').textContent = up.error ? 'Updates'
+      : up.checked == null ? 'Checking for updates…' : 'You are up to date';
     $('update-note').textContent = up.error
-      ? "Couldn't check for updates right now."
-      : `Version ${cfg.version}.`;
-    $('update-btn').hidden = true;
+      ? `Couldn't check for updates right now; trying again later. Version ${cfg.version}.`
+      : up.checked == null ? `Version ${cfg.version}.`
+      : `Version ${cfg.version}. Checked ${ago(up.checked)}.`;
+    btn.hidden = true;
   }
+}
+
+/* "Checked 4 min ago", from a count of seconds. Coarse on purpose: the page
+   polls every two seconds and a ticking figure would draw the eye. */
+function ago(seconds) {
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  const h = Math.floor(seconds / 3600);
+  return `${h} hour${h === 1 ? '' : 's'} ago`;
 }
 
 $('patch').addEventListener('change', async e => {
@@ -416,7 +448,7 @@ document.addEventListener('click', async e => {
     // report here.
     const r = await api('/api/settings', {action: 'update'});
     if (r && r.ok === false) {
-      btn.disabled = false; btn.textContent = 'Update & restart';
+      btn.disabled = false; btn.textContent = 'Update now';
       alert(r.error || 'Update failed');
     }
     return;
