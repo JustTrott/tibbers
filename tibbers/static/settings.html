@@ -116,7 +116,7 @@
       <div><i class="lamp" id="l1"></i><span id="t1">client</span></div>
       <div><i class="lamp" id="l2"></i><span id="t2">library</span></div>
       <div><i class="lamp" id="l3"></i><span id="t3">patcher</span></div>
-      <div><i class="lamp" id="l4"></i><span id="t4">elevation</span></div>
+      <div id="lamp-elevation"><i class="lamp" id="l4"></i><span id="t4">elevation</span></div>
     </div>
 
     <section>
@@ -233,7 +233,7 @@
       </div>
     </section>
 
-    <section>
+    <section id="sec-elevation">
       <h2>Elevation</h2>
       <div class="rows">
         <div class="row">
@@ -320,7 +320,14 @@ async function refresh() {
   lamp('l3', 't3', p.error ? 'bad' : live, p.error ? 'patcher error'
     : p.patched ? 'skin applied' : p.found ? 'patching' : live ? 'watching' : 'patcher idle');
 
-  lamp('l4', 't4', cfg.helper, cfg.helper ? 'no password needed' : 'will prompt');
+  // Windows injects with no elevation, so the whole passwordless section and
+  // its lamp are macOS-only.
+  const elevation = cfg.elevationSupported !== false;
+  $('sec-elevation').hidden = !elevation;
+  $('lamp-elevation').hidden = !elevation;
+  if (elevation) {
+    lamp('l4', 't4', cfg.helper, cfg.helper ? 'no password needed' : 'will prompt');
+  }
 
   for (const b of document.querySelectorAll('[data-set]')) {
     b.setAttribute('aria-checked', String(!!cfg.settings[b.dataset.set]));

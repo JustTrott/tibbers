@@ -90,3 +90,9 @@ scripts/build_app.sh                 # to dist/ only
 
 One commit per finished piece. See `README.md` for the architecture and
 `DESIGN.md` for why it is shaped this way.
+
+## The website
+
+`tibbers.lol` lives on the `site` branch (one `index.html`), not on `main`, and
+is hosted on Vercel in the user's personal scope. Edit it in a worktree of that
+branch and ship with `vercel deploy --prod --yes`. DNS is a Cloudflare zone.

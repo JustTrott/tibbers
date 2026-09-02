@@ -43,7 +43,10 @@ if [[ ! -x "${REPO_ROOT}/.venv/bin/python" ]]; then
     exit 1
 fi
 
-echo "==> Building ${APP}"
+VERSION="$(sed -nE 's/^__version__ = "([^"]+)"/\1/p' "${REPO_ROOT}/tibbers/__init__.py")"
+VERSION="${VERSION:-0.0.0}"
+
+echo "==> Building ${APP} (${VERSION})"
 rm -rf "$APP"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources" \
          "${APP}/Contents/Resources/app" "${APP}/Contents/Resources/lib"
@@ -57,8 +60,8 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key>            <string>Tibbers</string>
   <key>CFBundleDisplayName</key>     <string>Tibbers</string>
   <key>CFBundleIdentifier</key>      <string>gg.tibbers.app</string>
-  <key>CFBundleVersion</key>         <string>0.1.0</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key>         <string>${VERSION}</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key>     <string>APPL</string>
   <key>CFBundleExecutable</key>      <string>Tibbers</string>
   <key>CFBundleIconFile</key>        <string>Tibbers.icns</string>

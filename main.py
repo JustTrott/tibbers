@@ -36,6 +36,14 @@ from tibbers import (downloader, importer, injector, lcu, library, modes,
 
 log = logging.getLogger("tibbers")
 
+#: Both platforms have a native shell (a menu-bar item on macOS, a system-tray
+#: icon on Windows) and run the same pages; what differs is that macOS is the
+#: only elevated injection path, so the helper and the password prompt are its
+#: alone. The platform-specific bits key off these rather than sprinkling
+#: `sys.platform` through the file.
+IS_MACOS = sys.platform == "darwin"
+IS_WINDOWS = sys.platform.startswith("win")
+
 #: How many guides to remember. Switching between the enemies in one champ
 #: select should never refetch, and nothing older than this game is worth
 #: holding.
@@ -159,6 +167,13 @@ def _make_overlay(window) -> None:
 
 
 def main() -> int:
+    # The frozen Windows build re-runs itself as the patcher's stdin holder,
+    # because there is no interpreter to hand a `-c` script to. That has to be
+    # answered before argparse, the logging setup or anything else touches the
+    # data directory: this process is a pipe holder, not a second app.
+    if IS_WINDOWS and len(sys.argv) > 1 and sys.argv[1] == system.HOLDER_FLAG:
+        return system.hold_patcher(sys.argv[2:])
+
     ap = argparse.ArgumentParser(description="Pick a League skin from a web UI.")
     ap.add_argument("--port", type=int, default=None,
                     help="fixed port; without it the first free port from "
@@ -203,6 +218,9 @@ def main() -> int:
                          "then exit")
     ap.add_argument("--check-update", action="store_true",
                     help="check GitHub Releases for a newer build, then exit")
+    ap.add_argument("--fetch-tools", action="store_true",
+                    help="Windows: download the injection tools, then exit "
+                         "(the installer runs this so first launch is ready)")
     ap.add_argument("--quiet", action="store_true",
                     help="start without taking focus and without opening a "
                          "window -- for relaunching while a game is running")
@@ -237,9 +255,24 @@ def main() -> int:
         handlers=handlers,
     )
 
-    if sys.platform != "darwin":
-        print("tibbers targets macOS.")
+    if not (IS_MACOS or IS_WINDOWS):
+        print("tibbers runs on macOS and Windows.")
         return 2
+
+    if args.fetch_tools:
+        if not IS_WINDOWS:
+            print("--fetch-tools is Windows-only.")
+            return 0
+        from tibbers import wintools
+        try:
+            where = wintools.ensure(
+                progress=lambda m, p=None: print(
+                    m + (f"  {p}%" if p is not None else "")))
+            print(f"injection tools installed in {where}")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            print(f"could not fetch injection tools: {exc}")
+            return 1
 
     if args.check_update:
         from tibbers import update
@@ -253,30 +286,66 @@ def main() -> int:
             print(f"up to date ({result['current']})")
         return 0
 
-    from tibbers import privileged
-    if args.helper_status:
-        print(privileged.describe())
-        return 0
-    if args.uninstall_helper:
-        ok, msg = privileged.uninstall()
-        print(msg)
-        return 0 if ok else 1
-    if args.install_helper:
-        ok, msg = privileged.install(Path(__file__).parent / "tools")
-        print(msg)
-        return 0 if ok else 1
+    # The helper exists to make the macOS `task_for_pid` hook passwordless.
+    # Windows injects into a same-user process and elevates nothing, so there
+    # is no helper to install and the flags say so rather than half-working.
+    if IS_MACOS:
+        from tibbers import privileged
+    else:
+        privileged = None
+        if args.helper_status or args.install_helper or args.uninstall_helper:
+            print("No privileged helper on Windows -- injection needs no "
+                  "elevation here.")
+            return 0
+
+    if privileged is not None:
+        if args.helper_status:
+            print(privileged.describe())
+            return 0
+        if args.uninstall_helper:
+            ok, msg = privileged.uninstall()
+            print(msg)
+            return 0 if ok else 1
+        if args.install_helper:
+            ok, msg = privileged.install(Path(__file__).parent / "tools")
+            print(msg)
+            return 0 if ok else 1
 
     game_dir, client_dir = system.find_install()
     if game_dir is None:
         print("League of Legends installation not found.")
         return 1
 
-    tools_dir = Path(__file__).parent / "tools"
-    modtools = tools_dir / "mod-tools"
-    if not modtools.exists():
-        print(f"mod-tools missing at {modtools}")
-        print("Run: scripts/fetch_modtools.sh")
-        return 1
+    # The overlay builder (and, on Windows, the injection patcher) live in a
+    # tools directory. A source checkout populates it with fetch_modtools; the
+    # packaged Windows app fetches into the writable data dir on first run,
+    # because Program Files is read-only and the binaries are not ours to ship.
+    if IS_WINDOWS and getattr(sys, "frozen", False):
+        from tibbers import wintools
+        # Resolve only; the download happens on a background thread AFTER the
+        # window is up (see provision_tools), so first launch shows a picker
+        # with a progress bar rather than hanging on ~50 MB with nothing drawn.
+        tools_dir = wintools.tools_dir()
+    else:
+        tools_dir = Path(__file__).parent / "tools"
+
+    # The platform layer knows what the build is called and what has to sit
+    # beside it -- `mod-tools` on macOS, `mod-tools.exe` plus its cslol-dll.dll
+    # on Windows.
+    try:
+        system.select_modtools(tools_dir)
+    except FileNotFoundError as exc:
+        if IS_WINDOWS:
+            # Non-fatal on Windows: the picker and the skin library still work;
+            # applying a skin reports the missing tools when it is tried, and a
+            # later launch (or --fetch-tools) can provision them.
+            log.warning("%s", exc)
+            log.warning("skins can be browsed but not applied until the "
+                        "injection tools are installed")
+        else:
+            print(exc)
+            print("Run: scripts/fetch_modtools.sh")
+            return 1
 
     # Injection is off by construction in any instance running out of its own
     # TIBBERS_HOME. A dev instance shares the machine, the game and root with
@@ -315,7 +384,9 @@ def main() -> int:
 
     stats = library.stats()
     state.say(f"game: {game_dir}")
-    if privileged.available():
+    if privileged is None:
+        state.say("elevation: none needed on Windows")
+    elif privileged.available():
         state.say("elevation: passwordless helper installed")
     elif privileged.stale():
         state.say("elevation: helper is from an older build -- "
@@ -675,8 +746,15 @@ def main() -> int:
         # picker shows the choice; applying resumes through choose_elevation.
         # Asked only when injection is actually live (never in a dev instance)
         # and only until the user has answered once.
-        from tibbers import privileged as priv
-        if (inject.enabled and not skip_ask
+        #
+        # macOS only, and not merely because the card would be meaningless on
+        # Windows: this branch *returns* without applying, so an ungated card
+        # stops the first Windows skin dead behind a question about a password
+        # prompt that is never going to happen.
+        priv = None
+        if IS_MACOS:
+            from tibbers import privileged as priv  # noqa: F811
+        if (IS_MACOS and inject.enabled and not skip_ask
                 and prefs.get("elevation_choice") is None
                 and not priv.available()):
             with state.lock:
@@ -1107,6 +1185,50 @@ def main() -> int:
 
     threading.Thread(target=check_for_update, daemon=True).start()
 
+    def provision_tools() -> None:
+        """Fetch the Windows injection tools in the background, on first run.
+
+        Off the startup path so the window is already up; progress lands in
+        `state.setup`, which the picker draws as a bar. Injection is simply not
+        ready until this finishes, and applying a skin before then reports the
+        missing tools -- so this is a soft dependency, not a gate on the app.
+        """
+        if not (IS_WINDOWS and getattr(sys, "frozen", False)):
+            return
+        from tibbers import wintools
+        if wintools.have_tools(tools_dir):
+            return
+
+        def report(message: str, percent=None) -> None:
+            with state.lock:
+                state.setup = {"active": True, "message": message,
+                               "percent": percent}
+            log.info("%s%s", message,
+                     f" ({percent}%)" if percent is not None else "")
+
+        try:
+            report("setting up the injection tools")
+            wintools.ensure(tools_dir, progress=report)
+            with state.lock:
+                state.setup = {"active": False, "percent": 100,
+                               "message": "injection tools ready"}
+            state.say("injection tools ready -- skins can now be applied")
+        except Exception as exc:  # noqa: BLE001
+            with state.lock:
+                state.setup = {"active": False, "error": str(exc),
+                               "message": "could not download injection tools"}
+            state.say(f"could not download injection tools: {exc}")
+
+    threading.Thread(target=provision_tools, daemon=True).start()
+
+    # First launch: the welcome card (installed, and I live in the tray / menu
+    # bar). Set before the headless early-return so a browser dev tab shows it
+    # too; the window block clears it if the macOS elevation card claims launch.
+    if prefs.first_run and not args.quiet:
+        with state.lock:
+            state.welcome = {"show": True,
+                             "home": "menu bar" if IS_MACOS else "system tray"}
+
     def describe_settings() -> dict:
         from tibbers import privileged as priv
         try:
@@ -1123,6 +1245,9 @@ def main() -> int:
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
+            # Windows injects with no elevation, so the whole passwordless
+            # section is macOS-only.
+            "elevationSupported": IS_MACOS,
             "update": dict(update_state),
             "version": __import__("tibbers").__version__,
         }
@@ -1188,6 +1313,17 @@ def main() -> int:
             if champion:
                 start_guide(champion, role, opponent)
         return {"ok": True, "settings": prefs.settings()}
+
+    def dismiss_welcome(payload: dict) -> dict:
+        """Clear the first-run welcome once the user has seen it.
+
+        `openSettings` is the "take me to settings" button; `windows` is None in
+        headless and browser modes, where there is nothing to open."""
+        with state.lock:
+            state.welcome = {}
+        if payload.get("openSettings") and windows is not None:
+            shell.on_main(windows.open_settings)
+        return {"ok": True}
 
     def choose_elevation(payload: dict) -> dict:
         """Answer the one-time "how should injection get permission" question.
@@ -1281,6 +1417,7 @@ def main() -> int:
                                     "window_action": window_action,
                                     "choose_opponent": choose_opponent,
                                     "choose_elevation": choose_elevation,
+                                    "dismiss_welcome": dismiss_welcome,
                                     "import_build": import_build})
     except server.PortInUse as exc:
         print(f"Port {exc.port} is already in use -- most likely another "
@@ -1345,6 +1482,9 @@ def main() -> int:
             shutdown()
         return 0
 
+    # The native desktop shell -- pywebview windows on both platforms, with a
+    # macOS menu-bar item or a Windows system-tray icon. If pywebview is not
+    # installed, fall back to a browser tab below.
     try:
         import webview
     except ImportError:
@@ -1369,12 +1509,10 @@ def main() -> int:
         # bar, so quitting has to lift that first or terminate_ never lands.
         windows.begin_quit()
         shutdown()
-
-        def terminate():
-            import AppKit
-            AppKit.NSApplication.sharedApplication().terminate_(None)
-
-        shell.on_main(terminate)
+        # macOS lands this on the main queue; Windows runs it in place. Either
+        # way it drops the background presence and destroys the windows, which
+        # returns control from webview.start().
+        shell.on_main(shell.terminate)
 
     bar = shell.MenuBar(on_settings=windows.open_settings,
                         on_picker=lambda: windows.open_picker(True),
@@ -1393,7 +1531,9 @@ def main() -> int:
     # first-run settings window -- the card is the priority; settings stays one
     # click away in the menu bar. --quiet (a silent relaunch) offers nothing.
     from tibbers import privileged as _priv
-    offer_elevation = (inject.enabled and not args.quiet
+    # macOS-only: Windows injects with no elevation, so there is nothing to set
+    # up and no card to show.
+    offer_elevation = (IS_MACOS and inject.enabled and not args.quiet
                        and prefs.get("elevation_choice") is None
                        and not _priv.available())
     if offer_elevation:
@@ -1405,15 +1545,30 @@ def main() -> int:
     # every launch is noise for something that runs at login.
     # --quiet is a relaunch of an app that was already running: it opens
     # nothing that was not already open, whatever the first-run rule says.
-    show_settings = ((prefs.first_run or args.settings)
-                     and not args.quiet and not offer_elevation)
-    opened_window = show_settings or offer_elevation
-    if show_settings:
-        windows.open_settings()
+    show_settings = (args.settings and not args.quiet and not offer_elevation)
+    # The welcome (set above on first run) is carried by the picker, like the
+    # elevation card, and its "Open settings" button is the way through. The
+    # elevation card takes precedence on the macOS first-apply launch, so drop
+    # the welcome there rather than stack two cards.
     if offer_elevation:
-        windows.open_picker(raise_it=True)
+        with state.lock:
+            state.welcome = {}
+    show_welcome = bool(state.welcome.get("show"))
+    opened_window = show_settings or offer_elevation or show_welcome
 
     def after_start() -> None:
+        # Every window is shown from in here, never before webview.start().
+        # pywebview gates its window methods on the `shown` event, which is
+        # only set once the run loop is up, so a show() issued before it
+        # blocks for pywebview's full 20s timeout and then raises "Main window
+        # failed to start". macOS happened to tolerate the old order; Windows
+        # did not, and the result was a first launch that hung for twenty
+        # seconds and then put no window on screen at all.
+        if show_settings:
+            windows.open_settings()
+        if show_welcome or offer_elevation:
+            windows.open_picker(raise_it=True)
+
         # Settle the activation policy BEFORE creating the status item.
         # pywebview forces the app to Regular as it starts, overriding
         # LSUIElement, and changing the policy afterwards drops any status
@@ -1437,7 +1592,7 @@ def main() -> int:
         shell.quiet_launch()
 
     try:
-        webview.start(after_start, gui="cocoa")
+        webview.start(after_start, gui=shell.gui_backend())
     finally:
         state.say("shutting down")
         shutdown()

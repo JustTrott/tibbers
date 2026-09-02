@@ -5,18 +5,21 @@
 <h1 align="center">tibbers</h1>
 
 <p align="center">
-  A League of Legends skin picker for macOS.
+  A League of Legends skin picker for macOS and Windows.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS-black">
-  <img src="https://img.shields.io/badge/arch-Apple%20Silicon-black">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-black">
   <img src="https://img.shields.io/badge/League-patch%2026.17-black">
 </p>
 
 <p align="center">
   <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg">
     <img src="https://img.shields.io/badge/Download%20for%20macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download Tibbers for macOS" height="48">
+  </a>
+  &nbsp;
+  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-setup.exe">
+    <img src="https://img.shields.io/badge/Download%20for%20Windows-000000?style=for-the-badge&logo=windows&logoColor=white" alt="Download Tibbers for Windows" height="48">
   </a>
 </p>
 
@@ -28,8 +31,12 @@
   <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg">
     <img src="https://img.shields.io/badge/Download%20for%20macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download Tibbers for macOS" height="48">
   </a>
+  &nbsp;
+  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-setup.exe">
+    <img src="https://img.shields.io/badge/Download%20for%20Windows-000000?style=for-the-badge&logo=windows&logoColor=white" alt="Download Tibbers for Windows" height="48">
+  </a>
   <br>
-  <sub>Apple Silicon · macOS 26 · then right-click → Open the first time</sub>
+  <sub>macOS: Apple Silicon · right-click → Open the first time &nbsp;·&nbsp; Windows 10/11 · More info → Run anyway</sub>
 </p>
 
 Hover a champion in champ select and tibbers shows you that champion's skins,
@@ -74,7 +81,7 @@ skins, builds and counters in one place while you're deciding.
 
 ## Requirements
 
-- **macOS on Apple Silicon.** Verified on macOS 26.
+- **macOS on Apple Silicon** (verified on macOS 26) **or Windows 10/11**.
 - **League of Legends**, started however you normally start it.
 
 That's it — the app bundles its own Python. (Building from source additionally
@@ -82,12 +89,18 @@ needs Python 3.)
 
 ## Install
 
-Click **[Download for macOS](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg)**
+**macOS** — click **[Download for macOS](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg)**
 (the button up top does the same thing), open the disk image, and drag
-**Tibbers** onto the Applications folder beside it — just like any other Mac app.
+**Tibbers** onto the Applications folder beside it — just like any other Mac
+app. The first time you open it, macOS may say it's from an unidentified
+developer. Right-click the app, choose **Open**, and confirm. You only do this
+once.
 
-The first time you open it, macOS may say it's from an unidentified developer.
-Right-click the app, choose **Open**, and confirm. You only do this once.
+**Windows** — click **[Download for Windows](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-setup.exe)**
+and run the installer. It is unsigned for now, so SmartScreen may say "Windows
+protected your PC" — click **More info → Run anyway**. tibbers installs for your
+user (no admin), lands in the system tray, and downloads its injection tools on
+first launch. Unlike macOS, applying a skin needs no password.
 
 <details>
 <summary><b>Or build it from source</b></summary>
@@ -117,9 +130,9 @@ Start League the way you always do, then:
    are ready light up; ones with no mod available stay dimmed.
 2. **Click a skin** to queue it. This arms tibbers to hook the game the moment
    it launches.
-3. **Approve the prompt** once (or set up passwordless mode below to skip it).
-   It shows up during champ select, and it prints the exact command it's about
-   to run first.
+3. **On macOS, approve the prompt** once (or set up passwordless mode below to
+   skip it). It shows up during champ select. On Windows there is no prompt —
+   injection needs no elevation.
 4. **Start the game.** The skin goes on by itself. The game is never frozen or
    suspended along the way.
 
@@ -187,6 +200,14 @@ that going in if you play there.
 
 tibbers is unofficial and is not endorsed by, affiliated with, or sponsored by
 Riot Games.
+
+## Website
+
+[tibbers.lol](https://tibbers.lol) is a single static page. Its source is the
+`site` branch of this repository, deployed to Vercel (project `tibbers`) with
+`vercel deploy --prod --yes` from a checkout of that branch. The download
+buttons point at `releases/latest/download/...`, so a new release needs no
+change to the page.
 
 ## License
 
