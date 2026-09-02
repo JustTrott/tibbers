@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip">
+  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg">
     <img src="https://img.shields.io/badge/Download%20for%20macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download Tibbers for macOS" height="48">
   </a>
 </p>
@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip">
+  <a href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg">
     <img src="https://img.shields.io/badge/Download%20for%20macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download Tibbers for macOS" height="48">
   </a>
   <br>
@@ -82,9 +82,9 @@ needs Python 3.)
 
 ## Install
 
-Click **[Download for macOS](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip)**
-(the button up top does the same thing), unzip it, and drag **Tibbers.app** into
-your Applications folder — just like any other Mac app.
+Click **[Download for macOS](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.dmg)**
+(the button up top does the same thing), open the disk image, and drag
+**Tibbers** onto the Applications folder beside it — just like any other Mac app.
 
 The first time you open it, macOS may say it's from an unidentified developer.
 Right-click the app, choose **Open**, and confirm. You only do this once.

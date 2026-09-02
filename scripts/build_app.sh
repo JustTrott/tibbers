@@ -16,13 +16,22 @@
 #
 #   scripts/build_app.sh            # build into ./dist
 #   scripts/build_app.sh --install  # and copy to /Applications
+#   scripts/build_app.sh --package  # and write dist/Tibbers.zip + Tibbers.dmg
+#                                   # (the two release assets)
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="${REPO_ROOT}/dist/Tibbers.app"
 INSTALL=0
-[[ "${1:-}" == "--install" ]] && INSTALL=1
+PACKAGE=0
+for arg in "$@"; do
+    case "$arg" in
+        --install) INSTALL=1 ;;
+        --package) PACKAGE=1 ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "macOS only." >&2
@@ -219,6 +228,27 @@ ICON
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 
 echo "    built: ${APP}"
+
+if [[ $PACKAGE -eq 1 ]]; then
+    # Two release assets from the one bundle. Tibbers.zip is what the in-app
+    # updater fetches (update.py names it), so it must keep its name. The
+    # .dmg is the human download: opening it shows the app beside an
+    # Applications shortcut, so installing is one drag. Both are built with
+    # ditto/hdiutil rather than zipfile so symlinks and executable bits survive.
+    DIST="${REPO_ROOT}/dist"
+    echo "==> Packaging"
+    rm -f "${DIST}/Tibbers.zip" "${DIST}/Tibbers.dmg"
+    ditto -c -k --keepParent "$APP" "${DIST}/Tibbers.zip"
+    echo "    ${DIST}/Tibbers.zip"
+
+    STAGE="$(mktemp -d)"
+    trap 'rm -rf "$STAGE"' EXIT
+    cp -R "$APP" "${STAGE}/"
+    ln -s /Applications "${STAGE}/Applications"
+    hdiutil create -quiet -volname "Tibbers" -srcfolder "$STAGE" \
+            -fs HFS+ -format UDZO -ov "${DIST}/Tibbers.dmg"
+    echo "    ${DIST}/Tibbers.dmg"
+fi
 
 if [[ $INSTALL -eq 1 ]]; then
     echo "==> Installing to /Applications"
