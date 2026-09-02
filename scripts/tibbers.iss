@@ -60,10 +60,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--quiet"; Tasks: startup
 
 [Run]
-; Provision the patcher binaries now, while the installer's progress is on
-; screen, so the first launch is ready. Non-fatal: the app fetches them itself
-; on first run if this is skipped or offline.
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--fetch-tools"; StatusMsg: "Downloading injection tools..."; Flags: runhidden waituntilterminated skipifsilent
+; The patcher binaries are fetched by the app itself on first launch, with a
+; progress bar in the window -- not here. Doing it in the installer left the
+; wizard's progress bar sitting at 100% during a ~50 MB download with no
+; feedback, which read as a hang.
 ; Offer to launch after a normal (non-silent) install.
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 

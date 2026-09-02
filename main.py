@@ -265,7 +265,9 @@ def main() -> int:
             return 0
         from tibbers import wintools
         try:
-            where = wintools.ensure(progress=lambda m: print(m))
+            where = wintools.ensure(
+                progress=lambda m, p=None: print(
+                    m + (f"  {p}%" if p is not None else "")))
             print(f"injection tools installed in {where}")
             return 0
         except Exception as exc:  # noqa: BLE001
@@ -320,13 +322,10 @@ def main() -> int:
     # because Program Files is read-only and the binaries are not ours to ship.
     if IS_WINDOWS and getattr(sys, "frozen", False):
         from tibbers import wintools
+        # Resolve only; the download happens on a background thread AFTER the
+        # window is up (see provision_tools), so first launch shows a picker
+        # with a progress bar rather than hanging on ~50 MB with nothing drawn.
         tools_dir = wintools.tools_dir()
-        if not wintools.have_tools(tools_dir):
-            log.info("first run: fetching the injection tools...")
-            try:
-                wintools.ensure(tools_dir, progress=lambda m: log.info(m))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("could not fetch injection tools: %s", exc)
     else:
         tools_dir = Path(__file__).parent / "tools"
 
@@ -1186,6 +1185,50 @@ def main() -> int:
 
     threading.Thread(target=check_for_update, daemon=True).start()
 
+    def provision_tools() -> None:
+        """Fetch the Windows injection tools in the background, on first run.
+
+        Off the startup path so the window is already up; progress lands in
+        `state.setup`, which the picker draws as a bar. Injection is simply not
+        ready until this finishes, and applying a skin before then reports the
+        missing tools -- so this is a soft dependency, not a gate on the app.
+        """
+        if not (IS_WINDOWS and getattr(sys, "frozen", False)):
+            return
+        from tibbers import wintools
+        if wintools.have_tools(tools_dir):
+            return
+
+        def report(message: str, percent=None) -> None:
+            with state.lock:
+                state.setup = {"active": True, "message": message,
+                               "percent": percent}
+            log.info("%s%s", message,
+                     f" ({percent}%)" if percent is not None else "")
+
+        try:
+            report("setting up the injection tools")
+            wintools.ensure(tools_dir, progress=report)
+            with state.lock:
+                state.setup = {"active": False, "percent": 100,
+                               "message": "injection tools ready"}
+            state.say("injection tools ready -- skins can now be applied")
+        except Exception as exc:  # noqa: BLE001
+            with state.lock:
+                state.setup = {"active": False, "error": str(exc),
+                               "message": "could not download injection tools"}
+            state.say(f"could not download injection tools: {exc}")
+
+    threading.Thread(target=provision_tools, daemon=True).start()
+
+    # First launch: the welcome card (installed, and I live in the tray / menu
+    # bar). Set before the headless early-return so a browser dev tab shows it
+    # too; the window block clears it if the macOS elevation card claims launch.
+    if prefs.first_run and not args.quiet:
+        with state.lock:
+            state.welcome = {"show": True,
+                             "home": "menu bar" if IS_MACOS else "system tray"}
+
     def describe_settings() -> dict:
         from tibbers import privileged as priv
         try:
@@ -1270,6 +1313,17 @@ def main() -> int:
             if champion:
                 start_guide(champion, role, opponent)
         return {"ok": True, "settings": prefs.settings()}
+
+    def dismiss_welcome(payload: dict) -> dict:
+        """Clear the first-run welcome once the user has seen it.
+
+        `openSettings` is the "take me to settings" button; `windows` is None in
+        headless and browser modes, where there is nothing to open."""
+        with state.lock:
+            state.welcome = {}
+        if payload.get("openSettings") and windows is not None:
+            shell.on_main(windows.open_settings)
+        return {"ok": True}
 
     def choose_elevation(payload: dict) -> dict:
         """Answer the one-time "how should injection get permission" question.
@@ -1363,6 +1417,7 @@ def main() -> int:
                                     "window_action": window_action,
                                     "choose_opponent": choose_opponent,
                                     "choose_elevation": choose_elevation,
+                                    "dismiss_welcome": dismiss_welcome,
                                     "import_build": import_build})
     except server.PortInUse as exc:
         print(f"Port {exc.port} is already in use -- most likely another "
@@ -1490,9 +1545,16 @@ def main() -> int:
     # every launch is noise for something that runs at login.
     # --quiet is a relaunch of an app that was already running: it opens
     # nothing that was not already open, whatever the first-run rule says.
-    show_settings = ((prefs.first_run or args.settings)
-                     and not args.quiet and not offer_elevation)
-    opened_window = show_settings or offer_elevation
+    show_settings = (args.settings and not args.quiet and not offer_elevation)
+    # The welcome (set above on first run) is carried by the picker, like the
+    # elevation card, and its "Open settings" button is the way through. The
+    # elevation card takes precedence on the macOS first-apply launch, so drop
+    # the welcome there rather than stack two cards.
+    if offer_elevation:
+        with state.lock:
+            state.welcome = {}
+    show_welcome = bool(state.welcome.get("show"))
+    opened_window = show_settings or offer_elevation or show_welcome
 
     def after_start() -> None:
         # Every window is shown from in here, never before webview.start().
@@ -1504,7 +1566,7 @@ def main() -> int:
         # seconds and then put no window on screen at all.
         if show_settings:
             windows.open_settings()
-        if offer_elevation:
+        if show_welcome or offer_elevation:
             windows.open_picker(raise_it=True)
 
         # Settle the activation policy BEFORE creating the status item.

@@ -95,10 +95,12 @@ class Unavailable(Exception):
 def _curl(url: str) -> Optional[bytes]:
     """Fetch through curl, which passes the CDN's fingerprinting reliably."""
     try:
+        from . import system
         done = subprocess.run(
             ["curl", "-sS", "--fail", "--http1.1", "--compressed",
              "-A", UA, "--max-time", "20", url],
-            capture_output=True, timeout=25)
+            capture_output=True, timeout=25,
+            creationflags=system.CREATE_NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as exc:
         log.debug("curl fallback failed: %s", exc)
         return None

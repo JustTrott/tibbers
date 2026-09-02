@@ -253,6 +253,13 @@ class State:
         # time). The picker shows a card while this holds, and applying the
         # skin resumes once they choose.
         self.ask_elevation = False
+        # First-run provisioning of the Windows injection tools, while it runs:
+        # {"active": bool, "message": str, "percent": int|None, "error": str}.
+        # The picker shows a progress bar so the download does not look hung.
+        self.setup: dict = {}
+        # The one-time "installed, and I live in the tray" welcome, shown once
+        # on the first launch: {"show": bool, "home": "system tray"|"menu bar"}.
+        self.welcome: dict = {}
         self.log_lines: list = []
         # Champ select, for the build guide. `role` is what the client
         # assigned; `opponent` is the enemy the user nominated as their lane,
@@ -294,6 +301,8 @@ class State:
                 "rebuild": self.rebuild,
                 "patcher": self.patcher,
                 "askElevation": self.ask_elevation,
+                "setup": self.setup,
+                "welcome": self.welcome,
                 "status": self.status,
                 "log": self.log_lines[-40:],
                 "role": self.role,
@@ -480,6 +489,14 @@ def make_handler(state: State, get_lcu, on_select, mock=None,
 
             if path == "/api/elevation":
                 hook = hooks.get("choose_elevation")
+                if hook is None:
+                    self._json({"ok": False, "error": "unavailable"}, 404)
+                    return
+                self._json(hook(payload))
+                return
+
+            if path == "/api/welcome":
+                hook = hooks.get("dismiss_welcome")
                 if hook is None:
                     self._json({"ok": False, "error": "unavailable"}, 404)
                     return

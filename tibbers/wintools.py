@@ -59,9 +59,15 @@ def have_tools(where: Optional[Path] = None) -> bool:
                for name in (*CSLOL_FILES, *LTK_FILES))
 
 
-def _report(progress: Optional[Callable[[str], None]], message: str) -> None:
+#: A progress sink takes a message and an optional 0-100 percent. The app maps
+#: it onto a bar; the CLI and the log just print the message.
+Progress = Callable[[str, Optional[int]], None]
+
+
+def _report(progress: Optional[Progress], message: str,
+            percent: Optional[int] = None) -> None:
     if progress:
-        progress(message)
+        progress(message, percent)
     else:
         log.info(message)
 
@@ -79,10 +85,27 @@ def _latest_asset(api_url: str, match: Callable[[dict], bool]) -> dict:
     raise RuntimeError(f"no matching asset in {api_url}")
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(url: str, dest: Path, progress: Optional[Progress] = None,
+              label: str = "downloading") -> None:
     req = urllib.request.Request(url, headers={"User-Agent": "tibbers-wintools"})
     with urllib.request.urlopen(req, timeout=300) as resp, open(dest, "wb") as out:
-        shutil.copyfileobj(resp, out)
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        last = -1
+        while True:
+            chunk = resp.read(262144)
+            if not chunk:
+                break
+            out.write(chunk)
+            done += len(chunk)
+            if total and progress is not None:
+                pct = int(done * 100 / total)
+                # Report on whole-percent changes only, so a slow link does not
+                # flood the state with near-identical updates.
+                if pct != last:
+                    last = pct
+                    _report(progress, f"{label} {done // 1048576}/"
+                            f"{total // 1048576} MB", pct)
 
 
 def _find(root: Path, name: str) -> Optional[Path]:
@@ -103,19 +126,21 @@ def _install_pair(source_dir: Path, names, into: Path) -> None:
 
 
 def _fetch_cslol(into: Path, progress) -> None:
-    _report(progress, "fetching the overlay builder (cslol-manager)...")
     asset = _latest_asset(CSLOL_LATEST, lambda a: a.get("name") == CSLOL_ASSET)
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-cslol-"))
     try:
         sfx = tmp / CSLOL_ASSET
-        _download(asset["browser_download_url"], sfx)
+        _download(asset["browser_download_url"], sfx,
+                  progress, "downloading overlay builder")
         extract = tmp / "x"
         extract.mkdir()
+        _report(progress, "extracting overlay builder...")
         # The Windows release is a 7-Zip console self-extractor; -o/-y unpack
-        # it without a GUI, the same call scripts/fetch_modtools.ps1 makes.
+        # it without a GUI. CREATE_NO_WINDOW keeps the windowed app from popping
+        # a console for it (see system.CREATE_NO_WINDOW).
         subprocess.run([str(sfx), f"-o{extract}", "-y"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       check=True)
+                       check=True, creationflags=system.CREATE_NO_WINDOW)
         modtools = _find(extract, "mod-tools.exe")
         if modtools is None:
             raise RuntimeError("mod-tools.exe not found after extraction")
@@ -125,20 +150,21 @@ def _fetch_cslol(into: Path, progress) -> None:
 
 
 def _fetch_ltk(into: Path, progress) -> None:
-    _report(progress, "fetching the injection patcher (LTK Manager)...")
     asset = _latest_asset(
         LTK_LATEST, lambda a: str(a.get("name", "")).lower().endswith(".msi"))
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-ltk-"))
     try:
         msi = tmp / asset["name"]
-        _download(asset["browser_download_url"], msi)
+        _download(asset["browser_download_url"], msi,
+                  progress, "downloading injection patcher")
         extract = tmp / "x"
+        _report(progress, "extracting injection patcher...")
         # Administrative install: unpacks the payload with NO install -- no
-        # service, no registry, no Vanguard interaction.
+        # service, no registry, no Vanguard interaction. Windowless as above.
         subprocess.run(["msiexec.exe", "/a", str(msi), "/qn",
                         f"TARGETDIR={extract}"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       check=True)
+                       check=True, creationflags=system.CREATE_NO_WINDOW)
         host = _find(extract, "ltk_patcher_host.exe")
         if host is None:
             raise RuntimeError("ltk_patcher_host.exe not found after extraction")
@@ -148,7 +174,7 @@ def _fetch_ltk(into: Path, progress) -> None:
 
 
 def ensure(where: Optional[Path] = None,
-           progress: Optional[Callable[[str], None]] = None,
+           progress: Optional[Progress] = None,
            force: bool = False) -> Path:
     """Make both tool pairs present in *where*, fetching what is missing.
 

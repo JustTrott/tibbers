@@ -203,7 +203,8 @@ class Injector:
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=timeout)
+                                  timeout=timeout,
+                                  creationflags=system.CREATE_NO_WINDOW)
         except subprocess.TimeoutExpired:
             return InjectionResult(False, f"mkoverlay timed out after {timeout}s")
 

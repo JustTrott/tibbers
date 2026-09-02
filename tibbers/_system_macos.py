@@ -41,6 +41,11 @@ CLIENT_UX_PROCESS = "LeagueClientUx"
 #: without the passwordless helper. Windows sets this False.
 INJECTION_NEEDS_ROOT = True
 
+#: A no-op on macOS (see the Windows module, where it suppresses the console
+#: window a child of the windowed app would otherwise pop up). Passed to
+#: `subprocess` on both platforms so the call sites stay identical.
+CREATE_NO_WINDOW = 0
+
 INSTALL_ROOTS = (
     Path("/Applications/League of Legends.app/Contents/LoL"),
     Path.home() / "Applications/League of Legends.app/Contents/LoL",

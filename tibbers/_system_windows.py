@@ -57,6 +57,13 @@ CLIENT_UX_PROCESS = "LeagueClientUx.exe"
 #: there is no helper, no prompt, and no "authorization cancelled" outcome.
 INJECTION_NEEDS_ROOT = False
 
+#: Pass to every subprocess the app runs. The packaged app is windowed (it has
+#: no console of its own), so a child started without this makes Windows
+#: allocate a fresh console window for it -- a black box that flashes up during
+#: champ select (mkoverlay), a guide fetch (curl) or the first-run download.
+#: On macOS the same constant is 0 and does nothing.
+CREATE_NO_WINDOW = 0x08000000
+
 # --- the two patchers ------------------------------------------------------
 #
 # Windows splits the work cslol's mod-tools does on macOS across two binaries,

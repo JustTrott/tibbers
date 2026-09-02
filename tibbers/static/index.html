@@ -159,6 +159,21 @@
   .ebtn.primary:hover { background: var(--gold-b); }
   .ebtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
+  /* First-run tool download: a slim banner pinned to the bottom, so the picker
+     stays usable for browsing while the injection tools come down. */
+  .setup { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
+           padding: 8px 14px 9px; background: var(--raised);
+           border-top: 1px solid var(--gold-d); font-size: 11px;
+           color: var(--ink-mid); }
+  .setup .sbar { margin-top: 6px; height: 3px; border-radius: 2px;
+                 background: var(--rule-d); overflow: hidden; }
+  .setup .sbar i { display: block; height: 100%; width: 0;
+                   background: var(--gold); transition: width 200ms ease; }
+  /* No byte-percent yet (resolving a release, extracting): a travelling sliver
+     so the bar reads as working rather than stuck at zero. */
+  .setup.indeterminate .sbar i { width: 35%; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
   /* ═══ tabs ═════════════════════════════════════════════════════════ */
   .tabs { position: relative; z-index: 3; flex: none; display: flex;
           align-items: center; gap: 2px; padding: 0 22px;
@@ -949,6 +964,28 @@
     </div>
   </div>
 
+  <!-- First launch: say the app is installed and lives in the tray/menu bar,
+       so closing the window does not read as quitting. Driven by state.welcome,
+       cleared through /api/welcome. -->
+  <div class="elevate" id="welcome" hidden>
+    <div class="ecard" role="dialog" aria-modal="true" aria-labelledby="w-title">
+      <h2 id="w-title">tibbers is ready</h2>
+      <p id="w-body"></p>
+      <div class="erow">
+        <button class="ebtn primary" id="w-settings">Open settings</button>
+        <button class="ebtn" id="w-ok">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-run download of the injection tools (Windows). A slim banner with
+       a real progress bar, so a ~50 MB fetch does not look like a hang. Driven
+       by state.setup. -->
+  <div class="setup" id="setup" hidden>
+    <span id="setup-msg"></span>
+    <div class="sbar"><i id="setup-fill"></i></div>
+  </div>
+
 <script>
 let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
 let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
@@ -1127,6 +1164,29 @@ function render(s) {
   // The one-time passwordless offer. The server clears the flag once answered,
   // and the click hides it optimistically so there is no flash on the way.
   $('elevate').hidden = !s.askElevation;
+
+  // First-run welcome. Fill the platform-specific body only while showing.
+  const wel = s.welcome || {};
+  const welEl = $('welcome');
+  if (wel.show && welEl.hidden) {
+    $('w-body').textContent =
+      `tibbers lives in your ${wel.home || 'system tray'} and watches champ ` +
+      `select. Close this window whenever — it keeps running there. Hover ` +
+      `a champion, pick a skin, and launch your game.`;
+  }
+  welEl.hidden = !wel.show;
+
+  // First-run tool download banner.
+  const setup = s.setup || {};
+  const setupEl = $('setup');
+  setupEl.hidden = !(setup.active || setup.error);
+  if (!setupEl.hidden) {
+    $('setup-msg').textContent = setup.message || '';
+    const known = setup.percent !== null && setup.percent !== undefined;
+    setupEl.classList.toggle('indeterminate', setup.active && !known);
+    $('setup-fill').style.width = known ? setup.percent + '%'
+                                        : (setup.error ? '100%' : '0');
+  }
   const bar = $('bar');
   bar.hidden = !busy || !d.total;
   if (!bar.hidden) bar.querySelector('i').style.width =
@@ -2183,6 +2243,18 @@ function chooseElevation(choice) {
 }
 $('e-auto').addEventListener('click', () => chooseElevation('auto'));
 $('e-prompt').addEventListener('click', () => chooseElevation('prompt'));
+
+/* First-run welcome. Both buttons clear it on the server; "Open settings"
+   also asks the shell to raise the settings window. Hidden optimistically. */
+function dismissWelcome(openSettings) {
+  $('welcome').hidden = true;
+  fetch('/api/welcome', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ openSettings: !!openSettings }),
+  });
+}
+$('w-settings').addEventListener('click', () => dismissWelcome(true));
+$('w-ok').addEventListener('click', () => dismissWelcome(false));
 
 /* Tab moves between the views this mode has, which is what it is for here. The
    import row is the one place that also needs ordinary tabbing -- its button,
