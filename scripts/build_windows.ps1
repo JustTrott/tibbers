@@ -84,7 +84,7 @@ if ($Installer) {
     Write-Host "==> Building the installer with Inno Setup (v$version)"
     & $iscc "/DMyAppVersion=$version" $iss
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-    Write-Host "==> Installer written to dist\Tibbers-$version-setup.exe"
+    Write-Host "==> Installer written to dist\Tibbers-windows-setup.exe (v$version)"
 }
 
 Write-Host ""

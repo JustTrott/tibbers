@@ -32,7 +32,10 @@ DisableProgramGroupPage=yes
 ; Per-user install: no administrator rights required.
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=Tibbers-{#MyAppVersion}-setup
+; A fixed name (no version), so releases/latest/download/Tibbers-windows-setup
+; .exe is a stable link the README download button can point at -- the same way
+; the macOS Tibbers.zip is version-independent. The version lives in AppVersion.
+OutputBaseFilename=Tibbers-windows-setup
 SetupIconFile=..\assets\tibbers.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
