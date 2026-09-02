@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tibbers — pick a skin in champ select</title>
+<meta name="description" content="Your companion for League of Legends on Windows and macOS: a skin changer and build guide in one window. Every skin of the champion you hover, applied the moment the game starts. Free, open source, never touches your install.">
+<link rel="canonical" href="https://tibbers.lol/">
+<link rel="icon" href="/img/tibbers.png" type="image/png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="tibbers — pick a skin in champ select">
+<meta property="og:description" content="A skin changer and build guide for League on Windows and macOS. Every skin of the champion you hover, applied when the game starts. Free and open source.">
+<meta property="og:url" content="https://tibbers.lol/">
+<meta property="og:image" content="https://tibbers.lol/img/skin-picker.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#16171c">
+<link rel="preload" href="/fonts/BeaufortforLOL-Bold.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="preload" href="/fonts/BeaufortforLOL-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<style>
+  @font-face {
+    font-family: "Beaufort"; src: url("/fonts/BeaufortforLOL-Regular.ttf") format("truetype");
+    font-weight: 400; font-display: swap;
+  }
+  @font-face {
+    font-family: "Beaufort"; src: url("/fonts/BeaufortforLOL-Bold.ttf") format("truetype");
+    font-weight: 700; font-display: swap;
+  }
+
+  :root {
+    --void:    oklch(0.13 0.010 265);
+    --raised:  oklch(0.22 0.016 265);
+    --rule-d:  oklch(0.28 0.022 80);
+    --hair:    oklch(0.20 0.012 264);
+    --gold:    oklch(0.80 0.095 85);
+    --gold-b:  oklch(0.90 0.070 88);
+    --gold-d:  oklch(0.52 0.060 85);
+    --ink:     oklch(0.97 0.005 85);
+    --ink-mid: oklch(0.80 0.010 85);
+    --ink-low: oklch(0.66 0.012 85);
+    --live:    oklch(0.74 0.13 155);
+    --ctl:     oklch(0.16 0.012 264);
+    --ctl-on:  oklch(0.20 0.020 90);
+    --out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+    --inout:     cubic-bezier(0.645, 0.045, 0.355, 1);
+    --serif: "Beaufort", Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --measure: 66ch;
+    --gutter: clamp(20px, 4vw, 48px);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--void); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font: 400 17px/1.55 var(--serif);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  ::selection { background: var(--gold-d); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
+  a { color: var(--gold-b); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: var(--gold-d); transition: text-decoration-color 160ms; }
+  a:hover { text-decoration-color: var(--gold-b); }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--void); }
+  ::-webkit-scrollbar-thumb { background: var(--raised); border: 2px solid var(--void); border-radius: 6px; }
+  img { max-width: 100%; height: auto; display: block; }
+  code { font-family: var(--mono); font-size: 0.85em; color: var(--gold-b); }
+
+  .mono {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-low);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wrap { width: min(1120px, 100% - 2 * var(--gutter)); margin-inline: auto; }
+
+  /* ---------- top bar: the app's own status strip ---------- */
+  .top {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .top .brand { display: flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; }
+  .top .brand img { width: 28px; height: 28px; border: 1px solid var(--gold-d); }
+  .top .brand span { font: 700 15px/1 var(--serif); letter-spacing: 0.22em; text-transform: uppercase; }
+  .top .lamps { display: flex; gap: 18px; margin-left: 22px; }
+  .top .lamps b { font-weight: 400; display: inline-flex; align-items: center; gap: 7px; }
+  .top .lamps b::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--live); }
+  .top nav { margin-left: auto; display: flex; gap: 22px; align-items: center; }
+  .top nav a { text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  .top nav a:hover { color: var(--ink); }
+  .top nav svg { width: 15px; height: 15px; fill: currentColor; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: clamp(56px, 9vw, 120px) 0 clamp(36px, 5vw, 60px); }
+  .hero h1 {
+    margin: 0;
+    font: 700 clamp(38px, 5.6vw, 72px)/1.04 var(--serif);
+    letter-spacing: -0.012em;
+    max-width: 17ch;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-style: normal; color: var(--gold-b); }
+  .hero .lede {
+    margin: 26px 0 0;
+    max-width: 58ch;
+    font-size: clamp(18px, 1.6vw, 21px);
+    line-height: 1.5;
+    color: var(--ink-mid);
+    text-wrap: pretty;
+  }
+  .hero .lede strong { color: var(--ink); font-weight: 400; }
+
+  .dl { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 38px; align-items: center; position: relative; z-index: 10; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 15px 24px 15px 20px;
+    background: var(--ctl-on);
+    border: 1px solid var(--gold-d);
+    color: var(--ink);
+    text-decoration: none;
+    font: 700 16px/1 var(--serif);
+    letter-spacing: 0.02em;
+    transition: border-color 160ms, background 160ms, transform 160ms var(--out-quart);
+  }
+  .btn svg { width: 18px; height: 18px; fill: var(--gold-b); flex: none; }
+  .btn:hover { border-color: var(--gold); background: oklch(0.23 0.028 90); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn small { display: block; font: 400 11px/1 var(--mono); letter-spacing: 0.1em; color: var(--ink-low); margin-top: 6px; text-transform: uppercase; }
+  .btn .t { display: flex; flex-direction: column; text-align: left; }
+  .split { display: inline-flex; align-items: stretch; position: relative; }
+  .split .btn { min-width: 232px; }
+  .dlmenu summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    width: 46px; height: 100%;
+    margin-left: -1px;
+    background: var(--ctl-on);
+    border: 1px solid var(--gold-d);
+    color: var(--gold-b);
+    transition: border-color 160ms, background 160ms;
+  }
+  .dlmenu summary::-webkit-details-marker { display: none; }
+  .dlmenu summary svg { width: 16px; height: 16px; fill: currentColor; transition: transform 220ms var(--inout); }
+  .dlmenu summary:hover, .dlmenu[open] summary { border-color: var(--gold); background: oklch(0.23 0.028 90); }
+  .dlmenu[open] summary svg { transform: rotate(180deg); }
+  .dlmenu .menu {
+    position: absolute; left: 0; top: calc(100% + 8px); z-index: 5;
+    min-width: 100%;
+    background: var(--raised);
+    border: 1px solid var(--rule-d);
+    box-shadow: 0 18px 40px -18px oklch(0 0 0 / 0.85);
+    padding: 6px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .dlmenu[open] .menu { animation: rise 180ms var(--out-quart) both; }
+  }
+  .dlmenu .menu a {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    color: var(--ink); text-decoration: none;
+    font: 700 15px/1 var(--serif);
+    transition: background 160ms;
+  }
+  .dlmenu .menu a:hover { background: var(--ctl-on); }
+  .dlmenu .menu a svg { width: 16px; height: 16px; fill: var(--gold-b); flex: none; }
+  .dlmenu .menu a small { display: block; font: 400 11px/1 var(--mono); letter-spacing: 0.1em; color: var(--ink-low); margin-top: 6px; text-transform: uppercase; }
+  .dl .src { margin-left: 8px; }
+  .dl .src a { text-decoration: none; display: inline-flex; align-items: center; gap: 8px; color: var(--ink-mid); }
+  .dl .src a:hover { color: var(--ink); }
+  .dl .src svg { width: 15px; height: 15px; fill: currentColor; }
+  .meta { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 22px; }
+  .meta .v { color: var(--gold-b); }
+
+  /* ---------- the picker, as the app frames it ---------- */
+  .shot { padding: 0 0 clamp(60px, 8vw, 110px); }
+  .shot figure { margin: 0; }
+  .shot .frame {
+    position: relative;
+    border: 1px solid var(--rule-d);
+    background: var(--raised);
+    box-shadow: 0 30px 80px -30px oklch(0 0 0 / 0.8), 0 8px 24px -12px oklch(0 0 0 / 0.6);
+    overflow: hidden;
+  }
+  .shot picture, .shot img { display: block; width: 100%; }
+  .shot figcaption { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-top: 14px; }
+  .shot figcaption .name { font: 400 15px/1.4 var(--serif); color: var(--ink-mid); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .shot .frame { animation: settle 1400ms var(--out-quart) both; }
+    .hero h1, .hero .lede, .hero .dl, .hero .meta { animation: rise 520ms var(--out-quart) both; }
+    .hero .lede { animation-delay: 60ms; }
+    .hero .dl { animation-delay: 120ms; }
+    .hero .meta { animation-delay: 160ms; }
+    .shot .frame { animation-delay: 140ms; }
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes settle { from { opacity: 0; transform: scale(1.02) translateY(16px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- sections ---------- */
+  section { padding: clamp(48px, 7vw, 96px) 0; border-top: 1px solid var(--hair); }
+  section h2 {
+    margin: 0 0 clamp(22px, 3vw, 36px);
+    font: 700 clamp(28px, 3.2vw, 40px)/1.1 var(--serif);
+    letter-spacing: -0.006em;
+    text-wrap: balance;
+  }
+  section p { max-width: var(--measure); margin: 0 0 1.1em; color: var(--ink-mid); text-wrap: pretty; }
+  section p strong { color: var(--ink); font-weight: 400; }
+  .two { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
+  .two > figure { margin: 0; position: sticky; top: 28px; }
+  .two > figure .frame { border: 1px solid var(--rule-d); background: var(--raised); overflow: hidden; box-shadow: 0 24px 60px -30px oklch(0 0 0 / 0.8); }
+  .two > figure figcaption { margin-top: 12px; font-size: 15px; color: var(--ink-low); }
+
+  /* the table row primitive, borrowed from the app */
+  .rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule-d); }
+  .rows li {
+    display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .rows li .k { padding-top: 5px; color: var(--gold-b); }
+  .rows li p { margin: 0; max-width: 60ch; }
+  .rows li p + p { margin-top: 0.6em; }
+
+  .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 0; border-top: 1px solid var(--rule-d); }
+  .steps li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; padding: 22px 0; border-bottom: 1px solid var(--hair); }
+  .steps li .k { padding-top: 5px; color: var(--gold-b); }
+  .steps li h3 { margin: 0 0 8px; font: 700 24px/1.2 var(--serif); }
+  .steps li p { margin: 0; max-width: 58ch; }
+  .steps li p + p { margin-top: 0.6em; }
+
+  .aside {
+    margin-top: 28px;
+    padding: 18px 22px;
+    border: 1px solid var(--rule-d);
+    background: var(--ctl);
+    max-width: 68ch;
+  }
+  .aside p { margin: 0; color: var(--ink-mid); }
+
+  /* install */
+  .install { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(28px, 4vw, 56px); }
+  .install h3 { margin: 0 0 14px; font: 700 24px/1.2 var(--serif); display: flex; align-items: center; gap: 12px; }
+  .install h3 svg { width: 20px; height: 20px; fill: var(--gold-b); }
+  .install ol { margin: 0 0 18px; padding-left: 1.3em; color: var(--ink-mid); }
+  .install ol li { padding-left: 0.3em; margin-bottom: 8px; }
+  .install ol li::marker { font-family: var(--mono); font-size: 12px; color: var(--gold-d); }
+  .install .req { font-size: 15px; color: var(--ink-low); margin: 0; }
+  .install .btn { margin-top: 6px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--rule-d); padding: 40px 0 56px; }
+  footer .cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 32px; }
+  footer p { margin: 0 0 0.8em; color: var(--ink-mid); font-size: 15px; max-width: 62ch; text-wrap: pretty; }
+  footer .links { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  footer .links a { text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  footer .links a:hover { color: var(--ink); }
+  footer .links svg { width: 14px; height: 14px; fill: currentColor; }
+  footer .legal { margin-top: 28px; font-size: 15px; color: var(--ink-low); }
+
+  @media (max-width: 860px) {
+    .two { grid-template-columns: 1fr; }
+    .two > figure { position: static; order: -1; }
+    .top .lamps { display: none; }
+    footer .cols { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .rows li, .steps li { grid-template-columns: 1fr; gap: 8px; }
+    .rows li .k, .steps li .k { padding-top: 0; }
+    .dl { flex-direction: column; align-items: stretch; }
+    .btn { justify-content: flex-start; }
+    .dl .src { margin-left: 0; }
+    .split { display: flex; }
+    .split .btn { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<!--
+THESIS: The app is the argument. The page is built like the picker itself: void ground, one warm gold, the champion's art as the largest thing on screen, status in small mono. It refuses the launch-page ladder of feature cards and a glowing HUD.
+OWN-WORLD: Beaufort for every word, ui-monospace for every label and figure, gold only on edges and links, hairlines instead of cards, splash art doing the persuading.
+STORY: a League player on a Mac (or now Windows) learns they can pick any skin from champ select in seconds, sees the real window, downloads, and trusts it because it never touches the install and says so plainly.
+FIRST VIEWPORT: headline top-left at display scale, one lede, two download buttons and a source link beneath, then the picker screenshot at full content width settling into place.
+FORM: a product page built from the product's own table-row primitive; extension of the established world, no tournament.
+-->
+<header class="wrap top">
+  <a class="brand" href="/"><img src="/img/tibbers.png" alt="" width="28" height="28"><span>tibbers</span></a>
+  <div class="lamps mono" aria-hidden="true"><b>ChampSelect</b><b>library</b><b>idle</b></div>
+  <nav class="mono">
+    <a href="https://github.com/JustTrott/tibbers">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+</header>
+
+<main>
+  <section class="wrap hero" style="border-top:0">
+    <h1>Pick a skin in champ select. It's on your game <em>when it starts.</em></h1>
+    <p class="lede">Your new companion for League of Legends, on Windows and macOS. tibbers is a skin changer and build guide in one small window: every skin of the champion you hover, right there in the lobby, applied the moment the game launches, with the runes and items to go with it. <strong>Free, open source, and it never touches your League install.</strong></p>
+    <div class="dl">
+      <div class="split">
+        <a class="btn" id="dl-main" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-Windows.zip" data-track="download" data-platform="windows">
+          <svg class="ic-win" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+          <svg class="ic-mac" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+          <span class="t"><span id="dl-label">Download for Windows</span><small id="dl-sub">Windows 10 and 11</small></span>
+        </a>
+        <details class="dlmenu" id="dlmenu">
+          <summary aria-label="Download for another platform"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 5.6a.8.8 0 0 1 1.13 0L8 9.27l3.67-3.67a.8.8 0 1 1 1.13 1.13l-4.23 4.24a.8.8 0 0 1-1.14 0L3.2 6.73a.8.8 0 0 1 0-1.13z"/></svg></summary>
+          <div class="menu" role="list">
+            <a role="listitem" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-Windows.zip" data-track="download" data-platform="windows">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+              <span class="t">Windows<small>Windows 10 and 11 · .zip</small></span>
+            </a>
+            <a role="listitem" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip" data-track="download" data-platform="macos">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+              <span class="t">macOS<small>Apple Silicon · macOS 26 · .zip</small></span>
+            </a>
+          </div>
+        </details>
+      </div>
+      <span class="src mono">
+        <a href="https://github.com/JustTrott/tibbers">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Source on GitHub
+        </a>
+      </span>
+    </div>
+    <p class="meta mono"><span>Latest <span class="v" id="version">v0.1.1</span></span><span>Windows · macOS</span><span>GPL-3.0</span><span>No account, no login</span></p>
+  </section>
+
+  <div class="wrap shot">
+    <figure>
+      <div class="frame">
+        <picture>
+          <source srcset="/img/skin-picker.webp" type="image/webp">
+          <img src="/img/skin-picker.png" width="1372" height="874" alt="The tibbers window during champ select: Ahri is locked in, a splash of After Hours Spirit Blossom Springs Ahri fills the window, and a rail of her other skins runs along the bottom." fetchpriority="high">
+        </picture>
+      </div>
+      <figcaption>
+        <span class="name">Ahri locked in, After Hours Spirit Blossom Springs queued, sixteen other skins a click away.</span>
+        <span class="mono">103089 · ready</span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <section class="wrap" id="why">
+    <h2>More League, less tabbing out.</h2>
+    <p>Champ select lasts about a minute, and the decision competes with runes, summoner spells and lobby chat. tibbers sits beside the game and amplifies that minute: it reads the champion you hover from the client's own API, puts every one of that champion's skins on screen, remembers what you liked last time, and has the build ready before you lock in. Skins you don't own included.</p>
+    <p><strong>Nothing you see is made up.</strong> Every name, splash and icon comes from the League client. The builds and counters come from u.gg and op.gg, and every page links back to where its numbers came from.</p>
+    <p><strong>And nothing here is an edge.</strong> A skin is cosmetic and only you see it. The build suggestions are public stats anyone can open in a browser. tibbers just saves you the tab-out, on Windows and on macOS alike.</p>
+  </section>
+
+  <section class="wrap" id="what">
+    <h2>What it does</h2>
+    <div class="two">
+      <ul class="rows">
+        <li><span class="k mono">On hover</span><p>Skins appear the instant you hover a champion, before you lock in, and start building quietly in the background so they're ready if you take the pick. A skin that can't be built stays on screen, dimmed, so absence is visible rather than mysterious.</p></li>
+        <li><span class="k mono">Remembered</span><p>The skin you like on each champion, and the chroma on each skin, put back automatically the next time you lock that champion.</p></li>
+        <li><span class="k mono">Builds</span><p>While you decide, it pulls the champion's runes, items, skill order and matchups from u.gg, and Arena augments, items and a tier list from op.gg. One click imports the build straight into the client, so you don't have to tab out to a stats site.</p></li>
+        <li><span class="k mono">Out of the way</span><p>Close the window and it drops into the menu bar or system tray, still watching champ select. A small picker raises itself when you lock a champion and closes when the lobby ends.</p></li>
+        <li><span class="k mono">One prompt</span><p>On macOS, applying a skin needs your password once per game, or never again after an optional one-time setup. On Windows there is nothing to elevate, so it never asks.</p></li>
+      </ul>
+      <figure>
+        <div class="frame">
+          <picture>
+            <source srcset="/img/build-guide.webp" type="image/webp">
+            <img src="/img/build-guide.jpg" width="1174" height="788" alt="The build page: runes, skill order and items from u.gg, over a dimmed splash." loading="lazy">
+          </picture>
+        </div>
+        <figcaption>The build page, runes and items from u.gg, with a link back to the source.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="wrap" id="how">
+    <h2>How it works, and why your install is safe</h2>
+    <p>Riot's client verifies its own files and repairs anything changed, so tibbers never writes into the League installation. It works on the running game instead, in three small steps.</p>
+    <ol class="steps">
+      <li><span class="k mono">1 · Build</span><div><h3>A few kilobytes, out of your own files</h3><p>When you pick a skin, tibbers writes a tiny replacement game archive that points the base skin's asset references at the skin you chose. Those files already ship with your install, so no skin art is ever downloaded and no skin repository is contacted. A mod is a rewrite of pointers, not a download.</p></div></li>
+      <li><span class="k mono">2 · Wait</span><div><h3>A patcher that waits for the game</h3><p>It starts a small patcher, the <code>mod-tools</code> from <a href="https://github.com/LeagueToolkit/cslol-manager">cslol-manager</a>, that watches for the game to launch. The game is never frozen or suspended, and what the patcher is about to run is printed before it runs.</p></div></li>
+      <li><span class="k mono">3 · Redirect</span><div><h3>Reads go to the overlay, the install stays put</h3><p>When the game starts, the patcher redirects its archive reads into that overlay. Only you see the skin. Close the game and nothing is left behind.</p></div></li>
+    </ol>
+    <div class="aside" id="bannable">
+      <p><strong style="color:var(--ink);font-weight:400">Is it bannable?</strong> In practice, no. Custom skins are client-side only, nobody else sees them, and they change nothing about how the game plays, so Riot treats them as use-at-your-own-risk rather than something it actions. Rose, the equivalent tool on Windows, injects the same way without people getting banned. The caveats: don't expect Riot support if something breaks, and Korea, Turkey and Russia enforce more strictly than NA or EU.</p>
+    </div>
+  </section>
+
+  <section class="wrap" id="install">
+    <h2>Install</h2>
+    <div class="install">
+      <div>
+        <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>macOS</h3>
+        <ol>
+          <li>Download, unzip, and drag <strong>Tibbers.app</strong> into Applications.</li>
+          <li>The first time, right-click the app and choose <strong>Open</strong>. macOS asks because the app isn't notarized. You only do this once.</li>
+          <li>Start League as usual, hover a champion, click a skin.</li>
+        </ol>
+        <p class="req">Apple Silicon, macOS 26. Updates arrive inside the app.</p>
+        <a class="btn" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip" data-track="download" data-platform="macos"><span class="t">Download for macOS</span></a>
+      </div>
+      <div>
+        <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>Windows</h3>
+        <ol>
+          <li>Download and unzip, then run <strong>Tibbers</strong>.</li>
+          <li>Windows may warn about an unknown publisher the first time. Choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+          <li>Start League as usual, hover a champion, click a skin. No password prompt.</li>
+        </ol>
+        <p class="req">Windows 10 or 11. New, and less travelled than the Mac build.</p>
+        <a class="btn" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-Windows.zip" data-track="download" data-platform="windows"><span class="t">Download for Windows</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <div class="cols">
+    <div>
+      <p>tibbers is mostly glue. The hard parts are other people's work: <a href="https://github.com/LeagueToolkit/cslol-manager">cslol-manager</a> and the League Toolkit for the overlay builder and patcher, <a href="https://u.gg">u.gg</a> and <a href="https://op.gg">op.gg</a> for the statistics, and a nod to <a href="https://github.com/Alban1911/Rose">Rose</a>, the Windows skin changer that inspired it.</p>
+      <p>Free software under the <a href="https://github.com/JustTrott/tibbers/blob/main/LICENSE">GNU GPL v3</a>. Copyright © 2026 Temirlan Amanzhanov.</p>
+    </div>
+    <div class="links mono">
+      <a href="https://github.com/JustTrott/tibbers"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source on GitHub</a>
+      <a href="https://github.com/JustTrott/tibbers/releases">All releases</a>
+      <a href="https://github.com/JustTrott/tibbers/blob/main/ARCHITECTURE.md">How it's built</a>
+      <a href="https://github.com/JustTrott/tibbers/issues">Report a problem</a>
+    </div>
+  </div>
+  <p class="legal">tibbers is unofficial and is not endorsed by, affiliated with, or sponsored by Riot Games. League of Legends and all related art are trademarks or copyrights of Riot Games, Inc.</p>
+</footer>
+
+<script>
+  // Analytics: pageviews plus which download button was pressed.
+  !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug getPageViewId captureTraceFeedback captureTraceMetric".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+  posthog.init('phc_uSq4Fk3GMFDNu5cGM3sMFCUb6BUWamcofitHSUdH2WUD', {
+    api_host: 'https://us.i.posthog.com',
+    defaults: '2025-05-24',
+    person_profiles: 'identified_only',
+    // Only two events leave this page: $pageview, and download_clicked below.
+    autocapture: false,
+    capture_pageview: true,
+    capture_pageleave: false,
+    capture_dead_clicks: false,
+    capture_heatmaps: false,
+    rageclick: false,
+    capture_performance: false,
+    disable_session_recording: true,
+    disable_surveys: true,
+    disable_web_experiments: true,
+    advanced_disable_feature_flags: true,
+  });
+
+  function currentVersion() { return document.getElementById('version').textContent; }
+
+  // The main button is for the visitor's own OS; Windows unless we can see a Mac.
+  var ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '';
+  var isMac = /mac/i.test(ua) && !/iphone|ipad|ipod/i.test(ua);
+  if (isMac) {
+    var main = document.getElementById('dl-main');
+    main.href = 'https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers.zip';
+    main.dataset.platform = 'macos';
+    main.querySelector('.ic-win').style.display = 'none';
+    main.querySelector('.ic-mac').style.display = '';
+    document.getElementById('dl-label').textContent = 'Download for macOS';
+    document.getElementById('dl-sub').textContent = 'Apple Silicon · macOS 26';
+  }
+
+  var menu = document.getElementById('dlmenu');
+  document.addEventListener('click', function (e) {
+    if (menu.open && !menu.contains(e.target)) menu.open = false;
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
+  });
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-track="download"]');
+    if (!a) return;
+    posthog.capture('download_clicked', {
+      platform: a.dataset.platform,
+      detected_platform: isMac ? 'macos' : 'windows',
+      version: currentVersion(),
+      href: a.href,
+    });
+  });
+
+  // Show the version of the release the buttons actually resolve to.
+  fetch('https://api.github.com/repos/JustTrott/tibbers/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (rel) { if (rel && rel.tag_name) document.getElementById('version').textContent = rel.tag_name; })
+    .catch(function () {});
+</script>
+</body>
+</html>
