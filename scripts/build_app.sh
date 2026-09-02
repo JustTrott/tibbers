@@ -242,11 +242,114 @@ if [[ $PACKAGE -eq 1 ]]; then
     echo "    ${DIST}/Tibbers.zip"
 
     STAGE="$(mktemp -d)"
-    trap 'rm -rf "$STAGE"' EXIT
+    RW_DMG="${STAGE}.rw.dmg"
+    MOUNT=""
+    trap '[[ -n "$MOUNT" ]] && hdiutil detach -quiet "$MOUNT" 2>/dev/null; rm -rf "$STAGE" "$RW_DMG"' EXIT
     cp -R "$APP" "${STAGE}/"
     ln -s /Applications "${STAGE}/Applications"
+
+    # The window people see when they open the image: the app on the left,
+    # Applications on the right, an arrow between them and one line saying
+    # what to do. The picture is drawn here at 2x with the app's own face and
+    # palette; the layout (icon size, positions, window size) is written into
+    # the volume's .DS_Store by Finder itself, which is the only thing that
+    # writes that file reliably. Without Pillow the image is still built,
+    # just as a plain folder.
+    mkdir -p "${STAGE}/.background"
+    if python3 - "${STAGE}/.background/tibbers.png" \
+            "${REPO_ROOT}/tibbers/static/fonts/BeaufortforLOL-Bold.ttf" <<'BG'
+import sys
+from PIL import Image, ImageDraw, ImageFont
+out, font_path = sys.argv[1], sys.argv[2]
+W, H, S = 660, 412, 2                       # window content in points, at 2x
+img = Image.new("RGB", (W * S, H * S), (17, 18, 23))            # --void
+draw = ImageDraw.Draw(img)
+gold, gold_dim, ink_low = (232, 206, 150), (134, 116, 78), (160, 158, 150)
+# Arrow between the two icon slots. Finder draws a 128pt icon whose centre
+# lands about 45pt below the "position" it is given, so y=150 puts the icons
+# at ~195, which is where the arrow goes.
+y = 195 * S
+x0, x1 = 265 * S, 395 * S
+draw.line([(x0, y), (x1 - 14 * S, y)], fill=gold, width=3 * S)
+draw.polygon([(x1, y), (x1 - 22 * S, y - 11 * S), (x1 - 22 * S, y + 11 * S)], fill=gold)
+try:
+    big = ImageFont.truetype(font_path, 22 * S)
+    small = ImageFont.truetype(font_path, 12 * S)
+except OSError:
+    big = small = ImageFont.load_default()
+line1 = "Drag Tibbers into Applications"
+line2 = "THEN RIGHT-CLICK IT ONCE AND CHOOSE OPEN"
+w1 = draw.textlength(line1, font=big)
+w2 = draw.textlength(line2, font=small)
+draw.text(((W * S - w1) / 2, 300 * S), line1, font=big, fill=gold)
+draw.text(((W * S - w2) / 2, 338 * S), line2, font=small, fill=ink_low)
+img.save(out, dpi=(72 * S, 72 * S))
+BG
+    then
+        STYLED=1
+    else
+        echo "    (no Pillow for python3: plain disk image)"
+        STYLED=0
+        rm -rf "${STAGE}/.background"
+    fi
+
     hdiutil create -quiet -volname "Tibbers" -srcfolder "$STAGE" \
-            -fs HFS+ -format UDZO -ov "${DIST}/Tibbers.dmg"
+            -fs HFS+ -format UDRW -ov "$RW_DMG"
+    if [[ $STYLED -eq 1 ]]; then
+        # Not -nobrowse: Finder can only script a volume it can see. The
+        # disk is addressed by its mount name, which is "Tibbers 1" if a
+        # Tibbers image is already open, so a stale mount cannot be styled
+        # by mistake.
+        MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen "$RW_DMG" \
+                 | awk -F'\t' '/\/Volumes\//{print $NF}')"
+        # Finder lays the window out and writes .DS_Store on close.
+        osascript - "$(basename "$MOUNT")" >/dev/null <<'AS'
+on run argv
+set volName to item 1 of argv
+tell application "Finder"
+    tell disk volName
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {240, 160, 900, 600}
+        set opts to the icon view options of container window
+        set arrangement of opts to not arranged
+        set icon size of opts to 128
+        set text size of opts to 13
+        set background picture of opts to file ".background:tibbers.png"
+        set position of item "Tibbers.app" of container window to {165, 150}
+        set position of item "Applications" of container window to {495, 150}
+        -- Dot-folders only show for people who display hidden files; park
+        -- them outside the window so even then they do not clutter it.
+        set position of item ".background" of container window to {1200, 160}
+        try
+            set position of item ".fseventsd" of container window to {1200, 320}
+        end try
+        close
+        open
+        update without registering applications
+        delay 1
+        close
+    end tell
+end tell
+end run
+AS
+        # The volume shows the app's own icon in the Finder sidebar and on
+        # the desktop, instead of a generic disk.
+        if [[ -f "${APP}/Contents/Resources/Tibbers.icns" ]]; then
+            cp "${APP}/Contents/Resources/Tibbers.icns" "${MOUNT}/.VolumeIcon.icns"
+            SetFile -a C "$MOUNT" 2>/dev/null || true
+        fi
+        # "Tibbers", not "Tibbers.app", under the icon.
+        if command -v SetFile >/dev/null; then
+            SetFile -a E "${MOUNT}/Tibbers.app" 2>/dev/null || true
+        fi
+        sync
+        hdiutil detach -quiet "$MOUNT"
+        MOUNT=""
+    fi
+    hdiutil convert -quiet "$RW_DMG" -format UDZO -o "${DIST}/Tibbers.dmg"
     echo "    ${DIST}/Tibbers.dmg"
 fi
 
