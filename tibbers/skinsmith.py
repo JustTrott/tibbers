@@ -85,7 +85,11 @@ class Unsupported(SkinsmithError):
 #: Bumped when the recipe above changes in a way that makes an already
 #: generated mod wrong. Recorded in every sidecar, so an old mod can be told
 #: apart from a current one without re-deriving it.
-GENERATOR = 2
+#:
+#: 3: the skin0 overlay names the base skin (`championSkinName`) rather than
+#:    the numbered skin it delegates to, so a patcher that verifies the base
+#:    slot accepts it. Bytes differ from a v2 mod, so v2 mods are rebuilt.
+GENERATOR = 3
 
 #: Written beside each generated mod. Names the archive it came out of, so a
 #: patch that rewrites that archive is detectable, and marks the mod as ours
@@ -409,11 +413,21 @@ class Bin:
 
 def rewrite(source: Bin, character: str, number: int, spelled: str,
             signature: Sequence[str] = SIGNATURE,
-            second: bool = False) -> Optional[bytes]:
+            second: bool = False,
+            base_name: Optional[str] = None) -> Optional[bytes]:
     """One character's `skin<N>.bin`, rewritten as its `skin0.bin`.
 
     *second* selects the second convention -- see `SECOND_CONVENTION`, and
     only ever for an id listed there.
+
+    *base_name*, when given, renames the delegated skin's `championSkinName` to
+    the base skin's own (e.g. `SmolderSkin11` -> `BaseSmolder`). The repository
+    mods leave the numbered name in place and cslol serves that, but a stricter
+    patcher verifies that a skin0 overlay actually names the base skin and
+    rejects one that does not. The name is metadata -- what renders comes from
+    the delegation below -- so this is safe for either patcher, and left off
+    (None) reproduces the repository bytes exactly. Ignored under *second*,
+    which sets the name itself.
 
     None when this character has nothing to say about the skin, which is the
     ordinary answer for a sub-character that only exists in some skins.
@@ -435,6 +449,8 @@ def rewrite(source: Bin, character: str, number: int, spelled: str,
             if second:
                 body = bytearray(_reserialise(entry, body, into_resources,
                                               spelled))
+            elif base_name is not None:
+                body = bytearray(_rename_skin(entry, bytes(body), base_name))
             kept.append((SKIN_CLASS, bytes(body)))
         elif entry.hash == want_resources and entry.cls == RESOLVER_CLASS:
             body = bytearray(source.body(entry))
@@ -515,6 +531,30 @@ def _reserialise(entry: BinEntry, body: bytes, into_resources: int,
     struct.pack_into("<H", out, 8,
                      struct.unpack_from("<H", out, 8)[0] - dropped)
     return bytes(out)
+
+
+def _rename_skin(entry: BinEntry, body: bytes, new_name: str) -> bytes:
+    """Rewrite one skin entry's `championSkinName` string to *new_name*.
+
+    The same single edit `_reserialise` makes to that field, but on its own and
+    without dropping or repointing anything else -- the field count is
+    unchanged. *body* has already had its hash rewritten (a same-size edit), so
+    the offsets `entry.fields` recorded still hold. Returns *body* untouched
+    when the entry carries no `championSkinName`, which is the ordinary case
+    for a resolver.
+    """
+    for field in entry.fields:
+        if field.name == CHAMPION_SKIN_NAME and field.type == _STRING:
+            encoded = new_name.encode("utf-8")
+            replacement = struct.pack("<H", len(encoded)) + encoded
+            start, end = field.at - entry.at, field.end - entry.at
+            if not 0 <= start <= end <= len(body):
+                raise BinError("championSkinName lies outside its own entry")
+            out = bytearray(body[:start]) + replacement + body[end:]
+            # Only the entry's length prefix moves; the field count is the same.
+            struct.pack_into("<I", out, 0, len(out) - 4)
+            return bytes(out)
+    return bytes(body)
 
 
 def _declassify_chroma(body: bytearray, entry: BinEntry) -> None:
@@ -705,6 +745,33 @@ class GenerateResult:
     source: dict
 
 
+def _base_skin_name(archive: "Wad", character: str) -> Optional[str]:
+    """The `championSkinName` of *character*'s base skin, read from the install.
+
+    None when it cannot be read -- a missing skin0, an unparseable bin -- in
+    which case the caller leaves the delegated name in place (the repository
+    behaviour). What is served does not depend on this; a stricter patcher's
+    base-skin check does.
+    """
+    entry = archive.get(f"data/characters/{character}/skins/skin0.bin")
+    if entry is None:
+        return None
+    try:
+        parsed = Bin(archive.read(entry))
+    except (BinError, WadError):
+        return None
+    skin = parsed.entry(
+        fnv1a32(f"characters/{character}/skins/skin0"), SKIN_CLASS)
+    if skin is None:
+        return None
+    for field in skin.fields:
+        if field.name == CHAMPION_SKIN_NAME and field.type == _STRING:
+            length = struct.unpack_from("<H", parsed.data, field.at)[0]
+            return parsed.data[field.at + 2:field.at + 2 + length].decode(
+                "utf-8", "replace")
+    return None
+
+
 def generate(champion_key: str, skin_id: int, dest_path) -> GenerateResult:
     """Build the mod for *skin_id* out of the install, at *dest_path*.
 
@@ -743,7 +810,13 @@ def generate(champion_key: str, skin_id: int, dest_path) -> GenerateResult:
                 continue
             parsed = Bin(archive.read(entry))
             spelled = key if character == champion else character
-            built = rewrite(parsed, character, number, spelled, second=second)
+            # The base skin's own name, so the skin0 overlay names the base
+            # skin rather than the numbered one it delegates to. There is no
+            # one pattern (Smolder's is `BaseSmolder`, Jhin's is `Jhin`), so it
+            # is read from the install rather than guessed.
+            base_name = _base_skin_name(archive, character)
+            built = rewrite(parsed, character, number, spelled,
+                            second=second, base_name=base_name)
             if built is not None:
                 pieces.append((
                     xxh64_path(f"data/characters/{character}/skins/skin0.bin"),
