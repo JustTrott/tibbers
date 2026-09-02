@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import shutil
 import subprocess
 import threading
@@ -49,13 +48,6 @@ from typing import Optional
 from . import system
 
 log = logging.getLogger("tibbers.inject")
-
-#: Status strings the patcher prints; see patcher.hpp STATUS_MSG.
-PATCHER_READY = "Waiting for league match to start"
-PATCHER_FOUND = "Found League"
-PATCHER_PATCHING = "Patching"
-PATCHER_EXITED = "League exited"
-
 
 @dataclass
 class InjectionResult:
@@ -257,9 +249,10 @@ class Injector:
                       meta: Optional[dict] = None) -> InjectionResult:
         """Start runoverlay and wait until it reports it is watching.
 
-        Raises one authorization prompt. The patcher then runs until stopped,
-        waiting for the game on its own -- and, since it is started detached,
-        keeps waiting across a restart of this app.
+        Raises one authorization prompt on macOS, where the hook needs root;
+        on Windows it just runs as the user. The patcher then runs until
+        stopped, waiting for the game on its own -- and, since it is started
+        detached, keeps waiting across a restart of this app.
         """
         if not self.enabled:
             return InjectionResult(
@@ -275,7 +268,8 @@ class Injector:
         except OSError:
             pass
 
-        log.info("runoverlay (elevated). Equivalent manual command:")
+        log.info("runoverlay (%s). Equivalent manual command:",
+                 "elevated" if system.INJECTION_NEEDS_ROOT else "as the user")
         log.info("  %s", system.manual_command(
             modtools, self.overlay_dir, config, self.game_dir))
 
@@ -336,30 +330,23 @@ class Injector:
             return InjectionResult(True, "patcher started (no status yet)",
                                    time.time() - started)
         return InjectionResult(
-            False, "patcher did not start (authorization cancelled?)")
+            False, "patcher did not start (authorization cancelled?)"
+            if system.INJECTION_NEEDS_ROOT else
+            f"patcher did not start; see {self.patcher_log}")
 
     def patcher_status(self) -> dict:
-        """Parse what runoverlay has reported so far."""
+        """What the patcher has reported so far.
+
+        The two patchers log in different formats -- cslol's `runoverlay` on
+        macOS, LTK's host on Windows -- so the parse lives in the platform
+        layer and this only reads the file.
+        """
         try:
             text = self.patcher_log.read_text(errors="replace")
         except OSError:
             return {"watching": False, "found": False, "patched": False,
-                    "error": None, "tail": ""}
-
-        error = None
-        for line in text.splitlines():
-            if re.search(r"error|failed|exception|throw", line, re.I):
-                if "Waiting" not in line:
-                    error = line.strip()
-
-        return {
-            "watching": PATCHER_READY in text,
-            "found": PATCHER_FOUND in text,
-            "patched": PATCHER_PATCHING in text,
-            "exited": PATCHER_EXITED in text,
-            "error": error,
-            "tail": "\n".join(text.splitlines()[-6:]),
-        }
+                    "exited": False, "error": None, "tail": ""}
+        return system.parse_patcher_log(text)
 
     def stop_patcher(self) -> None:
         """Stop runoverlay, and the holder keeping its stdin open.
@@ -422,7 +409,8 @@ class Injector:
             return built
         report(f"overlay ready ({built.seconds:.1f}s)")
 
-        report("starting patcher (authorization required)...")
+        report("starting patcher (authorization required)..."
+               if system.INJECTION_NEEDS_ROOT else "starting patcher...")
         started = self.start_patcher(meta=meta)
         if not started.ok:
             return started

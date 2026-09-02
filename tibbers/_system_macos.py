@@ -16,6 +16,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -34,6 +35,11 @@ log = logging.getLogger("tibbers.system")
 GAME_PROCESS = "LeagueofLegends"
 CLIENT_PROCESS = "LeagueClient"
 CLIENT_UX_PROCESS = "LeagueClientUx"
+
+#: The fopen hook goes through `task_for_pid`, and the kernel hands a foreign
+#: task port to root alone -- so every injection here is elevated, with or
+#: without the passwordless helper. Windows sets this False.
+INJECTION_NEEDS_ROOT = True
 
 INSTALL_ROOTS = (
     Path("/Applications/League of Legends.app/Contents/LoL"),
@@ -417,6 +423,34 @@ def spawn_runoverlay_detached(modtools: Path, overlay: Path, config: Path,
             raise PermissionError("authorization cancelled")
         raise RuntimeError(err or "osascript failed")
     return None
+
+
+# ---------------------------------------------------------------------------
+# Reading the patcher log
+# ---------------------------------------------------------------------------
+
+#: What cslol's `runoverlay` prints; see patcher.hpp STATUS_MSG.
+PATCHER_READY = "Waiting for league match to start"
+PATCHER_FOUND = "Found League"
+PATCHER_PATCHING = "Patching"
+PATCHER_EXITED = "League exited"
+
+
+def parse_patcher_log(text: str) -> dict:
+    """Distil cslol's `runoverlay` output into the fields the app watches."""
+    error = None
+    for line in text.splitlines():
+        if re.search(r"error|failed|exception|throw", line, re.I):
+            if "Waiting" not in line:
+                error = line.strip()
+    return {
+        "watching": PATCHER_READY in text,
+        "found": PATCHER_FOUND in text,
+        "patched": PATCHER_PATCHING in text,
+        "exited": PATCHER_EXITED in text,
+        "error": error,
+        "tail": "\n".join(text.splitlines()[-6:]),
+    }
 
 
 def kill_runoverlay() -> None:

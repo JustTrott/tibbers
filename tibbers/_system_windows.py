@@ -19,15 +19,24 @@ knows which one it got. The differences that matter:
   outlives this app -- the same idea as the macOS ``sleep | runoverlay``, done
   with a tiny detached Python holder here.
 
-NOTE: developed and reasoned about on macOS; the Windows-only paths (injection,
-detach, process discovery) are validated on a Windows machine.
+The injection itself is byte-for-byte what cslol-manager and Rose run: the same
+``mod-tools.exe``, the same ``runoverlay`` arguments, the same ``cslol-dll.dll``
+hook. Only the timing differs -- this pre-arms during champ select and lets
+cslol's own poll catch the game, where Rose suspends the game at launch instead
+(see the injector docstring for why suspending is not done here).
+
+Validated on Windows 11 against a real install: discovery, mkoverlay, the
+detached patcher, adoption across a restart, and shutdown. The one path still
+unproven is the hook landing in a live game, which needs a game to land in.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -42,6 +51,34 @@ log = logging.getLogger("tibbers.system")
 GAME_PROCESS = "League of Legends.exe"
 CLIENT_PROCESS = "LeagueClient.exe"
 CLIENT_UX_PROCESS = "LeagueClientUx.exe"
+
+#: cslol's Win32 patcher injects into a process owned by the same user, which
+#: needs no rights the user does not already have. Nothing here elevates, so
+#: there is no helper, no prompt, and no "authorization cancelled" outcome.
+INJECTION_NEEDS_ROOT = False
+
+# --- the two patchers ------------------------------------------------------
+#
+# Windows splits the work cslol's mod-tools does on macOS across two binaries,
+# for a reason that decides the whole design: cslol's Windows injection DLL is
+# a dead end (an expiry kill-switch, and Vanguard names it incompatible), while
+# its *overlay builder* -- pure local file munging that never touches the game
+# -- still works and is open. So the overlay is still built with cslol's
+# `mod-tools mkoverlay`, and the injection is handed to LTK's patcher, the
+# maintained cslol successor whose hook Vanguard accepts. See WINDOWS.md.
+#
+#   mod-tools.exe + cslol-dll.dll   -> mkoverlay only (build_overlay); no game
+#   ltk_patcher_host.exe + dll      -> the injection (runoverlay); hooks the game
+
+LTK_HOST = "ltk_patcher_host.exe"
+LTK_DLL = "ltk_patcher_dll.dll"
+
+#: LTK hook flag OPT_OUT_AH_V1. LTK verifies its overlay and, for a base-skin
+#: swap, finds skin0 pointing at another skin's mesh/audio -- which is exactly
+#: what tibbers does on purpose. This downgrades that check from a fatal error
+#: to a warning so the overlay is served. It is LTK's own quality gate, not the
+#: game's anti-cheat (the DLL clears that separately, before this runs).
+LTK_OPT_OUT_AH_V1 = 4
 
 #: Riot's default install location. An override for a non-standard drive is
 #: read from the running client anyway; this is only the fallback.
@@ -160,6 +197,31 @@ def game_pid() -> Optional[int]:
 # Unlike macOS, the patcher runs as the user, so psutil can read its command
 # line directly -- no `ps` shell-out needed. The scan still goes through a
 # cached table because the champ-select watcher asks on every change.
+#
+# The command line is the expensive field on Windows, and by a margin that
+# decides how the app feels. macOS gets every argv in one `ps -axo command=`
+# dump; Windows has no such call, so psutil opens each process and reads its
+# PEB across the process boundary. Measured on a 217-process desktop:
+#
+#     process_iter(["pid", "cmdline"])       2075 ms
+#     process_iter(["pid", "name"])             1 ms
+#
+# Two seconds, on the path the picker polls. So the name -- which comes free
+# with the process listing -- is used to throw away 98% of the machine first,
+# and argv is read only for the handful of processes that could possibly be a
+# patcher or a holder. Same answer, ~1700x cheaper.
+
+#: The only executables whose command line is ever worth reading: cslol's
+#: patcher, and whatever is holding its stdin (a Python from source, the app
+#: itself when frozen). `sys.executable` covers the venv and the frozen build;
+#: the literals cover a holder left behind by the *other* one.
+_CMDLINE_CANDIDATES = frozenset({
+    "mod-tools.exe",
+    LTK_HOST,
+    "python.exe", "pythonw.exe",
+    "Tibbers.exe", "tibbers.exe",
+    os.path.basename(sys.executable) if sys.executable else "python.exe",
+})
 
 _TABLE_CACHE: Tuple[float, List[Tuple[int, str]]] = (0.0, [])
 _TABLE_TTL = 1.0
@@ -167,7 +229,13 @@ _TABLE_LOCK = threading.Lock()
 
 
 def process_table(fresh: bool = False) -> List[Tuple[int, str]]:
-    """``(pid, command line)`` for every process this user can see."""
+    """``(pid, command line)`` for the processes that could be ours.
+
+    Not every process on the machine, unlike the macOS namesake: see the note
+    above for why reading argv is rationed here. Everything that consumes this
+    is looking for `mod-tools` or a holder, so the difference is invisible to
+    callers -- but do not reach for this to find something else.
+    """
     global _TABLE_CACHE
     if not fresh:
         with _TABLE_LOCK:
@@ -183,11 +251,16 @@ def process_table(fresh: bool = False) -> List[Tuple[int, str]]:
 
 def _read_process_table() -> List[Tuple[int, str]]:
     rows = []
-    for proc in psutil.process_iter(["pid", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-            cmd = proc.info.get("cmdline")
+            if proc.info.get("name") not in _CMDLINE_CANDIDATES:
+                continue
             pid = proc.info.get("pid")
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Read argv only now, one process at a time -- this is the call
+            # that costs, and it is why the name is checked first.
+            cmd = proc.cmdline()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess,
+                OSError):
             continue
         if pid is not None and cmd:
             rows.append((int(pid), " ".join(cmd)))
@@ -196,20 +269,39 @@ def _read_process_table() -> List[Tuple[int, str]]:
 
 def runoverlay_pids(overlay: Optional[Path] = None,
                     fresh: bool = False) -> List[int]:
-    """Live ``mod-tools runoverlay`` processes, optionally only for *overlay*."""
-    want = str(overlay) if overlay is not None else None
-    found = []
+    """Live LTK patcher-host processes, optionally only those for *overlay*.
+
+    The host is driven over stdin, so its own command line is a bare
+    ``ltk_patcher_host.exe`` with the overlay nowhere in it -- unlike cslol's
+    ``runoverlay <overlay>``. Scoping to an overlay therefore goes through the
+    *holder*, which does carry the overlay: a host counts for *overlay* when
+    its parent is one of that overlay's holders. This is what keeps a dev
+    instance's patcher from being mistaken for the real one (rule 2).
+    """
+    hosts = []
     for pid, command in process_table(fresh=fresh):
-        if "mod-tools" not in command or " runoverlay " not in f" {command} ":
+        if LTK_HOST not in command:
             continue
-        # The holder's own command line carries the whole runoverlay command
-        # too, so it would otherwise be counted as a second patcher.
+        # The holder's argv names the host too (it spawned it); that row is the
+        # holder, not the patcher, and holder_pids owns it.
         if HOLDER_MARK in command:
             continue
-        if want is not None and want not in command:
+        hosts.append(pid)
+
+    if overlay is None:
+        return hosts
+
+    holders = set(holder_pids(overlay, fresh=fresh))
+    if not holders:
+        return []
+    scoped = []
+    for pid in hosts:
+        try:
+            if psutil.Process(pid).ppid() in holders:
+                scoped.append(pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-        found.append(pid)
-    return found
+    return scoped
 
 
 def holder_pids(overlay: Optional[Path] = None,
@@ -235,12 +327,24 @@ def is_translated(pid: int) -> Optional[bool]:
 
 
 def select_modtools(tools_dir: Path, pid: Optional[int] = None) -> Path:
-    """The single Windows mod-tools build. ``cslol-dll.dll`` must sit beside
-    it -- ``fetch_modtools`` installs the pair together."""
+    """The single Windows mod-tools build.
+
+    ``cslol-dll.dll`` must sit beside it: the exe imports it at load time, so
+    without it Windows fails the process at the loader -- no output, no exit
+    code worth reading, nothing in the patcher log. Checking here turns that
+    into something the user can act on. ``fetch_modtools.ps1`` installs the
+    pair together.
+    """
     tools_dir = Path(tools_dir)
     exe = tools_dir / "mod-tools.exe"
     if not exe.exists():
         raise FileNotFoundError(f"mod-tools.exe is missing at {exe}")
+    dll = tools_dir / "cslol-dll.dll"
+    if not dll.exists():
+        raise FileNotFoundError(
+            f"cslol-dll.dll is missing at {dll}. mod-tools.exe imports it at "
+            f"load time and cannot start without it -- re-run "
+            f"scripts\\fetch_modtools.ps1 to install both.")
     return exe
 
 
@@ -248,39 +352,148 @@ def modtools_arch(modtools: Path) -> str:
     return "x86_64"
 
 
+def select_patcher(tools_dir: Path) -> Path:
+    """LTK's injection host, ``ltk_patcher_host.exe``.
+
+    ``ltk_patcher_dll.dll`` -- the hook itself -- must sit beside it; the host
+    loads it to inject. ``fetch_modtools.ps1`` installs the pair. This is the
+    binary the game is hooked with, distinct from the ``mod-tools.exe`` that
+    only builds the overlay.
+    """
+    tools_dir = Path(tools_dir)
+    host = tools_dir / LTK_HOST
+    if not host.exists():
+        raise FileNotFoundError(
+            f"{LTK_HOST} is missing at {host} -- re-run "
+            f"scripts\\fetch_modtools.ps1 to install the LTK patcher.")
+    dll = tools_dir / LTK_DLL
+    if not dll.exists():
+        raise FileNotFoundError(
+            f"{LTK_DLL} is missing at {dll}. {LTK_HOST} loads it to inject and "
+            f"cannot work without it -- re-run scripts\\fetch_modtools.ps1.")
+    return host
+
+
 # ---------------------------------------------------------------------------
 # Injection (no elevation on Windows)
 # ---------------------------------------------------------------------------
 
-def runoverlay_command(modtools: Path, overlay: Path, config: Path,
-                       game_dir: Path) -> List[str]:
+def _overlay_prefix(overlay: Path) -> str:
+    """LTK's ``config prefix`` wants the overlay root with a trailing separator."""
+    prefix = str(overlay)
+    return prefix if prefix.endswith(("\\", "/")) else prefix + "\\"
+
+
+def patcher_protocol(overlay: Path) -> List[str]:
+    """The lines fed to the LTK host over stdin to arm it for *overlay*.
+
+    Configure logging, set OPT_OUT_AH_V1 so the base-skin overlay is served,
+    point it at the overlay, then start scanning for the game. The host derives
+    the game itself, so there is no game path here. It stops when its stdin
+    reaches EOF, which is what the holder's open pipe prevents.
+    """
     return [
-        str(modtools), "runoverlay", str(overlay), str(config),
-        f"--game:{game_dir}", "--opts:configless",
+        "config loglevel 1",
+        f"config flags {LTK_OPT_OUT_AH_V1}",
+        f"config prefix {_overlay_prefix(overlay)}",
+        "start scan",
     ]
+
+
+def runoverlay_command(patcher: Path, overlay: Path, config: Path,
+                       game_dir: Path) -> List[str]:
+    """The human-runnable equivalent of what the app drives over the protocol.
+
+    LTK's ``runoverlay`` compat subcommand takes an overlay and scans for the
+    game exactly as the app does -- but it cannot set OPT_OUT_AH_V1, so it is
+    only a reference for a person reading the log, not what the app runs. The
+    app spawns the bare host and drives `patcher_protocol` over stdin instead.
+    """
+    return [str(patcher), "runoverlay", str(overlay), f"--game:{game_dir}"]
 
 
 def manual_command(modtools: Path, overlay: Path, config: Path,
                    game_dir: Path) -> str:
     """The equivalent command a user could run by hand -- no elevation."""
+    try:
+        patcher = select_patcher(Path(modtools).parent)
+    except FileNotFoundError:
+        patcher = Path(modtools).parent / LTK_HOST
     return subprocess.list2cmdline(
-        runoverlay_command(modtools, overlay, config, game_dir))
+        runoverlay_command(patcher, overlay, config, game_dir))
 
 
-# runoverlay exits the instant its stdin reaches EOF, so a detached holder
-# keeps the pipe open and outlives this app. The holder carries HOLDER_MARK
-# and the overlay path in its own argv so it can be found and adopted later,
-# exactly like the macOS holder shell.
+# The LTK host stops the instant its stdin reaches EOF, so a detached holder
+# keeps the pipe open and outlives this app. The holder writes the arming
+# protocol into that pipe first, then holds it. It carries HOLDER_MARK, the
+# overlay and the log in its own argv so it can be found and adopted later --
+# the overlay lives here rather than in the host's bare argv.
+#
+# argv layout, both forms (after the interpreter/flag):
+#   HOLDER_MARK  overlay  log_path  host_exe  <protocol line> <protocol line>...
 _HOLDER_SCRIPT = (
     "import subprocess,sys,time\n"
     "log=open(sys.argv[3],'ab')\n"
-    "p=subprocess.Popen(sys.argv[4:],stdin=subprocess.PIPE,"
+    "p=subprocess.Popen([sys.argv[4]],stdin=subprocess.PIPE,"
     "stdout=log,stderr=log)\n"
+    "for line in sys.argv[5:]:\n"
+    "    p.stdin.write((line+'\\n').encode());p.stdin.flush()\n"
     "try:\n"
     "    time.sleep(10**9)\n"
     "finally:\n"
-    "    p.terminate()\n"
+    "    p.stdin.close();p.terminate()\n"
 )
+
+#: The frozen build has no interpreter to hand `-c` to -- `sys.executable` is
+#: Tibbers.exe, which would relaunch the whole app instead of holding a pipe.
+#: So the packaged app re-runs *itself* with this flag and becomes the holder;
+#: `hold_patcher` below is the body, and main.py dispatches to it before it
+#: does anything else. From source the `-c` form is used unchanged.
+HOLDER_FLAG = "--hold-patcher"
+
+
+def holder_argv(overlay: Path, log_path: Path, host: Path,
+                protocol: List[str]) -> List[str]:
+    """The command line for a detached holder, frozen or from source.
+
+    Either form carries HOLDER_MARK, the overlay, the log, the host binary and
+    the protocol lines in its own argv -- which is what ``holder_pids`` matches
+    on, so discovery and adoption do not care which one started it.
+    """
+    tail = [HOLDER_MARK, str(overlay), str(log_path), str(host), *protocol]
+    if getattr(sys, "frozen", False):
+        return [sys.executable, HOLDER_FLAG, *tail]
+    return [sys.executable, "-c", _HOLDER_SCRIPT, *tail]
+
+
+def hold_patcher(argv: List[str]) -> int:
+    """Be the holder: start the LTK host, arm it, then hold its stdin open.
+
+    *argv* is everything after ``HOLDER_FLAG``:
+    ``[HOLDER_MARK, overlay, log_path, host_exe, *protocol]`` -- the same tail
+    the ``-c`` script reads from its own ``sys.argv`` (one slot later, since
+    that argv still carries ``-c``), so the two forms stay in step.
+    """
+    if len(argv) < 4:
+        return 2
+    log_path, host, protocol = argv[2], argv[3], argv[4:]
+    with open(log_path, "ab") as log_file:
+        proc = subprocess.Popen([host], stdin=subprocess.PIPE,
+                                stdout=log_file, stderr=log_file)
+        try:
+            for line in protocol:
+                proc.stdin.write((line + "\n").encode())
+                proc.stdin.flush()
+            while True:
+                time.sleep(3600)
+        except BaseException:
+            try:
+                proc.stdin.close()
+            except Exception:  # noqa: BLE001
+                pass
+            proc.terminate()
+            raise
+    return 0  # pragma: no cover -- the loop above does not fall through
 
 # Windows process-creation flags for a fully detached, windowless holder.
 _DETACHED_PROCESS = 0x00000008
@@ -291,18 +504,17 @@ _CREATE_NO_WINDOW = 0x08000000
 def spawn_runoverlay_detached(modtools: Path, overlay: Path, config: Path,
                               game_dir: Path, log_path: Path,
                               detached: bool = True):
-    """Start runoverlay as the user, detached, with its output captured.
+    """Start the LTK patcher as the user, detached, with its output captured.
 
-    A holder Python process owns runoverlay's stdin and sleeps forever, so the
-    patcher keeps waiting for the game across a restart of this app. Nothing
-    about the injection command changes; only who holds the pipe.
+    A holder process owns the host's stdin and sleeps forever, so the patcher
+    keeps scanning for the game across a restart of this app. *modtools* is the
+    cslol mkoverlay binary the shared injector hands in; the LTK host is
+    resolved from beside it (``fetch_modtools`` installs both into ``tools``).
     """
-    import sys
-
     Path(log_path).parent.mkdir(parents=True, exist_ok=True)
-    command = runoverlay_command(modtools, overlay, config, game_dir)
-    holder_argv = [sys.executable, "-c", _HOLDER_SCRIPT,
-                   HOLDER_MARK, str(overlay), str(log_path), *command]
+    host = select_patcher(Path(modtools).parent)
+    protocol = patcher_protocol(Path(overlay))
+    argv = holder_argv(Path(overlay), Path(log_path), host, protocol)
 
     flags = _CREATE_NO_WINDOW
     if detached:
@@ -310,7 +522,7 @@ def spawn_runoverlay_detached(modtools: Path, overlay: Path, config: Path,
 
     try:
         subprocess.Popen(
-            holder_argv,
+            argv,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=flags, close_fds=True,
@@ -340,10 +552,39 @@ def kill_runoverlay() -> None:
 
 
 def kill_holders(overlay: Optional[Path] = None) -> int:
-    """Reap the stdin holders for *overlay*; killing one drops its runoverlay
-    child with it (the holder terminates the child on the way out, and a closed
-    pipe would end it anyway)."""
+    """Reap the stdin holders for *overlay*; killing one drops its patcher-host
+    child with it (the holder closes stdin and terminates the child on the way
+    out, and a closed pipe would end it anyway)."""
     return _terminate(holder_pids(overlay))
+
+
+# ---------------------------------------------------------------------------
+# Reading the patcher log
+# ---------------------------------------------------------------------------
+
+def parse_patcher_log(text: str) -> dict:
+    """Distil LTK's host output into the fields the app watches.
+
+    LTK's line protocol prints ``status <t> <state> <msg>`` and per-level DLL
+    records. The states of interest: ``scanning for game`` (armed and waiting),
+    ``game found`` (the host caught the game), then the DLL's own
+    ``overlay verified`` / ``redirected wad`` (the skin is being served). Only
+    ``ERROR`` lines are failures; ``WARN`` -- including the ``(opted out)``
+    base-skin note that OPT_OUT_AH_V1 produces -- is expected and ignored.
+    """
+    error = None
+    for line in text.splitlines():
+        if re.search(r"\bERROR\b", line) or line.startswith("error "):
+            if "opted out" not in line:
+                error = line.strip()
+    return {
+        "watching": "scanning for game" in text or "injecting" in text,
+        "found": "game found" in text,
+        "patched": "overlay verified" in text or "redirected wad" in text,
+        "exited": "dll detached" in text or " exited " in text,
+        "error": error,
+        "tail": "\n".join(text.splitlines()[-6:]),
+    }
 
 
 # ---------------------------------------------------------------------------

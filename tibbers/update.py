@@ -3,17 +3,17 @@
 """
 Self-update from GitHub Releases.
 
-The installed app is a self-contained `.app` published as `Tibbers.zip` on the
-repo's Releases. This checks the latest release, and -- when the user asks --
-downloads it and swaps it into place. The swap is done by a tiny detached
-script that waits for this process to exit first, because a running bundle
-cannot overwrite itself; the app quits right after launching it, and the script
-reopens the new one.
+The installed app is a frozen snapshot -- a `.app` on macOS, a PyInstaller
+folder under `%LOCALAPPDATA%\\Programs\\Tibbers` on Windows -- published on the
+repo's Releases (`Tibbers.zip` for macOS, `Tibbers-windows.zip` for Windows).
+This checks the latest release, and -- when the user asks -- downloads it and
+swaps it into place. The swap is done by a tiny detached script that waits for
+this process to exit first, because a running app cannot overwrite itself; the
+app quits right after launching it, and the script reopens the new one.
 
-Nothing here elevates. `/Applications` is writable by an admin user (the same
-way `build_app.sh --install` copies into it without sudo), and the patcher is
-detached, so a mid-game update leaves the skin on the game and the next launch
-adopts it -- exactly what a normal restart does.
+Nothing here elevates. Both install locations are writable by the ordinary
+user, and the patcher is detached, so a mid-game update leaves the skin on the
+game and the next launch adopts it -- exactly what a normal restart does.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -35,17 +36,32 @@ log = logging.getLogger("tibbers.update")
 
 REPO = "JustTrott/tibbers"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-#: The asset name the release must carry, and the one the README's download
-#: button points at (releases/latest/download/Tibbers.zip).
+
+_IS_WINDOWS = sys.platform.startswith("win")
+
+
+def asset_name() -> str:
+    """The release asset for this platform. The README's download button and
+    the release job must use the same names."""
+    return "Tibbers-windows.zip" if _IS_WINDOWS else "Tibbers.zip"
+
+
+#: Back-compat alias; the macOS name, kept for any old caller.
 ASSET = "Tibbers.zip"
 
 
 def installed_app() -> Optional[Path]:
-    """The `.app` this code is running from, or None when run from source.
+    """The installed app directory this code runs from, or None from source.
 
-    Self-update only makes sense for the installed bundle; a checkout updates
+    Self-update only makes sense for the frozen build; a checkout updates
     itself with git, so this returns None there and every entry point no-ops.
+    macOS: the `.app` bundle. Windows: the PyInstaller folder that holds
+    `Tibbers.exe`, which is where the frozen `sys.executable` lives.
     """
+    if _IS_WINDOWS:
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent
+        return None
     for parent in Path(__file__).resolve().parents:
         if parent.name.endswith(".app"):
             return parent
@@ -71,9 +87,10 @@ def latest_release() -> dict:
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.load(resp)
     tag = data.get("tag_name") or ""
+    want = asset_name()
     url = None
     for asset in data.get("assets") or []:
-        if asset.get("name") == ASSET:
+        if asset.get("name") == want:
             url = asset.get("browser_download_url")
             break
     return {"tag": tag, "version": tag.lstrip("vV"), "url": url,
@@ -93,7 +110,7 @@ def check(current: str = __version__) -> dict:
         return {"available": False, "current": current, "error": str(exc)}
     if not rel["url"]:
         return {"available": False, "current": current,
-                "error": f"the latest release has no {ASSET}"}
+                "error": f"the latest release has no {asset_name()}"}
     available = _version_tuple(rel["version"]) > _version_tuple(current)
     return {"available": available, "version": rel["version"],
             "current": current, "url": rel["url"], "notes": rel["notes"],
@@ -144,16 +161,70 @@ rm -rf {shlex.quote(str(new_app.parent))}
     return Path(path)
 
 
+# --- Windows -----------------------------------------------------------------
+#
+# The frozen build is a PyInstaller folder, not a bundle, so the zip is plain
+# and `zipfile` unpacks it (no symlinks or exec bits to preserve). The swap is
+# a detached .bat because it must outlive this process and needs no dependency
+# the machine might lack: it waits for our PID to exit, mirrors the new folder
+# over the old with robocopy, and relaunches quietly. `--quiet` comes up in the
+# tray without stealing focus from a game, matching the macOS `open -g`.
+
+def _stage_windows(url: str) -> Path:
+    import zipfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="tibbers-update-"))
+    archive = tmp / asset_name()
+    _download(url, archive)
+    extract = tmp / "unpacked"
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(extract)
+    exe = next(extract.rglob("Tibbers.exe"), None)
+    if exe is None:
+        raise RuntimeError(f"no Tibbers.exe inside {asset_name()}")
+    return exe.parent
+
+
+def _swap_script_windows(new_dir: Path, target: Path) -> Path:
+    body = (
+        "@echo off\r\n"
+        "set \"PID=%~1\"\r\n"
+        ":wait\r\n"
+        "tasklist /fi \"PID eq %PID%\" | find \"%PID%\" >nul "
+        "&& ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
+        f"robocopy \"{new_dir}\" \"{target}\" /MIR /NFL /NDL /NJH /NJS /NC "
+        "/NS /NP >nul\r\n"
+        f"start \"\" \"{target}\\Tibbers.exe\" --quiet\r\n"
+        f"rmdir /s /q \"{new_dir.parent}\" >nul 2>&1\r\n"
+    )
+    fd, path = tempfile.mkstemp(prefix="tibbers-swap-", suffix=".bat")
+    with os.fdopen(fd, "w", newline="") as handle:
+        handle.write(body)
+    return Path(path)
+
+
+_DETACHED = 0x00000008 | 0x00000200 | 0x08000000  # detached, new group, no window
+
+
 def apply(url: str, target: Optional[Path] = None) -> None:
     """Download the new build and launch the detached swap.
 
     The caller must quit the app immediately after this returns, so the swap
-    script -- which is already waiting on this PID -- can replace the bundle
-    and reopen it.
+    script -- already waiting on this PID -- can replace the install and reopen
+    it.
     """
     target = target or installed_app()
     if target is None:
-        raise RuntimeError("not running from an installed .app")
+        raise RuntimeError("not running from an installed build")
+
+    if _IS_WINDOWS:
+        new_dir = _stage_windows(url)
+        script = _swap_script_windows(new_dir, target)
+        subprocess.Popen(["cmd", "/c", str(script), str(os.getpid())],
+                         creationflags=_DETACHED, close_fds=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+
     new_app = _stage(url)
     script = _swap_script(new_app, target)
     subprocess.Popen(["/bin/bash", str(script), str(os.getpid())],
