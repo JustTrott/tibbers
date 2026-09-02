@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tibbers — pick a skin in champ select</title>
+<title>tibbers — enhance your champ select</title>
 <meta name="description" content="Your companion for League of Legends on Windows and macOS: a skin changer and build guide in one window. Every skin of the champion you hover, applied the moment the game starts. Free, open source, never touches your install.">
 <link rel="canonical" href="https://tibbers.lol/">
 <link rel="icon" href="/img/tibbers.png" type="image/png">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:type" content="website">
-<meta property="og:title" content="tibbers — pick a skin in champ select">
+<meta property="og:title" content="tibbers — enhance your champ select">
 <meta property="og:description" content="A skin changer and build guide for League on Windows and macOS. Every skin of the champion you hover, applied when the game starts. Free and open source.">
 <meta property="og:url" content="https://tibbers.lol/">
 <meta property="og:image" content="https://tibbers.lol/img/skin-picker.png">
@@ -215,37 +215,16 @@
   }
   section p { max-width: var(--measure); margin: 0 0 1.1em; color: var(--ink-mid); text-wrap: pretty; }
   section p strong { color: var(--ink); font-weight: 400; }
-  .two { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
-  .two > figure { margin: 0; position: sticky; top: 28px; }
-  .two > figure .frame { border: 1px solid var(--rule-d); background: var(--raised); overflow: hidden; box-shadow: 0 24px 60px -30px oklch(0 0 0 / 0.8); }
-  .two > figure figcaption { margin-top: 12px; font-size: 15px; color: var(--ink-low); }
 
-  /* the table row primitive, borrowed from the app */
-  .rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule-d); }
-  .rows li {
-    display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px;
-    padding: 20px 0;
-    border-bottom: 1px solid var(--hair);
-  }
-  .rows li .k { padding-top: 5px; color: var(--gold-b); }
-  .rows li p { margin: 0; max-width: 60ch; }
-  .rows li p + p { margin-top: 0.6em; }
-
-  .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 0; border-top: 1px solid var(--rule-d); }
-  .steps li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; padding: 22px 0; border-bottom: 1px solid var(--hair); }
-  .steps li .k { padding-top: 5px; color: var(--gold-b); }
-  .steps li h3 { margin: 0 0 8px; font: 700 24px/1.2 var(--serif); }
-  .steps li p { margin: 0; max-width: 58ch; }
-  .steps li p + p { margin-top: 0.6em; }
-
-  .aside {
-    margin-top: 28px;
-    padding: 18px 22px;
-    border: 1px solid var(--rule-d);
-    background: var(--ctl);
-    max-width: 68ch;
-  }
-  .aside p { margin: 0; color: var(--ink-mid); }
+  /* modes table: the app's row primitive, one heading over each column */
+  .tablewrap { overflow-x: auto; }
+  table.modes { width: 100%; border-collapse: collapse; border-top: 1px solid var(--rule-d); }
+  table.modes th { text-align: left; font-weight: 400; padding: 12px 18px 12px 0; border-bottom: 1px solid var(--rule-d); }
+  table.modes td { padding: 16px 18px 16px 0; border-bottom: 1px solid var(--hair); vertical-align: top; color: var(--ink); }
+  table.modes td .sub { display: block; font-size: 15px; color: var(--ink-low); margin-top: 3px; }
+  table.modes td.yes { color: var(--gold-b); }
+  table.modes td.no { color: var(--ink-low); }
+  table.modes th:first-child, table.modes td:first-child { width: 42%; }
 
   /* install */
   .install { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(28px, 4vw, 56px); }
@@ -268,14 +247,10 @@
   footer .legal { margin-top: 28px; font-size: 15px; color: var(--ink-low); }
 
   @media (max-width: 860px) {
-    .two { grid-template-columns: 1fr; }
-    .two > figure { position: static; order: -1; }
-    .top .lamps { display: none; }
+        .top .lamps { display: none; }
     footer .cols { grid-template-columns: 1fr; }
   }
   @media (max-width: 600px) {
-    .rows li, .steps li { grid-template-columns: 1fr; gap: 8px; }
-    .rows li .k, .steps li .k { padding-top: 0; }
     .dl { flex-direction: column; align-items: stretch; }
     .btn { justify-content: flex-start; }
     .dl .src { margin-left: 0; }
@@ -305,8 +280,8 @@ FORM: a product page built from the product's own table-row primitive; extension
 
 <main>
   <section class="wrap hero" style="border-top:0">
-    <h1>Pick a skin in champ select. It's on your game <em>when it starts.</em></h1>
-    <p class="lede">Your new companion for League of Legends, on Windows and macOS. tibbers is a skin changer and build guide in one small window: every skin of the champion you hover, right there in the lobby, applied the moment the game launches, with the runes and items to go with it. <strong>Free, open source, and it never touches your League install.</strong></p>
+    <h1>Enhance your <em>champ select.</em></h1>
+    <p class="lede">Your new companion for League of Legends, on Windows and macOS. tibbers is a skin changer and build guide in one small window. <strong>Free and open source.</strong></p>
     <div class="dl">
       <div class="split">
         <a class="btn" id="dl-main" href="https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-Windows.zip" data-track="download" data-platform="windows">
@@ -346,53 +321,31 @@ FORM: a product page built from the product's own table-row primitive; extension
           <img src="/img/skin-picker.png" width="1372" height="874" alt="The tibbers window during champ select: Ahri is locked in, a splash of After Hours Spirit Blossom Springs Ahri fills the window, and a rail of her other skins runs along the bottom." fetchpriority="high">
         </picture>
       </div>
-      <figcaption>
-        <span class="name">Ahri locked in, After Hours Spirit Blossom Springs queued, sixteen other skins a click away.</span>
-        <span class="mono">103089 · ready</span>
-      </figcaption>
     </figure>
   </div>
 
-  <section class="wrap" id="why">
-    <h2>More League, less tabbing out.</h2>
-    <p>Champ select lasts about a minute, and the decision competes with runes, summoner spells and lobby chat. tibbers sits beside the game and amplifies that minute: it reads the champion you hover from the client's own API, puts every one of that champion's skins on screen, remembers what you liked last time, and has the build ready before you lock in. Skins you don't own included.</p>
-    <p><strong>Nothing you see is made up.</strong> Every name, splash and icon comes from the League client. The builds and counters come from u.gg and op.gg, and every page links back to where its numbers came from.</p>
-    <p><strong>And nothing here is an edge.</strong> A skin is cosmetic and only you see it. The build suggestions are public stats anyone can open in a browser. tibbers just saves you the tab-out, on Windows and on macOS alike.</p>
-  </section>
-
-  <section class="wrap" id="what">
-    <h2>What it does</h2>
-    <div class="two">
-      <ul class="rows">
-        <li><span class="k mono">On hover</span><p>Skins appear the instant you hover a champion, before you lock in, and start building quietly in the background so they're ready if you take the pick. A skin that can't be built stays on screen, dimmed, so absence is visible rather than mysterious.</p></li>
-        <li><span class="k mono">Remembered</span><p>The skin you like on each champion, and the chroma on each skin, put back automatically the next time you lock that champion.</p></li>
-        <li><span class="k mono">Builds</span><p>While you decide, it pulls the champion's runes, items, skill order and matchups from u.gg, and Arena augments, items and a tier list from op.gg. One click imports the build straight into the client, so you don't have to tab out to a stats site.</p></li>
-        <li><span class="k mono">Out of the way</span><p>Close the window and it drops into the menu bar or system tray, still watching champ select. A small picker raises itself when you lock a champion and closes when the lobby ends.</p></li>
-        <li><span class="k mono">One prompt</span><p>On macOS, applying a skin needs your password once per game, or never again after an optional one-time setup. On Windows there is nothing to elevate, so it never asks.</p></li>
-      </ul>
-      <figure>
-        <div class="frame">
-          <picture>
-            <source srcset="/img/build-guide.webp" type="image/webp">
-            <img src="/img/build-guide.jpg" width="1174" height="788" alt="The build page: runes, skill order and items from u.gg, over a dimmed splash." loading="lazy">
-          </picture>
-        </div>
-        <figcaption>The build page, runes and items from u.gg, with a link back to the source.</figcaption>
-      </figure>
+  <section class="wrap" id="modes">
+    <h2>Every mode, and what you get in it</h2>
+    <p>Skins work in every mode with champion models. Builds depend on where the numbers come from: <a href="https://u.gg">u.gg</a> for most queues, <a href="https://op.gg">op.gg</a> for Arena.</p>
+    <div class="tablewrap">
+    <table class="modes">
+      <thead><tr><th class="mono">Mode</th><th class="mono">Skin changer</th><th class="mono">Build guide</th></tr></thead>
+      <tbody>
+        <tr><td>Summoner's Rift <span class="sub">ranked, draft, blind, practice tool</span></td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">runes, items, skills, counters</span></td></tr>
+        <tr><td>Swiftplay</td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">runes, items, skills, counters</span></td></tr>
+        <tr><td>ARAM</td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">runes, items, skills</span></td></tr>
+        <tr><td>ARAM: Mayhem</td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">ARAM's numbers</span></td></tr>
+        <tr><td>Arena</td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">tier list, augments, items</span></td></tr>
+        <tr><td>URF</td><td class="yes">Yes</td><td class="yes">Yes <span class="sub">ranked Rift's numbers</span></td></tr>
+        <tr><td>Nexus Blitz</td><td class="yes">Yes</td><td class="no">No</td></tr>
+        <tr><td>Teamfight Tactics</td><td class="no">No</td><td class="no">No</td></tr>
+      </tbody>
+    </table>
     </div>
   </section>
-
-  <section class="wrap" id="how">
-    <h2>How it works, and why your install is safe</h2>
-    <p>Riot's client verifies its own files and repairs anything changed, so tibbers never writes into the League installation. It works on the running game instead, in three small steps.</p>
-    <ol class="steps">
-      <li><span class="k mono">1 · Build</span><div><h3>A few kilobytes, out of your own files</h3><p>When you pick a skin, tibbers writes a tiny replacement game archive that points the base skin's asset references at the skin you chose. Those files already ship with your install, so no skin art is ever downloaded and no skin repository is contacted. A mod is a rewrite of pointers, not a download.</p></div></li>
-      <li><span class="k mono">2 · Wait</span><div><h3>A patcher that waits for the game</h3><p>It starts a small patcher, the <code>mod-tools</code> from <a href="https://github.com/LeagueToolkit/cslol-manager">cslol-manager</a>, that watches for the game to launch. The game is never frozen or suspended, and what the patcher is about to run is printed before it runs.</p></div></li>
-      <li><span class="k mono">3 · Redirect</span><div><h3>Reads go to the overlay, the install stays put</h3><p>When the game starts, the patcher redirects its archive reads into that overlay. Only you see the skin. Close the game and nothing is left behind.</p></div></li>
-    </ol>
-    <div class="aside" id="bannable">
-      <p><strong style="color:var(--ink);font-weight:400">Is it bannable?</strong> In practice, no. Custom skins are client-side only, nobody else sees them, and they change nothing about how the game plays, so Riot treats them as use-at-your-own-risk rather than something it actions. Rose, the equivalent tool on Windows, injects the same way without people getting banned. The caveats: don't expect Riot support if something breaks, and Korea, Turkey and Russia enforce more strictly than NA or EU.</p>
-    </div>
+  <section class="wrap" id="safe">
+    <h2>Client-side, and nothing more</h2>
+    <p>Skins are visible only to you. Nobody else in the game sees them, and they change nothing about how the game plays. The build guide is public u.gg and op.gg data anyone can open in a browser. tibbers gives you no competitive advantage and no information you couldn't get otherwise. It never modifies your League install: it works on the running game, with <a href="https://github.com/LeagueToolkit/cslol-manager">cslol</a>'s mod-tools, the same way Rose does on Windows.</p>
   </section>
 
   <section class="wrap" id="install">
@@ -426,7 +379,7 @@ FORM: a product page built from the product's own table-row primitive; extension
   <div class="cols">
     <div>
       <p>tibbers is mostly glue. The hard parts are other people's work: <a href="https://github.com/LeagueToolkit/cslol-manager">cslol-manager</a> and the League Toolkit for the overlay builder and patcher, <a href="https://u.gg">u.gg</a> and <a href="https://op.gg">op.gg</a> for the statistics, and a nod to <a href="https://github.com/Alban1911/Rose">Rose</a>, the Windows skin changer that inspired it.</p>
-      <p>Free software under the <a href="https://github.com/JustTrott/tibbers/blob/main/LICENSE">GNU GPL v3</a>. Copyright © 2026 Temirlan Amanzhanov.</p>
+      <p>Free software under the <a href="https://github.com/JustTrott/tibbers/blob/main/LICENSE">GNU GPL v3</a>.</p>
     </div>
     <div class="links mono">
       <a href="https://github.com/JustTrott/tibbers"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source on GitHub</a>
