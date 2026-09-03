@@ -44,6 +44,40 @@ log = logging.getLogger("tibbers")
 IS_MACOS = sys.platform == "darwin"
 IS_WINDOWS = sys.platform.startswith("win")
 
+
+def _running_instance(port: int = 7777, span: int = 12) -> Optional[int]:
+    """The port of a tibbers already serving on this machine, if there is one.
+
+    Probes the ports `server.serve` falls back to, and accepts only an answer
+    shaped like our state -- something else listening on 7777 is not us.
+    """
+    import json
+    import urllib.request
+    for candidate in range(port, port + span):
+        try:
+            with urllib.request.urlopen(
+                    f"http://127.0.0.1:{candidate}/api/state",
+                    timeout=0.5) as resp:
+                data = json.load(resp)
+        except Exception:  # noqa: BLE001 -- nothing there, or not ours
+            continue
+        if isinstance(data, dict) and "phase" in data:
+            return candidate
+    return None
+
+
+def _ask(port: int, path: str, payload: dict) -> None:
+    """POST to a running instance. Failing is fine: the caller is exiting."""
+    import json
+    import urllib.request
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=2).close()
+    except Exception:  # noqa: BLE001
+        pass
+
 #: How many guides to remember. Switching between the enemies in one champ
 #: select should never refetch, and nothing older than this game is worth
 #: holding.
@@ -355,6 +389,20 @@ def main() -> int:
     scratch_home = bool(os.environ.get("TIBBERS_HOME"))
     can_inject = (not args.no_inject and not args.dev
                   and (args.allow_inject or not scratch_home))
+
+    # A second launch of the installed app -- the Start Menu entry while it
+    # is already in the tray, or the update's swap script reopening an app the
+    # user had already reopened by hand -- hands off to the running one. The
+    # server would otherwise fall back to the next port and two copies would
+    # share one data directory, each building overlays into it. macOS never
+    # gets here: LaunchServices activates the existing app instead.
+    if IS_WINDOWS and args.port is None and getattr(sys, "frozen", False):
+        other = _running_instance()
+        if other is not None:
+            log.info("another tibbers is serving on :%d -- handing off", other)
+            if not args.quiet:
+                _ask(other, "/api/window", {"open": "settings"})
+            return 0
 
     prefs = prefs_mod.Prefs()
     state = server.State()
@@ -1179,6 +1227,7 @@ def main() -> int:
     update_check_lock = threading.Lock()      # one check in flight at a time
     update_staged: Optional[tuple] = None     # (version, unpacked build path)
     update_declined: Optional[str] = None     # version whose auto-install failed
+    update_pending = False                    # the button, pressed mid-game
 
     def check_for_update() -> None:
         nonlocal update_checked
@@ -1221,7 +1270,7 @@ def main() -> int:
         not, the unpacked build is kept for a later tick. The button skips
         that check: the user asked now.
         """
-        nonlocal update_staged
+        nonlocal update_staged, update_pending
         if update_staged is not None and update_staged[0] != version:
             update.discard(update_staged[1])
             update_staged = None
@@ -1231,8 +1280,22 @@ def main() -> int:
         if wait_for_idle and not league_idle():
             log.info("update %s downloaded; League woke up, waiting", version)
             return
+        if IS_WINDOWS and system.game_pid() is not None:
+            # The patcher holder is Tibbers.exe itself and a running image
+            # cannot be overwritten, so the swap needs the patcher stopped --
+            # which mid-game would take the skin away. Keep the build; the
+            # loop installs it once the game ends, button or not.
+            update_pending = True
+            state.say(f"tibbers {version} downloaded -- "
+                      "it installs when the game ends")
+            return
         update_state["installing"] = True
-        update.launch_swap(update_staged[1])
+        update_pending = False
+        if IS_WINDOWS and inject.is_running():
+            log.info("stopping the patcher so the install can be replaced")
+            inject.stop_patcher()
+        update.launch_swap(update_staged[1],
+                           log_path=system.data_dir() / "work" / "update.log")
         # The swap script is now waiting on this process; quitting lets it
         # replace the bundle and reopen the new one.
         state.say(f"installing tibbers {version} -- reopening in a moment")
@@ -1250,7 +1313,8 @@ def main() -> int:
             if (update_state.get("available") and url
                     and not update_state.get("installing")
                     and version != update_declined
-                    and prefs.get("auto_update") and league_idle()):
+                    and (prefs.get("auto_update") or update_pending)
+                    and league_idle()):
                 try:
                     install_update(url, version, wait_for_idle=True)
                 except Exception as exc:  # noqa: BLE001 -- reported, not fatal

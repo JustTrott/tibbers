@@ -61,5 +61,53 @@ class Schedule(unittest.TestCase):
         self.assertGreaterEqual(update.CHECK_INTERVAL, 60 * 60)
 
 
+
+class WindowsSwap(unittest.TestCase):
+    """The .bat that replaces the install: what it must and must not do."""
+
+    def script(self) -> str:
+        path = update._swap_script_windows(
+            Path(r"C:\tmp\unpacked\Tibbers"), Path(r"C:\Programs\Tibbers"),
+            Path(r"C:\data\work\update.log"))
+        try:
+            return path.read_text()
+        finally:
+            path.unlink()
+
+    def robocopies(self):
+        return [line for line in self.script().splitlines()
+                if line.startswith("robocopy")]
+
+    def test_robocopy_gives_up_rather_than_retrying_for_days(self):
+        # Its default is a million retries thirty seconds apart, and a locked
+        # Tibbers.exe -- any running copy, the patcher holder included --
+        # held the swap forever.
+        for line in self.robocopies():
+            self.assertIn("/R:", line)
+            self.assertIn("/W:", line)
+
+    def test_the_exe_is_copied_first_and_alone(self):
+        first, rest = self.robocopies()
+        self.assertIn("Tibbers.exe", first)
+        self.assertNotIn("/MIR", first)
+        self.assertIn("/MIR", rest)
+
+    def test_a_failed_copy_reopens_nothing(self):
+        s = self.script()
+        self.assertLess(s.index("errorlevel 8"), s.index('start ""'))
+
+    def test_no_second_copy_is_opened(self):
+        self.assertIn("imagename eq Tibbers.exe", self.script())
+
+    def test_what_happened_is_logged(self):
+        self.assertIn(r"C:\data\work\update.log", self.script())
+
+    def test_the_swap_runs_without_a_window(self):
+        # DETACHED_PROCESS makes Windows ignore CREATE_NO_WINDOW, which is how
+        # the update's terminal came to sit over the desktop.
+        self.assertFalse(update._SWAP_FLAGS & 0x00000008)
+        self.assertTrue(update._SWAP_FLAGS & 0x08000000)
+
+
 if __name__ == "__main__":
     unittest.main()

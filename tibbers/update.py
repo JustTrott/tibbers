@@ -218,25 +218,63 @@ def _stage_windows(url: str) -> Path:
     return exe.parent
 
 
-def _swap_script_windows(new_dir: Path, target: Path) -> Path:
-    body = (
-        "@echo off\r\n"
-        "set \"PID=%~1\"\r\n"
-        ":wait\r\n"
-        "tasklist /fi \"PID eq %PID%\" | find \"%PID%\" >nul "
-        "&& ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
-        f"robocopy \"{new_dir}\" \"{target}\" /MIR /NFL /NDL /NJH /NJS /NC "
-        "/NS /NP >nul\r\n"
-        f"start \"\" \"{target}\\Tibbers.exe\" --quiet\r\n"
-        f"rmdir /s /q \"{new_dir.parent}\" >nul 2>&1\r\n"
-    )
+def _swap_script_windows(new_dir: Path, target: Path,
+                         log_path: Optional[Path] = None) -> Path:
+    """The .bat that replaces the install once this process has exited.
+
+    Two things it must not do, both learnt the hard way. It must not retry
+    forever: robocopy's default is a million retries thirty seconds apart,
+    and Tibbers.exe is locked by any running copy -- the patcher holder
+    included, which *is* Tibbers.exe -- so a swap started with one alive hung
+    for good. And it must not leave a half-replaced install: the exe is
+    copied first and alone, and only when that worked is the rest mirrored
+    over it. Nor does it open a second copy when one is already running.
+    Everything it does goes to *log_path*, since nobody is watching.
+    """
+    log = str(log_path) if log_path else "nul"
+    q = lambda path: f'"{path}"'  # noqa: E731
+    ro = "/R:30 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP"
+    stamp = "echo [%date% %time%] update:"
+    body = "\r\n".join([
+        "@echo off",
+        'set "PID=%~1"',
+        f'set "LOG={log}"',
+        f'{stamp} waiting for pid %PID% to exit >> "%LOG%"',
+        ":wait",
+        'tasklist /fi "PID eq %PID%" | find "%PID%" >nul '
+        "&& ( ping -n 2 127.0.0.1 >nul & goto wait )",
+        f'robocopy {q(new_dir)} {q(target)} Tibbers.exe {ro} >> "%LOG%" 2>&1',
+        "if errorlevel 8 (",
+        f'  {stamp} Tibbers.exe is in use -- the install was left as it was '
+        '>> "%LOG%"',
+        "  goto done",
+        ")",
+        f'robocopy {q(new_dir)} {q(target)} /MIR {ro} >> "%LOG%" 2>&1',
+        "if errorlevel 8 (",
+        f'  {stamp} copying the new build failed >> "%LOG%"',
+        "  goto done",
+        ")",
+        f'{stamp} installed >> "%LOG%"',
+        'tasklist /fi "imagename eq Tibbers.exe" | find /i "Tibbers.exe" >nul '
+        "&& (",
+        f'  {stamp} tibbers is already open, not reopening it >> "%LOG%"',
+        f') || start "" {q(target / "Tibbers.exe")} --quiet',
+        ":done",
+        f"rmdir /s /q {q(new_dir.parent)} >nul 2>&1",
+        "",
+    ])
     fd, path = tempfile.mkstemp(prefix="tibbers-swap-", suffix=".bat")
     with os.fdopen(fd, "w", newline="") as handle:
         handle.write(body)
     return Path(path)
 
 
-_DETACHED = 0x00000008 | 0x00000200 | 0x08000000  # detached, new group, no window
+# CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP -- and not DETACHED_PROCESS.
+# Windows ignores CREATE_NO_WINDOW next to DETACHED_PROCESS, and a cmd with no
+# console at all hands every tasklist, find and robocopy it runs a console
+# window of its own: the empty terminal that sat over the desktop during the
+# update. A child of a windowed app outlives its parent without being detached.
+_SWAP_FLAGS = 0x08000000 | 0x00000200
 
 
 def stage(url: str) -> Path:
@@ -253,21 +291,26 @@ def discard(staged: Path) -> None:
     shutil.rmtree(staged.parent, ignore_errors=True)
 
 
-def launch_swap(staged: Path, target: Optional[Path] = None) -> None:
+def launch_swap(staged: Path, target: Optional[Path] = None,
+                log_path: Optional[Path] = None) -> None:
     """Start the detached swap of a staged build over the install.
 
     The caller must quit the app immediately after this returns, so the swap
     script -- already waiting on this PID -- can replace the install and reopen
-    it. It waits only so long: after that it replaces the install regardless.
+    it. On Windows nothing else may be running from the install either: the
+    patcher holder is Tibbers.exe, and a running image cannot be overwritten,
+    so the caller stops the patcher first. What the script did is written to
+    *log_path* there.
     """
     target = target or installed_app()
     if target is None:
         raise RuntimeError("not running from an installed build")
 
     if _IS_WINDOWS:
-        script = _swap_script_windows(staged, target)
+        script = _swap_script_windows(staged, target, log_path)
         subprocess.Popen(["cmd", "/c", str(script), str(os.getpid())],
-                         creationflags=_DETACHED, close_fds=True,
+                         creationflags=_SWAP_FLAGS, close_fds=True,
+                         stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return
 
