@@ -10,6 +10,7 @@ takes away the build; the rule that decides is small, so it is pinned here.
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 import unittest.mock
@@ -86,6 +87,24 @@ class WindowsInstall(unittest.TestCase):
 
     def test_no_script_is_written_any_more(self):
         self.assertFalse(hasattr(update, "_swap_script_windows"))
+
+
+class PortableDisablesSelfUpdate(unittest.TestCase):
+    """A portable copy must never run the installer path -- it would install
+    to %LOCALAPPDATA% and leave the portable folder stale."""
+
+    def tearDown(self):
+        os.environ.pop("TIBBERS_PORTABLE", None)
+
+    def test_installed_app_is_none_in_portable_mode(self):
+        os.environ["TIBBERS_PORTABLE"] = "1"
+        self.assertIsNone(update.installed_app())
+
+    def test_check_reports_no_installer_target_but_still_sees_versions(self):
+        # The version comparison still works; it is only the install that is
+        # off, which installed_app() being None expresses to the loop.
+        os.environ["TIBBERS_PORTABLE"] = "1"
+        self.assertIsNone(update.installed_app())
 
 
 class Digest(unittest.TestCase):

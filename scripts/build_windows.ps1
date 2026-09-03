@@ -64,6 +64,32 @@ Remove-Item $zip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $root "dist\Tibbers") -DestinationPath $zip
 Write-Host "==> Wrote $zip"
 
+# The portable build: the same onedir plus a portable.txt marker, so unzipping
+# and running Tibbers.exe keeps the library, settings and tools in a Data
+# folder beside it -- no install, no admin, nothing in %LOCALAPPDATA%. It is a
+# separate asset from the OTA zip above, which must stay marker-free (an
+# installed copy must never turn itself portable).
+$portStage = Join-Path $root "dist\portable\Tibbers"
+Remove-Item -Recurse -Force (Join-Path $root "dist\portable") -ErrorAction SilentlyContinue
+Copy-Item -Recurse (Join-Path $root "dist\Tibbers") $portStage
+$marker = @"
+This file makes Tibbers portable.
+
+While it sits next to Tibbers.exe, tibbers keeps its skin library, settings and
+injection tools in the Data folder beside it -- so this whole folder, on a USB
+stick or anywhere, is a self-contained copy that needs no installation and no
+administrator rights. The first launch downloads the injection tools into Data
+once (about 50 MB); after that it runs offline.
+
+Delete this file to make this copy use the normal shared location instead.
+"@
+Set-Content -Path (Join-Path $portStage "portable.txt") -Value $marker -Encoding UTF8
+$pzip = Join-Path $root "dist\Tibbers-windows-portable.zip"
+Write-Host "==> Packing $pzip (portable)"
+Remove-Item $pzip -ErrorAction SilentlyContinue
+Compress-Archive -Path $portStage -DestinationPath $pzip
+Write-Host "==> Wrote $pzip"
+
 if ($Installer) {
     $iss = Join-Path $root "scripts\tibbers.iss"
     # ISCC is rarely on PATH -- winget drops it in LocalAppData -- so look in

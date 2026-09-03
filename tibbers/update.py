@@ -105,6 +105,12 @@ def installed_app() -> Optional[Path]:
     macOS: the `.app` bundle. Windows: the PyInstaller folder that holds
     `Tibbers.exe`, which is where the frozen `sys.executable` lives.
     """
+    if os.environ.get("TIBBERS_PORTABLE"):
+        # A portable copy has no installer and no fixed location: swapping an
+        # installer over it would install to %LOCALAPPDATA% instead, leaving
+        # the portable folder stale. So self-update is off; a new portable
+        # build is downloaded by hand. Every update entry point no-ops here.
+        return None
     if _IS_WINDOWS:
         if getattr(sys, "frozen", False):
             return Path(sys.executable).resolve().parent
