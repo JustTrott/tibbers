@@ -313,7 +313,8 @@ class InstanceMutex(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform.startswith("win"), "a Windows mutex")
     def test_a_second_claim_in_this_process_sees_the_first(self):
-        self.assertTrue(win.claim_instance())
+        if not win.claim_instance():
+            self.skipTest("a tibbers is running on this machine and holds it")
         # Same process, same mutex: CreateMutex reports it already exists.
         self.assertFalse(win.claim_instance())
 

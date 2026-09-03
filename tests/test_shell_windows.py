@@ -61,3 +61,21 @@ def test_stored_parked_position_falls_back_to_centred(monkeypatch):
     box = w._stored("settings", shell.SETTINGS_SIZE)
     assert (box["x"], box["y"]) == (None, None)
     assert (box["width"], box["height"]) == (560, 460)
+
+
+def test_on_top_is_never_assigned_across_threads():
+    """pywebview's `window.on_top = x` sets a WinForms property from the
+    calling thread and can deadlock against the UI thread; every change of
+    TopMost after creation must go through set_topmost (BeginInvoke)."""
+    import inspect
+    src = inspect.getsource(shell)
+    body = src.replace("on_top=(name", "")  # the create_window keyword is fine
+    assert ".on_top =" not in body
+    assert "BeginInvoke" in inspect.getsource(shell.set_topmost)
+
+
+def test_set_topmost_tolerates_a_window_without_a_form():
+    class W:
+        uid = "nope"
+    shell.set_topmost(W(), True)  # no exception, whatever the platform
+

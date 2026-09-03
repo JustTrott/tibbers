@@ -114,6 +114,35 @@ def terminate() -> None:
         log.debug("terminate: %s", exc)
 
 
+def set_topmost(window, on_top: bool) -> None:
+    """Set a window's TopMost on the UI thread, without waiting for it.
+
+    pywebview's own `on_top` setter assigns the WinForms property straight
+    from the calling thread. Cross-thread that is a synchronous SetWindowPos
+    the UI thread has to service -- and when the UI thread is itself waiting
+    for the GIL to run a Python handler (its 500 ms timer tick, a Move event)
+    the two wait on each other for good: picker never shown, tray menu dead,
+    API dead, nothing logged. It struck the first time League patched and the
+    library was being rebuilt on eight threads while a champion was locked.
+    `show()` and `hide()` are marshalled by pywebview with Invoke; this does
+    the same for TopMost with BeginInvoke, which posts and returns.
+    """
+    try:
+        from webview.platforms.winforms import BrowserView
+        from System import Func, Type
+
+        form = BrowserView.instances.get(window.uid)
+        if form is None:
+            return
+
+        def _apply():
+            form.TopMost = bool(on_top)
+
+        form.BeginInvoke(Func[Type](_apply))
+    except Exception as exc:  # noqa: BLE001 -- a window not yet created, or gone
+        log.debug("could not set on_top: %s", exc)
+
+
 class Windows:
     """The picker and settings windows, their visibility, and geometry."""
 
@@ -238,10 +267,7 @@ class Windows:
         w = self._ensure(name, hidden=True)
         try:
             if name == "picker":
-                try:
-                    w.on_top = self._on_top
-                except Exception:  # noqa: BLE001
-                    pass
+                set_topmost(w, self._on_top)
             w.show()
             self._visible[name] = True
             self._remember(name, visible=True)
@@ -275,19 +301,13 @@ class Windows:
         self._on_top = bool(on_top)
         w = self._window("picker")
         if w is not None:
-            try:
-                w.on_top = self._on_top
-            except Exception:  # noqa: BLE001
-                pass
+            set_topmost(w, self._on_top)
 
     def stand_down(self) -> None:
         """Drop always-on-top without hiding -- the game is being played."""
         w = self._window("picker")
         if w is not None:
-            try:
-                w.on_top = False
-            except Exception:  # noqa: BLE001
-                pass
+            set_topmost(w, False)
 
     def go_background(self) -> None:
         """No visible window: live in the tray."""
