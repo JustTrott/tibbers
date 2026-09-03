@@ -34,6 +34,34 @@ longer expensive, but it is still a request a second forever. Pausing on
 that a hidden pywebview window may not report itself hidden, and a picker
 that stops watching champ select would be worse than the poll.
 
+### Nothing says tibbers is running until lock-in
+
+Between launch and lock-in the app is a tray icon and nothing else. Someone
+who has just installed it, or whose picker is set to open on lock, has no
+way to tell whether it is watching champ select or not there at all. Worth
+deciding when a window should be on screen before the lock and what it says
+-- the phase line the settings page already has, the champion being hovered,
+or just "watching" -- without it being one more thing over the client.
+
+### Skin sharing: tibbers users in one lobby seeing each other's skins
+
+Today a chosen skin exists only on the machine that chose it. Two tibbers
+users in the same lobby could see each other's picks if their apps agreed on
+a channel and each built the other's skin into its own overlay. Open
+questions before any of it is built: how the apps find each other (the lobby
+chat, a rendezvous server, or nothing), what is sent (a skin id, never a
+file -- the other side builds from its own install), and the consent and
+ban-risk story, since it widens what the injector loads.
+
+### A minimise button on the pick screen
+
+The picker is frameless, so it has no minimise control: it can be closed to
+the tray or left floating over the client, nothing in between. A minimise
+button beside the close would let it drop to the taskbar and come back with
+the champion still selected. On Windows this touches the parked-position
+fix (a minimised window must not be remembered as its position), so the two
+have to be done together.
+
 ### `--demo` and `--mock` overlap
 
 `dev.sh --demo <id>` fills the picker with one champion's real skins;
