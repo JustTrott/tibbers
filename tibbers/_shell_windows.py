@@ -71,15 +71,50 @@ def on_screen(x, y, screens=None) -> bool:
 # pywebview window methods are safe to call from another thread, so these just
 # run the callable where they stand.
 
-def on_main(fn: Callable[[], object]) -> None:
+def _gui_run(fn: Callable[[], object], wait: bool = False) -> None:
+    """Run *fn* on the WinForms GUI thread.
+
+    Every window operation goes through here. The reason is the whole point of
+    this module's stability: the picker and settings windows are driven from
+    the League-watcher thread, and pywebview's WinForms backend touches some
+    window state (TopMost above all) with a *synchronous* cross-thread call.
+    When the GUI thread is momentarily busy -- a frameless drag's
+    SetWindowPos, a resize -- that call and the GUI thread wait on each other
+    for good: the app stops responding, no picker, dead tray, dead API. It hit
+    on lock-in (set_on_top while the library rebuilt) and at game start
+    (stand_down mid-drag).
+
+    BeginInvoke posts *fn* to the GUI thread's message queue and returns at
+    once, so the watcher never blocks. Called from the GUI thread itself
+    (InvokeRequired False) *fn* just runs. Before any window exists there is
+    nothing to post through, so it runs in place -- the creation path.
+    `wait=True` (Invoke) is only for shutdown, which must finish before the
+    run loop is torn down.
+    """
     try:
-        fn()
+        from webview.platforms.winforms import BrowserView
+        from System import Action
+
+        form = next(iter(BrowserView.instances.values()), None)
+        if form is None or not form.InvokeRequired:
+            fn()
+            return
+        (form.Invoke if wait else form.BeginInvoke)(Action(fn))
     except Exception as exc:  # noqa: BLE001
-        log.debug("on_main callable failed: %s", exc)
+        log.debug("gui dispatch failed: %s", exc)
+        try:
+            fn()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def on_main(fn: Callable[[], object]) -> None:
+    """Public name main.py uses. Posts to the GUI thread, does not wait."""
+    _gui_run(fn, wait=False)
 
 
 def off_main(fn: Callable[[], None]) -> None:
-    fn()
+    _gui_run(fn, wait=False)
 
 
 def quiet_launch() -> None:
@@ -112,35 +147,6 @@ def terminate() -> None:
                 pass
     except Exception as exc:  # noqa: BLE001
         log.debug("terminate: %s", exc)
-
-
-def set_topmost(window, on_top: bool) -> None:
-    """Set a window's TopMost on the UI thread, without waiting for it.
-
-    pywebview's own `on_top` setter assigns the WinForms property straight
-    from the calling thread. Cross-thread that is a synchronous SetWindowPos
-    the UI thread has to service -- and when the UI thread is itself waiting
-    for the GIL to run a Python handler (its 500 ms timer tick, a Move event)
-    the two wait on each other for good: picker never shown, tray menu dead,
-    API dead, nothing logged. It struck the first time League patched and the
-    library was being rebuilt on eight threads while a champion was locked.
-    `show()` and `hide()` are marshalled by pywebview with Invoke; this does
-    the same for TopMost with BeginInvoke, which posts and returns.
-    """
-    try:
-        from webview.platforms.winforms import BrowserView
-        from System import Func, Type
-
-        form = BrowserView.instances.get(window.uid)
-        if form is None:
-            return
-
-        def _apply():
-            form.TopMost = bool(on_top)
-
-        form.BeginInvoke(Func[Type](_apply))
-    except Exception as exc:  # noqa: BLE001 -- a window not yet created, or gone
-        log.debug("could not set on_top: %s", exc)
 
 
 class Windows:
@@ -263,25 +269,35 @@ class Windows:
         with self._lock:
             return self.settings if name == "settings" else self.picker
 
+    @staticmethod
+    def _apply_top(window, on_top: bool) -> None:
+        """Set TopMost directly. Only call from inside a _gui_run body, where
+        this thread *is* the GUI thread and the assignment cannot marshal."""
+        try:
+            from webview.platforms.winforms import BrowserView
+            form = BrowserView.instances.get(window.uid)
+            if form is not None:
+                form.TopMost = bool(on_top)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not set on_top: %s", exc)
+
     def _show(self, name: str, raise_it: bool) -> None:
         w = self._ensure(name, hidden=True)
-        try:
+
+        def _do():
             if name == "picker":
-                set_topmost(w, self._on_top)
-            w.show()
-            self._visible[name] = True
-            self._remember(name, visible=True)
-        except Exception as exc:  # noqa: BLE001
-            log.debug("could not show %s: %s", name, exc)
+                self._apply_top(w, self._on_top)
+            w.show()  # inline on the GUI thread: no cross-thread Invoke
+
+        _gui_run(_do)
+        self._visible[name] = True
+        self._remember(name, visible=True)
 
     def _hide(self, name: str) -> None:
         w = self._window(name)
         if w is None:
             return
-        try:
-            w.hide()
-        except Exception as exc:  # noqa: BLE001
-            log.debug("could not hide %s: %s", name, exc)
+        _gui_run(w.hide)
         self._visible[name] = False
         self._remember(name, visible=False)
 
@@ -301,13 +317,13 @@ class Windows:
         self._on_top = bool(on_top)
         w = self._window("picker")
         if w is not None:
-            set_topmost(w, self._on_top)
+            _gui_run(lambda: self._apply_top(w, self._on_top))
 
     def stand_down(self) -> None:
         """Drop always-on-top without hiding -- the game is being played."""
         w = self._window("picker")
         if w is not None:
-            set_topmost(w, False)
+            _gui_run(lambda: self._apply_top(w, False))
 
     def go_background(self) -> None:
         """No visible window: live in the tray."""

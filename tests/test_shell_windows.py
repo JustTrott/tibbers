@@ -63,19 +63,22 @@ def test_stored_parked_position_falls_back_to_centred(monkeypatch):
     assert (box["width"], box["height"]) == (560, 460)
 
 
-def test_on_top_is_never_assigned_across_threads():
-    """pywebview's `window.on_top = x` sets a WinForms property from the
-    calling thread and can deadlock against the UI thread; every change of
-    TopMost after creation must go through set_topmost (BeginInvoke)."""
+def test_window_ops_never_touch_the_ui_synchronously_off_thread():
+    """The freeze root cause: a WinForms property set (TopMost especially)
+    from the League-watcher thread marshals synchronously and deadlocks the
+    GUI thread. Every window op must go through _gui_run, and no synchronous
+    `window.on_top = x` may survive anywhere in the module."""
     import inspect
     src = inspect.getsource(shell)
-    body = src.replace("on_top=(name", "")  # the create_window keyword is fine
-    assert ".on_top =" not in body
-    assert "BeginInvoke" in inspect.getsource(shell.set_topmost)
+    assert ".on_top =" not in src.replace("on_top=(name", "")
+    # _gui_run posts to the GUI thread and does not wait (BeginInvoke).
+    assert "BeginInvoke" in inspect.getsource(shell._gui_run)
+    for method in ("_show", "_hide", "set_on_top", "stand_down"):
+        assert "_gui_run" in inspect.getsource(getattr(shell.Windows, method)), method
 
 
-def test_set_topmost_tolerates_a_window_without_a_form():
-    class W:
-        uid = "nope"
-    shell.set_topmost(W(), True)  # no exception, whatever the platform
+def test_gui_run_runs_inline_when_no_window_exists_yet():
+    ran = []
+    shell._gui_run(lambda: ran.append(1))  # nothing created: runs in place
+    assert ran == [1]
 
