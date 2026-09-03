@@ -97,6 +97,35 @@ INSTALL_ROOTS = (
 
 HOLDER_MARK = "tibbers-patcher-holder"
 
+#: The named mutex one running app holds for its lifetime. Two jobs: a second
+#: launch sees it and hands off instead of starting a second copy (the server
+#: would otherwise settle on the next port and both would build overlays into
+#: one data directory), and the installer waits for it to be released before
+#: replacing files -- see PrepareToInstall in scripts/tibbers.iss, which must
+#: name the same string. Per session, not Global\: the install is per-user.
+INSTANCE_MUTEX = "TibbersRunning"
+_instance_handle = None
+
+
+def claim_instance() -> bool:
+    """Take the instance mutex. False means another tibbers holds it.
+
+    Held, never released: the kernel drops it when the process exits, which
+    is exactly the moment the installer and the next launch care about.
+    """
+    global _instance_handle
+    import ctypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX)
+    if not handle:
+        return True  # cannot tell; do not refuse to run over it
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+        return False
+    _instance_handle = handle
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Installation

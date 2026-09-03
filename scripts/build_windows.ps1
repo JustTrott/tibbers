@@ -55,8 +55,9 @@ $exe = Join-Path $root "dist\Tibbers\Tibbers.exe"
 if (-not (Test-Path $exe)) { throw "expected $exe was not produced" }
 Write-Host "==> Built $exe"
 
-# The OTA release asset: the whole onedir zipped, which update.py downloads and
-# swaps in. Named to match tibbers/update.py asset_name().
+# From 1.0.2 the update asset is the installer itself (update.py asset_name());
+# the zip is still produced because a 1.0.0 / 1.0.1 app looks for it and swaps
+# it in with its own script. Drop it once no such install is left.
 $zip = Join-Path $root "dist\Tibbers-windows.zip"
 Write-Host "==> Packing $zip for OTA / release"
 Remove-Item $zip -ErrorAction SilentlyContinue

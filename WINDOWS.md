@@ -70,8 +70,8 @@ This produces three things in `dist\`:
 | artifact | what it is |
 |---|---|
 | `Tibbers\` | the frozen app (run `Tibbers\Tibbers.exe` directly) |
-| `Tibbers-<ver>-setup.exe` | the per-user installer (no admin) |
-| `Tibbers-windows.zip` | the OTA / release asset |
+| `Tibbers-windows-setup.exe` | the per-user installer -- also the update asset |
+| `Tibbers-windows.zip` | kept for 1.0.0 / 1.0.1 apps, whose updater looks for it |
 
 The patcher binaries are **not** bundled — cslol's DLL is unlicensed and LTK's
 is signed by its own publisher, so neither is ours to redistribute. Instead:
@@ -87,17 +87,30 @@ preferences live in the data dir and survive an uninstall.
 
 ## Releasing (and OTA)
 
-OTA mirrors macOS: `tibbers/update.py` checks the repo's latest GitHub Release
-at launch, every six hours after, and when Settings is opened. With the
-`auto_update` preference on (the default) it downloads the platform asset and,
-once League is idle, swaps it in via a detached script that waits for the app
-to exit, replaces the install, and relaunches `--quiet`; the Settings button
-does the same on request. Windows looks for **`Tibbers-windows.zip`**; macOS for `Tibbers.zip`.
+`tibbers/update.py` checks the repo's latest GitHub Release at launch, every
+six hours after, and when Settings is opened. With the `auto_update`
+preference on (the default) it downloads the platform asset and, once League
+is idle, installs it; the Settings button does the same on request.
+
+On Windows the asset **is the installer**, `Tibbers-windows-setup.exe`. The
+app downloads it, checks its SHA-256 against the digest GitHub publishes for
+the asset, stops the patcher (the patcher holder is `Tibbers.exe`, and a
+running image cannot be overwritten), starts the installer with
+`/VERYSILENT /CLOSEAPPLICATIONS /RELAUNCH=1 /LOG=<data>\work\update.log`,
+and quits. The installer's `PrepareToInstall` waits for the app's instance
+mutex (`TibbersRunning`) to be released, replaces the files, and its `[Run]`
+section reopens the app `--quiet`. Nothing is scripted by hand and no console
+is ever created. If a game is running the download is kept and installed
+when the game ends.
+
+One installed copy runs at a time: a second launch finds the mutex, asks the
+running copy to open Settings, and exits.
 
 To cut a release: bump `tibbers/__version__`, build with `-Installer`, and
-attach both `Tibbers-windows.zip` (OTA) and `Tibbers-<ver>-setup.exe` (first
-install) to a GitHub Release tagged `v<ver>`. The zip's name must stay exactly
-`Tibbers-windows.zip` or OTA will not find it.
+attach `Tibbers-windows-setup.exe` to a GitHub Release tagged `v<ver>`. The
+name must stay exactly that, or neither the README button nor the updater
+finds it. Attach `Tibbers-windows.zip` too while 1.0.0 / 1.0.1 installs
+exist; their updater looks for it.
 
 Note: the frozen exe and installer are **unsigned** for now, so Windows
 SmartScreen shows an "unknown publisher" prompt (More info → Run anyway) and

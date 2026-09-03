@@ -298,3 +298,22 @@ class PatcherLog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstanceMutex(unittest.TestCase):
+    """The app and the installer must agree on the mutex name: the installer
+    waits on it before touching a file (PrepareToInstall in tibbers.iss)."""
+
+    def test_the_installer_waits_on_the_same_mutex(self):
+        iss = (Path(__file__).resolve().parent.parent / "scripts"
+               / "tibbers.iss").read_text(encoding="utf-8")
+        self.assertIn(f"AppMutex = '{win.INSTANCE_MUTEX}';", iss)
+        self.assertIn("CheckForMutexes(AppMutex)", iss)
+        self.assertIn("WantsRelaunch", iss)
+
+    @unittest.skipUnless(sys.platform.startswith("win"), "a Windows mutex")
+    def test_a_second_claim_in_this_process_sees_the_first(self):
+        self.assertTrue(win.claim_instance())
+        # Same process, same mutex: CreateMutex reports it already exists.
+        self.assertFalse(win.claim_instance())
+

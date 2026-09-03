@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -62,51 +63,65 @@ class Schedule(unittest.TestCase):
 
 
 
-class WindowsSwap(unittest.TestCase):
-    """The .bat that replaces the install: what it must and must not do."""
+class WindowsInstall(unittest.TestCase):
+    """On Windows the update is the installer, run unattended: no script of
+    ours, no console, and the installer relaunches the app."""
 
-    def script(self) -> str:
-        path = update._swap_script_windows(
-            Path(r"C:\tmp\unpacked\Tibbers"), Path(r"C:\Programs\Tibbers"),
-            Path(r"C:\data\work\update.log"))
-        try:
-            return path.read_text()
-        finally:
-            path.unlink()
+    def test_the_windows_asset_is_the_installer(self):
+        with unittest.mock.patch.object(update, "_IS_WINDOWS", True):
+            self.assertEqual(update.asset_name(), "Tibbers-windows-setup.exe")
+        with unittest.mock.patch.object(update, "_IS_WINDOWS", False):
+            self.assertEqual(update.asset_name(), "Tibbers.zip")
 
-    def robocopies(self):
-        return [line for line in self.script().splitlines()
-                if line.startswith("robocopy")]
+    def test_the_installer_runs_unattended_and_reopens_the_app(self):
+        cmd = update.installer_command(Path(r"C:\t\Tibbers-windows-setup.exe"),
+                                       Path(r"C:\d a\work\update.log"))
+        self.assertTrue(cmd.startswith('"C:\\t\\Tibbers-windows-setup.exe" '))
+        for switch in ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                       "/NOCANCEL", "/CLOSEAPPLICATIONS", "/RELAUNCH=1"):
+            self.assertIn(f" {switch}", cmd)
+        # Inno wants the quotes around the value, and the path has a space.
+        self.assertIn('/LOG="C:\\d a\\work\\update.log"', cmd)
+        self.assertNotIn("cmd", cmd.lower().replace("tibbers-windows-setup", ""))
 
-    def test_robocopy_gives_up_rather_than_retrying_for_days(self):
-        # Its default is a million retries thirty seconds apart, and a locked
-        # Tibbers.exe -- any running copy, the patcher holder included --
-        # held the swap forever.
-        for line in self.robocopies():
-            self.assertIn("/R:", line)
-            self.assertIn("/W:", line)
+    def test_no_script_is_written_any_more(self):
+        self.assertFalse(hasattr(update, "_swap_script_windows"))
 
-    def test_the_exe_is_copied_first_and_alone(self):
-        first, rest = self.robocopies()
-        self.assertIn("Tibbers.exe", first)
-        self.assertNotIn("/MIR", first)
-        self.assertIn("/MIR", rest)
 
-    def test_a_failed_copy_reopens_nothing(self):
-        s = self.script()
-        self.assertLess(s.index("errorlevel 8"), s.index('start ""'))
+class Digest(unittest.TestCase):
+    """A download is checked against the checksum the release publishes."""
 
-    def test_no_second_copy_is_opened(self):
-        self.assertIn("imagename eq Tibbers.exe", self.script())
+    def setUp(self):
+        import tempfile
+        self.tmp = Path(tempfile.mkdtemp())
+        self.file = self.tmp / "asset.bin"
+        self.file.write_bytes(b"tibbers" * 1000)
+        import hashlib
+        self.good = "sha256:" + hashlib.sha256(self.file.read_bytes()).hexdigest()
 
-    def test_what_happened_is_logged(self):
-        self.assertIn(r"C:\data\work\update.log", self.script())
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_the_swap_runs_without_a_window(self):
-        # DETACHED_PROCESS makes Windows ignore CREATE_NO_WINDOW, which is how
-        # the update's terminal came to sit over the desktop.
-        self.assertFalse(update._SWAP_FLAGS & 0x00000008)
-        self.assertTrue(update._SWAP_FLAGS & 0x08000000)
+    def test_a_matching_digest_passes(self):
+        update.verify_digest(self.file, self.good)
+        update.verify_digest(self.file, self.good.upper())
+
+    def test_a_wrong_digest_is_refused(self):
+        with self.assertRaises(RuntimeError):
+            update.verify_digest(self.file, "sha256:" + "0" * 64)
+
+    def test_no_digest_or_an_unknown_kind_is_not_checked(self):
+        update.verify_digest(self.file, None)
+        update.verify_digest(self.file, "md5:abc")
+
+    def test_check_carries_the_digest_to_stage(self):
+        rel = {"tag": "v9.9.9", "version": "9.9.9", "url": "u",
+               "digest": self.good, "name": "n", "notes": ""}
+        with unittest.mock.patch.object(update, "latest_release", return_value=rel):
+            result = update.check(current="1.0.0")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["digest"], self.good)
 
 
 if __name__ == "__main__":

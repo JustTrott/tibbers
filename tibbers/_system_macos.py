@@ -46,6 +46,14 @@ INJECTION_NEEDS_ROOT = True
 #: `subprocess` on both platforms so the call sites stay identical.
 CREATE_NO_WINDOW = 0
 
+#: No instance mutex on macOS: LaunchServices activates the running app when
+#: it is opened again, so a second copy never starts.
+INSTANCE_MUTEX = ""
+
+
+def claim_instance() -> bool:
+    return True
+
 INSTALL_ROOTS = (
     Path("/Applications/League of Legends.app/Contents/LoL"),
     Path.home() / "Applications/League of Legends.app/Contents/LoL",

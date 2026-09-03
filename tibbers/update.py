@@ -4,27 +4,37 @@
 Self-update from GitHub Releases.
 
 The installed app is a frozen snapshot -- a `.app` on macOS, a PyInstaller
-folder under `%LOCALAPPDATA%\\Programs\\Tibbers` on Windows -- published on the
-repo's Releases (`Tibbers.zip` for macOS, `Tibbers-windows.zip` for Windows).
-This checks the latest release, and downloads it and swaps it into place --
-by itself once League is idle when the `auto_update` preference is on, or when
-the user presses the button. The swap is done by a tiny detached script that
-waits for this process to exit first, because a running app cannot overwrite
-itself; the app quits right after launching it, and the script reopens the new
-one.
+folder under `%LOCALAPPDATA%\\Programs\\Tibbers` on Windows -- published on
+the repo's Releases. This checks the latest release, verifies and downloads
+its asset, and installs it -- by itself once League is idle when the
+`auto_update` preference is on, or when the user presses the button.
 
-The two halves are separate on purpose: `stage` downloads and unpacks, which
-can be done any time and backed out of; `launch_swap` starts the script, after
-which the install *will* be replaced. The app decides between them whether it
-is still a good moment to quit.
+How the install is replaced differs by platform, on purpose:
+
+* macOS: `Tibbers.zip` is unpacked and a tiny detached shell script waits for
+  this process to exit, swaps the bundle and reopens it. A bundle is a plain
+  directory and nothing else runs from it, so this is safe and simple.
+* Windows: the asset is the Inno Setup installer itself, run silently. A
+  running image cannot be overwritten on Windows and the patcher holder is
+  Tibbers.exe, so a hand-rolled copy has to get file locks, retries, partial
+  copies, relaunch and logging right -- and did not. The installer already
+  does all of that (Restart Manager for in-use files, a log, exit codes) and
+  is the same artefact a first install uses, so there is one path to test.
+
+The two halves are separate on purpose: `stage` downloads (and unpacks), which
+can be done any time and backed out of; `launch_swap` starts the replacement,
+after which the install *will* change. The app decides between them whether
+it is still a good moment to quit.
 
 Nothing here elevates. Both install locations are writable by the ordinary
-user, and the patcher is detached, so a mid-game update leaves the skin on the
-game and the next launch adopts it -- exactly what a normal restart does.
+user. On macOS the patcher is detached from the app, so a mid-game update
+leaves the skin on the game; on Windows the app stops the patcher first, and
+therefore only updates once the game is over.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -74,9 +84,13 @@ _IS_WINDOWS = sys.platform.startswith("win")
 
 
 def asset_name() -> str:
-    """The release asset for this platform. The README's download button and
-    the release job must use the same names."""
-    return "Tibbers-windows.zip" if _IS_WINDOWS else "Tibbers.zip"
+    """The release asset for this platform: what the app downloads to update.
+
+    On Windows that is the installer -- the very file the README's download
+    button points at, so an update and a first install are the same thing.
+    The build script and the release must use these exact names.
+    """
+    return "Tibbers-windows-setup.exe" if _IS_WINDOWS else "Tibbers.zip"
 
 
 #: Back-compat alias; the macOS name, kept for any old caller.
@@ -121,13 +135,17 @@ def latest_release() -> dict:
         data = json.load(resp)
     tag = data.get("tag_name") or ""
     want = asset_name()
-    url = None
+    url = digest = None
     for asset in data.get("assets") or []:
         if asset.get("name") == want:
             url = asset.get("browser_download_url")
+            # GitHub publishes "sha256:<hex>" per asset; the download is
+            # checked against it so a truncated or tampered file is never run.
+            digest = asset.get("digest")
             break
     return {"tag": tag, "version": tag.lstrip("vV"), "url": url,
-            "name": data.get("name") or tag, "notes": data.get("body") or ""}
+            "digest": digest, "name": data.get("name") or tag,
+            "notes": data.get("body") or ""}
 
 
 def check(current: str = __version__) -> dict:
@@ -146,17 +164,38 @@ def check(current: str = __version__) -> dict:
                 "error": f"the latest release has no {asset_name()}"}
     available = _version_tuple(rel["version"]) > _version_tuple(current)
     return {"available": available, "version": rel["version"],
-            "current": current, "url": rel["url"], "notes": rel["notes"],
-            "name": rel["name"]}
+            "current": current, "url": rel["url"], "digest": rel["digest"],
+            "notes": rel["notes"], "name": rel["name"]}
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(url: str, dest: Path, digest: Optional[str] = None) -> None:
+    """Fetch *url* to *dest* and, when the release published a digest, refuse
+    a file that does not match it."""
     req = urllib.request.Request(url, headers={"User-Agent": "tibbers-updater"})
     with urllib.request.urlopen(req, timeout=120) as resp, open(dest, "wb") as out:
         shutil.copyfileobj(resp, out)
+    verify_digest(dest, digest)
 
 
-def _stage(url: str) -> Path:
+def verify_digest(path: Path, digest: Optional[str]) -> None:
+    """Raise unless *path* hashes to *digest* ("sha256:<hex>", as GitHub's
+    release API reports it). No digest means nothing to check against."""
+    if not digest:
+        log.debug("no digest published for %s; not verified", path.name)
+        return
+    algo, _, want = digest.partition(":")
+    if algo != "sha256" or not want:
+        log.debug("unrecognised digest %r; not verified", digest)
+        return
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest().lower() != want.lower():
+        raise RuntimeError(f"{path.name} does not match the release's checksum")
+
+
+def _stage(url: str, digest: Optional[str] = None) -> Path:
     """Download and unpack the release, returning the new Tibbers.app path.
 
     `ditto` is used to unzip rather than `zipfile` so the bundle's symlinks and
@@ -164,7 +203,7 @@ def _stage(url: str) -> Path:
     """
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-update-"))
     archive = tmp / ASSET
-    _download(url, archive)
+    _download(url, archive, digest)
     subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(tmp)],
                    check=True)
     app = tmp / "Tibbers.app"
@@ -196,94 +235,52 @@ rm -rf {shlex.quote(str(new_app.parent))}
 
 # --- Windows -----------------------------------------------------------------
 #
-# The frozen build is a PyInstaller folder, not a bundle, so the zip is plain
-# and `zipfile` unpacks it (no symlinks or exec bits to preserve). The swap is
-# a detached .bat because it must outlive this process and needs no dependency
-# the machine might lack: it waits for our PID to exit, mirrors the new folder
-# over the old with robocopy, and relaunches quietly. `--quiet` comes up in the
-# tray without stealing focus from a game, matching the macOS `open -g`.
+# The asset is the Inno Setup installer, and "swapping" is running it silently.
+# Everything a hand-rolled copy got wrong is the installer's job: it waits for
+# the app's instance mutex to go (see scripts/tibbers.iss), asks the Restart
+# Manager to close anything still holding a file, replaces the files, writes a
+# log, exits with a documented code, and reopens the app `--quiet` because we
+# ask it to with /RELAUNCH=1. No cmd, no robocopy, no console anywhere: the
+# installer is a windowed program and /VERYSILENT shows nothing at all.
 
-def _stage_windows(url: str) -> Path:
-    import zipfile
+#: Setup switches for an unattended update. /NOCANCEL because nobody is there
+#: to answer; /NORESTART because nothing here needs a reboot and a silent
+#: one would be a disaster; the CLOSEAPPLICATIONS pair so a stale process
+#: holding a file is closed rather than failing the install; /RELAUNCH is our
+#: own parameter, read by the [Run] section of the .iss.
+INSTALLER_SWITCHES = ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                      "/NOCANCEL", "/CLOSEAPPLICATIONS",
+                      "/FORCECLOSEAPPLICATIONS", "/RELAUNCH=1")
 
+
+def _stage_windows(url: str, digest: Optional[str] = None) -> Path:
+    """Download the installer into its own temporary directory."""
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-update-"))
-    archive = tmp / asset_name()
-    _download(url, archive)
-    extract = tmp / "unpacked"
-    with zipfile.ZipFile(archive) as zf:
-        zf.extractall(extract)
-    exe = next(extract.rglob("Tibbers.exe"), None)
-    if exe is None:
-        raise RuntimeError(f"no Tibbers.exe inside {asset_name()}")
-    return exe.parent
+    setup = tmp / asset_name()
+    _download(url, setup, digest)
+    return setup
 
 
-def _swap_script_windows(new_dir: Path, target: Path,
-                         log_path: Optional[Path] = None) -> Path:
-    """The .bat that replaces the install once this process has exited.
+def installer_command(setup: Path, log_path: Optional[Path] = None) -> str:
+    """The command line that runs a downloaded installer unattended.
 
-    Two things it must not do, both learnt the hard way. It must not retry
-    forever: robocopy's default is a million retries thirty seconds apart,
-    and Tibbers.exe is locked by any running copy -- the patcher holder
-    included, which *is* Tibbers.exe -- so a swap started with one alive hung
-    for good. And it must not leave a half-replaced install: the exe is
-    copied first and alone, and only when that worked is the rest mirrored
-    over it. Nor does it open a second copy when one is already running.
-    Everything it does goes to *log_path*, since nobody is watching.
+    A string rather than a list: Inno reads `/LOG="path"` with the quotes
+    around the value, which `subprocess`'s list quoting would not produce.
     """
-    log = str(log_path) if log_path else "nul"
-    q = lambda path: f'"{path}"'  # noqa: E731
-    ro = "/R:30 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP"
-    stamp = "echo [%date% %time%] update:"
-    body = "\r\n".join([
-        "@echo off",
-        'set "PID=%~1"',
-        f'set "LOG={log}"',
-        f'{stamp} waiting for pid %PID% to exit >> "%LOG%"',
-        ":wait",
-        'tasklist /fi "PID eq %PID%" | find "%PID%" >nul '
-        "&& ( ping -n 2 127.0.0.1 >nul & goto wait )",
-        f'robocopy {q(new_dir)} {q(target)} Tibbers.exe {ro} >> "%LOG%" 2>&1',
-        "if errorlevel 8 (",
-        f'  {stamp} Tibbers.exe is in use -- the install was left as it was '
-        '>> "%LOG%"',
-        "  goto done",
-        ")",
-        f'robocopy {q(new_dir)} {q(target)} /MIR {ro} >> "%LOG%" 2>&1',
-        "if errorlevel 8 (",
-        f'  {stamp} copying the new build failed >> "%LOG%"',
-        "  goto done",
-        ")",
-        f'{stamp} installed >> "%LOG%"',
-        'tasklist /fi "imagename eq Tibbers.exe" | find /i "Tibbers.exe" >nul '
-        "&& (",
-        f'  {stamp} tibbers is already open, not reopening it >> "%LOG%"',
-        f') || start "" {q(target / "Tibbers.exe")} --quiet',
-        ":done",
-        f"rmdir /s /q {q(new_dir.parent)} >nul 2>&1",
-        "",
-    ])
-    fd, path = tempfile.mkstemp(prefix="tibbers-swap-", suffix=".bat")
-    with os.fdopen(fd, "w", newline="") as handle:
-        handle.write(body)
-    return Path(path)
+    parts = [f'"{setup}"', *INSTALLER_SWITCHES]
+    if log_path is not None:
+        parts.append(f'/LOG="{log_path}"')
+    return " ".join(parts)
 
 
-# CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP -- and not DETACHED_PROCESS.
-# Windows ignores CREATE_NO_WINDOW next to DETACHED_PROCESS, and a cmd with no
-# console at all hands every tasklist, find and robocopy it runs a console
-# window of its own: the empty terminal that sat over the desktop during the
-# update. A child of a windowed app outlives its parent without being detached.
-_SWAP_FLAGS = 0x08000000 | 0x00000200
-
-
-def stage(url: str) -> Path:
-    """Download and unpack the new build into a temporary directory.
+def stage(url: str, digest: Optional[str] = None) -> Path:
+    """Download (and on macOS unpack) the new build into a temporary directory.
 
     Nothing is touched yet: the result can sit there until it is a good
-    moment to swap, or be thrown away with `discard`.
+    moment to swap, or be thrown away with `discard`. *digest* is the
+    release's published checksum; the download is refused if it differs.
     """
-    return _stage_windows(url) if _IS_WINDOWS else _stage(url)
+    return _stage_windows(url, digest) if _IS_WINDOWS else _stage(url, digest)
 
 
 def discard(staged: Path) -> None:
@@ -293,25 +290,24 @@ def discard(staged: Path) -> None:
 
 def launch_swap(staged: Path, target: Optional[Path] = None,
                 log_path: Optional[Path] = None) -> None:
-    """Start the detached swap of a staged build over the install.
+    """Start the replacement of the install by a staged build.
 
-    The caller must quit the app immediately after this returns, so the swap
-    script -- already waiting on this PID -- can replace the install and reopen
-    it. On Windows nothing else may be running from the install either: the
-    patcher holder is Tibbers.exe, and a running image cannot be overwritten,
-    so the caller stops the patcher first. What the script did is written to
-    *log_path* there.
+    The caller must quit the app immediately after this returns: on macOS the
+    swap script is waiting on this PID; on Windows the installer waits for
+    the instance mutex to be released. Nothing else may be running from the
+    Windows install either -- the patcher holder is Tibbers.exe, and a running
+    image cannot be overwritten -- so the caller stops the patcher first. The
+    installer's own log goes to *log_path* there.
     """
     target = target or installed_app()
     if target is None:
         raise RuntimeError("not running from an installed build")
 
     if _IS_WINDOWS:
-        script = _swap_script_windows(staged, target, log_path)
-        subprocess.Popen(["cmd", "/c", str(script), str(os.getpid())],
-                         creationflags=_SWAP_FLAGS, close_fds=True,
-                         stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # A windowed program: no console is involved at any point. The flag
+        # is passed anyway so every spawn in the package reads the same.
+        subprocess.Popen(installer_command(staged, log_path),
+                         close_fds=True, creationflags=0x08000000)
         return
 
     script = _swap_script(staged, target)
@@ -320,10 +316,10 @@ def launch_swap(staged: Path, target: Optional[Path] = None,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def apply(url: str, target: Optional[Path] = None) -> None:
+def apply(url: str, target: Optional[Path] = None,
+          digest: Optional[str] = None) -> None:
     """Download the new build and launch the swap, in one go.
 
-    The button's path: the user asked, so there is no waiting for a good
-    moment. The caller quits right after, as for `launch_swap`.
+    The caller quits right after, as for `launch_swap`.
     """
-    launch_swap(stage(url), target)
+    launch_swap(stage(url, digest), target)

@@ -390,17 +390,21 @@ def main() -> int:
     can_inject = (not args.no_inject and not args.dev
                   and (args.allow_inject or not scratch_home))
 
-    # A second launch of the installed app -- the Start Menu entry while it
-    # is already in the tray, or the update's swap script reopening an app the
-    # user had already reopened by hand -- hands off to the running one. The
-    # server would otherwise fall back to the next port and two copies would
-    # share one data directory, each building overlays into it. macOS never
-    # gets here: LaunchServices activates the existing app instead.
+    # One installed copy at a time. A second launch -- the Start Menu entry
+    # while it is already in the tray, or the installer reopening it after an
+    # update the user had already reopened by hand -- hands off to the
+    # running one and exits. The server would otherwise fall back to the next
+    # port and two copies would share one data directory, each building
+    # overlays into it. The mutex is the signal (the installer waits on the
+    # same one); the port probe only finds whom to ask to open Settings. A
+    # dev instance (from source, or on its own --port) never takes it. macOS
+    # never gets here: LaunchServices activates the existing app instead.
     if IS_WINDOWS and args.port is None and getattr(sys, "frozen", False):
-        other = _running_instance()
-        if other is not None:
-            log.info("another tibbers is serving on :%d -- handing off", other)
-            if not args.quiet:
+        if not system.claim_instance():
+            other = _running_instance()
+            log.info("another tibbers is running%s -- handing off",
+                     f" on :{other}" if other else "")
+            if other is not None and not args.quiet:
                 _ask(other, "/api/window", {"open": "settings"})
             return 0
 
@@ -1276,15 +1280,16 @@ def main() -> int:
             update_staged = None
         if update_staged is None:
             state.say(f"downloading tibbers {version}...")
-            update_staged = (version, update.stage(url))
+            update_staged = (version,
+                             update.stage(url, update_state.get("digest")))
         if wait_for_idle and not league_idle():
             log.info("update %s downloaded; League woke up, waiting", version)
             return
         if IS_WINDOWS and system.game_pid() is not None:
             # The patcher holder is Tibbers.exe itself and a running image
-            # cannot be overwritten, so the swap needs the patcher stopped --
-            # which mid-game would take the skin away. Keep the build; the
-            # loop installs it once the game ends, button or not.
+            # cannot be overwritten, so the installer needs the patcher
+            # stopped -- which mid-game would take the skin away. Keep the
+            # build; the loop installs it once the game ends, button or not.
             update_pending = True
             state.say(f"tibbers {version} downloaded -- "
                       "it installs when the game ends")
