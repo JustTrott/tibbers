@@ -442,7 +442,7 @@ _HOLDER_SCRIPT = (
     "import subprocess,sys,time\n"
     "log=open(sys.argv[3],'ab')\n"
     "p=subprocess.Popen([sys.argv[4]],stdin=subprocess.PIPE,"
-    "stdout=log,stderr=log)\n"
+    "stdout=log,stderr=log,creationflags=0x08000000)\n"
     "for line in sys.argv[5:]:\n"
     "    p.stdin.write((line+'\\n').encode());p.stdin.flush()\n"
     "try:\n"
@@ -484,9 +484,14 @@ def hold_patcher(argv: List[str]) -> int:
     if len(argv) < 4:
         return 2
     log_path, host, protocol = argv[2], argv[3], argv[4:]
+    # The host is a console program and this holder is a windowed app with no
+    # console of its own, so without CREATE_NO_WINDOW Windows opens a fresh
+    # terminal window for it -- an empty one, its output going to the log --
+    # at every patcher start during champ select.
     with open(log_path, "ab") as log_file:
         proc = subprocess.Popen([host], stdin=subprocess.PIPE,
-                                stdout=log_file, stderr=log_file)
+                                stdout=log_file, stderr=log_file,
+                                creationflags=CREATE_NO_WINDOW)
         try:
             for line in protocol:
                 proc.stdin.write((line + "\n").encode())
