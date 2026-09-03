@@ -29,6 +29,42 @@ BACKDROP = "#0a0e13"
 APP_NAME = "Tibbers"
 ICON = Path(__file__).resolve().parent.parent / "assets" / "tibbers.png"
 
+# Windows parks a minimised window at (-32000, -32000). pywebview divides that
+# by the display scale and reports it as an ordinary move (-25600 at 125%), and
+# a window created at that position on the next launch is simply never seen.
+# Anything this far out is that sentinel, never a place the user put a window.
+_PARKED = -10000
+
+
+def on_screen(x, y, screens=None) -> bool:
+    """Is (x, y) somewhere a window can be found -- inside a monitor, or at
+    least not parked at the minimised sentinel?
+
+    *screens* is a list of objects with x/y/width/height (pywebview's
+    ``webview.screens``); when it is None the live list is consulted, and when
+    that is unavailable only the sentinel check applies.
+    """
+    if x is None or y is None:
+        return False
+    if x <= _PARKED or y <= _PARKED:
+        return False
+    if screens is None:
+        try:
+            import webview
+            screens = list(webview.screens)
+        except Exception:  # noqa: BLE001
+            screens = []
+    if not screens:
+        return True
+    # The title bar must land on some monitor; a window whose top-left is a
+    # little past an edge is still draggable, so allow a margin.
+    margin = 48
+    for scr in screens:
+        if (scr.x - margin <= x < scr.x + scr.width - margin
+                and scr.y - margin <= y < scr.y + scr.height - margin):
+            return True
+    return False
+
 
 # --- main-queue marshalling ------------------------------------------------
 # On macOS every AppKit call has to hop to the main queue; on Windows the
@@ -101,6 +137,14 @@ class Windows:
         except Exception as exc:  # noqa: BLE001
             log.debug("could not record %s geometry: %s", name, exc)
 
+    def _moved(self, name: str, x: int, y: int) -> None:
+        """A window moved. Minimising reports the parked position as a move;
+        remembering that would recreate the window off-screen next launch."""
+        if not on_screen(x, y):
+            log.debug("ignoring off-screen %s position (%s, %s)", name, x, y)
+            return
+        self._remember(name, x=x, y=y)
+
     def _stored(self, name: str, default_size) -> dict:
         box = self.prefs.geometry(name) if self.prefs is not None else {}
         box = dict(box or {})
@@ -108,6 +152,10 @@ class Windows:
         box.setdefault("height", default_size[1])
         box.setdefault("x", None)
         box.setdefault("y", None)
+        if not on_screen(box["x"], box["y"]):
+            # Off every monitor (a parked position that slipped through an
+            # older build, or a monitor that is gone): let it centre instead.
+            box["x"] = box["y"] = None
         return box
 
     def was_visible(self, name: str) -> bool:
@@ -142,7 +190,7 @@ class Windows:
             )
 
         w.events.closing += lambda: self._on_closing(name)
-        w.events.moved += lambda x, y: self._remember(name, x=int(x), y=int(y))
+        w.events.moved += lambda x, y: self._moved(name, int(x), int(y))
         w.events.resized += lambda width, height: self._remember(
             name, width=int(width), height=int(height))
         return w
