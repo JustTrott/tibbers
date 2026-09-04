@@ -95,4 +95,6 @@ One commit per finished piece. See `README.md` for the architecture and
 
 `tibbers.lol` lives on the `site` branch (one `index.html`), not on `main`, and
 is hosted on Vercel in the user's personal scope. Edit it in a worktree of that
-branch and ship with `vercel deploy --prod --yes`. DNS is a Cloudflare zone.
+branch; pushing `site` auto-deploys through Vercel's Git integration (its
+production branch is set to `site`). `vercel deploy --prod --yes` is the manual
+fallback. DNS is a Cloudflare zone.
