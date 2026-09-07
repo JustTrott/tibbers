@@ -1,0 +1,24 @@
+[Unit]
+Description=Sync the tibbers u.gg mirror
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tibbers-mirror
+Group=tibbers-mirror
+ExecStart=/usr/bin/python3 /usr/local/lib/tibbers-mirror/ugg_mirror.py sync \
+    --out /var/lib/tibbers-mirror/public \
+    --state /var/lib/tibbers-mirror/state.json \
+    --interval-hours 4
+# A full first sync is a couple of gigabytes; later ones are mostly 304s.
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle
+
+# Nothing outside its own directory is writable.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/tibbers-mirror
