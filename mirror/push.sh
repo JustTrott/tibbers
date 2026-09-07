@@ -26,9 +26,11 @@ python3 "$HERE/ugg_mirror.py" sync --out "$LOCAL/public" --state "$LOCAL/state.j
     --interval-hours "$INTERVAL" "$@"
 
 # Data first, root documents last. --delete keeps the host at the local
-# tree's window of patches; --chmod keeps everything world-readable for Caddy.
-rsync -az --delete --chmod=D755,F644 \
+# tree's window of patches. The sync writes 0644/0755 at the source, so the
+# modes rsync preserves are already what Caddy needs (macOS ships openrsync,
+# which has no --chmod).
+rsync -az --delete \
     "$LOCAL/public/lol/" "$HOST:$REMOTE/lol/"
-rsync -az --chmod=F644 \
+rsync -az \
     "$LOCAL/public/manifest.json" "$LOCAL/public/status.json" "$HOST:$REMOTE/"
 echo "pushed to $HOST:$REMOTE"

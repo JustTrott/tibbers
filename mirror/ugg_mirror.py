@@ -256,6 +256,8 @@ class Mirror:
                         break
                     target.parent.mkdir(parents=True, exist_ok=True)
                     size = scratch.stat().st_size
+                    # mkstemp makes 0600; the file server reads as another user.
+                    scratch.chmod(0o644)
                     scratch.replace(target)
                     with self.lock:
                         self.counts["fetched"] += 1
@@ -355,6 +357,7 @@ class Mirror:
     def publish(self, name: str, document: dict) -> None:
         tmp = self.out / (name + ".tmp")
         tmp.write_text(json.dumps(document, separators=(",", ":")))
+        tmp.chmod(0o644)
         tmp.replace(self.out / name)
 
     def prune(self, wanted: set) -> None:
