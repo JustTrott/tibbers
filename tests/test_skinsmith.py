@@ -528,6 +528,50 @@ def payloads(path):
     return out
 
 
+def rebuilds_match(mine, theirs):
+    """Whether two mods' payloads are the same skin, `championSkinName` aside.
+
+    The skin0 overlay names the base skin in its `championSkinName`
+    (``GENERATOR`` 3, `skinsmith` commit "name the base skin in the skin0
+    overlay"), where the downloaded originals in the backup left the numbered
+    name the file delegates to (`AhriSkin05`, not `Ahri`). That one string is
+    metadata -- what renders comes from the delegation, and the field is safe
+    for either patcher -- so a rebuilt mod that differs from its backup *only*
+    there is a match. Every other byte of every entry must still be identical:
+    a difference anywhere else, a missing or extra entry or field, or a payload
+    that will not parse as a `.bin`, is a real divergence.
+    """
+    if set(mine) != set(theirs):
+        return False
+    for path_hash, a in mine.items():
+        b = theirs[path_hash]
+        if a == b:
+            continue
+        try:
+            parsed_a, parsed_b = skinsmith.Bin(a), skinsmith.Bin(b)
+        except skinsmith.BinError:
+            return False
+        if (parsed_a.version, parsed_a.linked) != (parsed_b.version,
+                                                   parsed_b.linked):
+            return False
+        if len(parsed_a.entries) != len(parsed_b.entries):
+            return False
+        for entry_a, entry_b in zip(parsed_a.entries, parsed_b.entries):
+            if (entry_a.hash, entry_a.cls) != (entry_b.hash, entry_b.cls):
+                return False
+            if len(entry_a.fields) != len(entry_b.fields):
+                return False
+            for field_a, field_b in zip(entry_a.fields, entry_b.fields):
+                if (field_a.name, field_a.type) != (field_b.name, field_b.type):
+                    return False
+                if field_a.name == skinsmith.CHAMPION_SKIN_NAME:
+                    continue   # the one field the overlay is allowed to rename
+                if (parsed_a.data[field_a.at:field_a.end]
+                        != parsed_b.data[field_b.at:field_b.end]):
+                    return False
+    return True
+
+
 @unittest.skipUnless(HAVE_CODECS, "xxhash and zstandard are not installed")
 @unittest.skipUnless(skinsmith.champions_dir() is not None,
                      "no League install to build from")
@@ -591,7 +635,7 @@ class AgainstTheLibrary(unittest.TestCase):
             except skinsmith.SkinsmithError as exc:
                 failed.append(f"{mod_id} ({exc})")
                 continue
-            if payloads(mine) == payloads(theirs):
+            if rebuilds_match(payloads(mine), payloads(theirs)):
                 same.append(mod_id)
             else:
                 differ.append(mod_id)
