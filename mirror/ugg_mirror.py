@@ -26,8 +26,16 @@ Sync (`sync`):
   files are not on disk yet, and `status.json` with the next run time, so
   clients can expire their caches just after it rather than on a guess.
 
-Serve (`serve`): a development stand-in for nginx's `gzip_static always`,
-which is what the real host runs (see nginx.conf beside this file).
+Serve (`serve`): a development stand-in for the Caddy site the real host
+runs (see Caddyfile beside this file), which rewrites a request for
+`x.json` to the `x.json.gz` on disk and sends it as gzip.
+
+Where it runs matters: u.gg's bot protection also scores the client's
+address, and a datacenter range is refused whatever the client (measured on
+the Hetzner VM: the very same curl that passes from a home connection is
+refused from there). So the sync runs on a machine u.gg accepts and pushes
+the tree to the serving host (push.sh), unless the host itself is accepted
+(the systemd units).
 
 Standard library only, plus curl.
 """
@@ -320,7 +328,7 @@ class Mirror:
             "startedAt": started.isoformat(timespec="seconds"),
             "durationSeconds": round((finished - started).total_seconds(), 1),
             "intervalSeconds": int(self.interval.total_seconds()),
-            "nextRunAt": self.next_run(finished).isoformat(timespec="seconds"),
+            "nextRunAt": self.next_run(started).isoformat(timespec="seconds"),
             "patches": patches,
             "queues": list(self.queues),
             "endpoints": list(ENDPOINTS),
@@ -335,16 +343,14 @@ class Mirror:
                  self.counts["failed"])
         return 0 if self.counts["failed"] == 0 else 2
 
-    def next_run(self, now: datetime) -> datetime:
-        """The next interval boundary after `now`, counted from midnight UTC.
+    def next_run(self, started: datetime) -> datetime:
+        """When the scheduler is expected to run this again.
 
-        The systemd timer fires on these boundaries; clients expire just
-        after them.
+        One interval after this run started. Clients expire just after it;
+        if the scheduler is late (a laptop asleep, a timer drifting), they
+        revalidate a few times cheaply until the run arrives.
         """
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        seconds = int(self.interval.total_seconds())
-        elapsed = int((now - midnight).total_seconds())
-        return midnight + timedelta(seconds=(elapsed // seconds + 1) * seconds)
+        return started + self.interval
 
     def publish(self, name: str, document: dict) -> None:
         tmp = self.out / (name + ".tmp")
@@ -376,8 +382,8 @@ class Mirror:
 # -- a stand-in for nginx ------------------------------------------------------
 
 class GzipStaticHandler(SimpleHTTPRequestHandler):
-    """Serve `x.json` from `x.json.gz` with Content-Encoding: gzip, as nginx's
-    `gzip_static always` does, plus an ETag so conditional requests work."""
+    """Serve `x.json` from `x.json.gz` with Content-Encoding: gzip, as the
+    Caddy site does, plus an ETag so conditional requests work."""
 
     def log_message(self, fmt, *args):  # quieter than the default
         log.debug("%s " + fmt, self.address_string(), *args)

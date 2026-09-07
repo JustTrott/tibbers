@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs mirror/push.sh every four hours from a Mac whose address u.gg accepts.
+
+    sed "s|@REPO@|$PWD|" mirror/lol.tibbers.mirror.plist > ~/Library/LaunchAgents/lol.tibbers.mirror.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/lol.tibbers.mirror.plist
+    launchctl kickstart -k gui/$(id -u)/lol.tibbers.mirror     # run now
+
+  StartInterval counts from load and catches up after sleep; the mirror's
+  status.json promises the next run four hours after the last, and a client
+  that finds it late just revalidates a few times cheaply until it arrives.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>lol.tibbers.mirror</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>@REPO@/mirror/push.sh</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>14400</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/tmp/lol.tibbers.mirror.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/lol.tibbers.mirror.log</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>LowPriorityIO</key>
+	<true/>
+</dict>
+</plist>
