@@ -657,3 +657,14 @@ def data_dir() -> Path:
     with _DATA_LOCK:
         _DATA_DIRS[override] = d
     return d
+
+
+def browser_curl() -> Optional[List[str]]:
+    """An argv prefix for a curl that presents a browser's TLS handshake.
+
+    u.gg's CDN scores the Windows system curl's handshake worst, so the app
+    fetches a curl that impersonates a browser (see `wintools`) and runs that
+    instead. Returns its argv when present, else None to fall back to whatever
+    ``curl`` is on PATH. Filled in with the fetch that provides the binary.
+    """
+    return None

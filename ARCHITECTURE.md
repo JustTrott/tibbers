@@ -104,12 +104,12 @@ The build and counters pages render statistics fetched from public sources —
 nothing tibbers computes or claims as its own:
 
 - **u.gg** (`ugg.py`) — Rift and ARAM builds, runes, and counters, from their
-  static JSON CDN. Read through our own mirror, `data.tibbers.lol` (`mirror/`),
-  which syncs u.gg every four hours and serves the same paths: u.gg's bot
-  protection refuses most non-browser clients, and users it refused saw a
-  bare 403 in the guide. u.gg itself is asked, over `curl`, only for what the
-  mirror does not carry — matchup-pair builds, old patches — or when it is
-  down.
+  static JSON CDN, over `curl`. The CDN's bot protection scores the TLS
+  handshake, so `urllib` is refused outright and the system curl only passes
+  on a home connection; where its handshake scores badly (notably Windows)
+  the app runs a curl that presents a browser's (`system.browser_curl`). The
+  challenge is not deterministic, so a refused curl is retried before the
+  header sets are tried as a last resort.
 - **op.gg** (`opgg.py`) — Arena augments, items, and the champion tier list,
   from their public champion API.
 

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Where a u.gg file is read from, and for how long it is trusted.
+The u.gg transport: which client fetches a file, and what happens on a refusal.
 
-The mirror goes first because u.gg's CDN refuses most non-browser clients;
-u.gg itself is for what the mirror does not carry and for when it is down.
-Each source's copy expires on that source's own terms and is revalidated
-only against the source that issued its ETag.
+u.gg's CDN refuses `urllib` every time and challenges even an accepted curl a
+fraction of the time, so curl goes first and is retried, the header sets are a
+last resort, and a held copy is revalidated conditionally. A file that does
+not exist (S3's `AccessDenied`) is told from a bot challenge and never
+retried; a bot challenge that outlasts every attempt still yields to a stale
+copy when one is held.
 """
 
 from __future__ import annotations
@@ -25,13 +27,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tibbers import ugg  # noqa: E402
 
-MIRROR = "https://mirror.test"
 FILE = f"{ugg.BASE}/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-PAIR = f"{ugg.BASE}/overview/16_17/ranked_solo_5x5/matchups/18_51/1.5.0.json"
+CHALLENGE = b"<!DOCTYPE html><html>Just a moment..."
+ACCESS_DENIED = b"<?xml version='1.0'?><Error><Code>AccessDenied</Code></Error>"
+
+
+def http_error(url, code, body=b""):
+    return urllib.error.HTTPError(url, code, "", {}, io.BytesIO(body))
 
 
 class Response(io.BytesIO):
-    """Enough of an HTTP response for `_get`: a body, headers, a status."""
+    """Enough of an HTTP response for the header-set fallback."""
 
     def __init__(self, body, etag=None):
         super().__init__(json.dumps(body).encode())
@@ -39,224 +45,172 @@ class Response(io.BytesIO):
         self.status = 200
 
     def __enter__(self):
-        self.seek(0)   # one scripted answer can serve several requests
+        self.seek(0)
         return self
 
     def __exit__(self, *exc):
         return False
 
 
-def http_error(url, code, body=b""):
-    return urllib.error.HTTPError(url, code, "", {}, io.BytesIO(body))
-
-
-class Network:
-    """A scripted network: URL -> what urlopen does, plus what curl returns.
-
-    Each answer is a value to return, an exception to raise, or a callable
-    taking the request. Every request is recorded, headers included.
-    """
-
-    def __init__(self, answers, curl=None):
-        self.answers = answers
-        self.curl = curl
-        self.requests = []
-
-    def urlopen(self, request, timeout=0):
-        url = request.full_url
-        self.requests.append((url, dict(request.header_items())))
-        answer = self.answers.get(url)
-        if answer is None:
-            raise urllib.error.URLError(f"unscripted {url}")
-        if callable(answer):
-            answer = answer(request)
-        if isinstance(answer, BaseException):
-            raise answer
-        return answer
-
-    def _curl(self, url):
-        self.requests.append((url, {"curl": True}))
-        return self.curl(url) if callable(self.curl) else self.curl
-
-
 class TransportCase(unittest.TestCase):
 
     def setUp(self):
         self.home = tempfile.TemporaryDirectory()
-        patches = [
-            mock.patch.object(ugg, "MIRROR", MIRROR),
-            mock.patch.object(ugg.system, "data_dir",
-                              lambda: Path(self.home.name)),
-        ]
-        for p in patches:
-            p.start()
-            self.addCleanup(p.stop)
         self.addCleanup(self.home.cleanup)
+        patch = mock.patch.object(ugg.system, "data_dir",
+                                  lambda: Path(self.home.name))
+        patch.start()
+        self.addCleanup(patch.stop)
 
-    def wire(self, answers, curl=None):
-        net = Network(answers, curl)
-        for target in (mock.patch.object(ugg.urllib.request, "urlopen", net.urlopen),
-                       mock.patch.object(ugg, "_curl", net._curl)):
-            target.start()
-            self.addCleanup(target.stop)
-        return net
+    def wire_curl(self, *results):
+        """Script `_curl` to return each of *results* in turn (a callable is
+        called with (url, etag)); the last result repeats."""
+        calls = []
 
-    @staticmethod
-    def later(seconds):
-        """A clock running `seconds` ahead, for `with`."""
-        real = time.time
-        return mock.patch.object(ugg.time, "time", lambda: real() + seconds)
+        def fake(url, etag=None):
+            calls.append((url, etag))
+            r = results[min(len(calls) - 1, len(results) - 1)]
+            return r(url, etag) if callable(r) else r
 
-    @staticmethod
-    def status(next_run_in=3600):
-        stamp = time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
-                              time.gmtime(time.time() + next_run_in))
-        return Response({"nextRunAt": stamp})
+        p = mock.patch.object(ugg, "_curl", fake)
+        p.start()
+        self.addCleanup(p.stop)
+        self.curl_calls = calls
 
+    def wire_urllib(self, answers):
+        seen = []
 
-class MirrorFirst(TransportCase):
+        def urlopen(request, timeout=0):
+            seen.append(request.full_url)
+            a = answers.get(request.full_url)
+            if a is None:
+                raise urllib.error.URLError("unscripted")
+            if isinstance(a, BaseException):
+                raise a
+            return a
 
-    def test_a_file_the_mirror_has_never_touches_ugg(self):
-        net = self.wire({
-            f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json":
-                Response({"ok": 1}, etag='"m1"'),
-            f"{MIRROR}/status.json": lambda r: self.status(),
-        })
-        self.assertEqual(ugg.UGG()._get(FILE, "k"), {"ok": 1})
-        self.assertFalse([u for u, _ in net.requests if "u.gg" in u])
-        headers = [h for u, h in net.requests if u.endswith("/1.5.0.json")][0]
-        self.assertEqual(headers.get("Accept-encoding"), "gzip")
-        self.assertTrue(headers.get("User-agent", "").startswith("tibbers/"))
-
-    def test_the_manifest_maps_to_the_mirror_s_manifest(self):
-        net = self.wire({f"{MIRROR}/manifest.json": Response({"16_17": {}}),
-                         f"{MIRROR}/status.json": lambda r: self.status()})
-        self.assertEqual(ugg.UGG()._get(ugg.VERSIONS_URL, "versions", 3600),
-                         {"16_17": {}})
-        self.assertEqual(net.requests[0][0], f"{MIRROR}/manifest.json")
-
-    def test_a_file_the_mirror_lacks_comes_from_ugg(self):
-        pair_on_mirror = (f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/"
-                          "matchups/18_51/1.5.0.json")
-        net = self.wire({pair_on_mirror: http_error(pair_on_mirror, 404)},
-                        curl=(200, json.dumps({"pair": 1}).encode()))
-        self.assertEqual(ugg.UGG()._get(PAIR, "pair"), {"pair": 1})
-        self.assertEqual([u for u, h in net.requests if h.get("curl")], [PAIR])
-
-    def test_a_mirror_that_is_down_falls_back_to_ugg(self):
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        net = self.wire({mirror_file: urllib.error.URLError("refused")},
-                        curl=(200, json.dumps({"direct": 1}).encode()))
-        self.assertEqual(ugg.UGG()._get(FILE, "k"), {"direct": 1})
-        self.assertIn(FILE, [u for u, _ in net.requests])
-
-    def test_with_no_mirror_configured_ugg_is_asked_directly(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            net = self.wire({}, curl=(200, json.dumps({"direct": 1}).encode()))
-            self.assertEqual(ugg.UGG()._get(FILE, "k"), {"direct": 1})
-        self.assertEqual([u for u, _ in net.requests], [FILE])
+        p = mock.patch.object(ugg.urllib.request, "urlopen", urlopen)
+        p.start()
+        self.addCleanup(p.stop)
+        self.urllib_calls = seen
 
 
-class UggDirect(TransportCase):
+class CurlFirst(TransportCase):
 
-    def test_curl_goes_before_the_header_sets(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            net = self.wire({}, curl=(200, b'{"a": 1}'))
+    def test_a_200_is_decoded_and_cached(self):
+        self.wire_curl((200, b'{"v": 1}', '"a"'))
+        self.wire_urllib({})
+        client = ugg.UGG()
+        self.assertEqual(client._get(FILE, "k"), {"v": 1})
+        # No fallback to urllib once curl succeeds.
+        self.assertEqual(self.urllib_calls, [])
+        # A second read is served from memory, no second fetch.
+        self.assertEqual(client._get(FILE, "k"), {"v": 1})
+        self.assertEqual(len(self.curl_calls), 1)
+
+    def test_no_sleep_between_the_first_and_a_retry(self):
+        # A challenge then success: two curl calls, and the backoff is honoured.
+        slept = []
+        self.wire_curl((403, CHALLENGE, None), (200, b'{"v": 2}', '"b"'))
+        self.wire_urllib({})
+        with mock.patch.object(ugg.time, "sleep", slept.append):
+            self.assertEqual(ugg.UGG()._get(FILE, "k"), {"v": 2})
+        self.assertEqual(len(self.curl_calls), 2)
+        self.assertEqual(slept, [ugg.CURL_BACKOFF[1]])
+
+    def test_a_missing_file_is_unavailable_and_not_retried(self):
+        self.wire_curl((403, ACCESS_DENIED, None))
+        self.wire_urllib({})
+        with self.assertRaises(ugg.Unavailable) as caught:
             ugg.UGG()._get(FILE, "k")
-        self.assertEqual(len(net.requests), 1)
-        self.assertTrue(net.requests[0][1].get("curl"))
-
-    def test_a_missing_file_is_unavailable_not_retried(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            net = self.wire({}, curl=(403, b"<Error><Code>AccessDenied</Code>"))
-            with self.assertRaises(ugg.Unavailable) as caught:
-                ugg.UGG()._get(FILE, "k")
         self.assertIn("no data", str(caught.exception))
-        self.assertEqual(len(net.requests), 1)
+        self.assertEqual(len(self.curl_calls), 1)   # not retried
 
-    def test_a_challenge_from_every_client_reads_as_refused(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            self.wire({FILE: http_error(FILE, 403, b"<html>Just a moment")},
-                      curl=(403, b"<html>Just a moment"))
+    def test_a_persistent_challenge_is_retried_then_falls_to_header_sets(self):
+        self.wire_curl((403, CHALLENGE, None))            # every attempt challenged
+        self.wire_urllib({FILE: Response({"v": 3}, etag='"e"')})
+        with mock.patch.object(ugg.time, "sleep", lambda s: None):
+            self.assertEqual(ugg.UGG()._get(FILE, "k"), {"v": 3})
+        self.assertEqual(len(self.curl_calls), ugg.CURL_ATTEMPTS)
+        self.assertEqual(self.urllib_calls, [FILE])
+
+    def test_the_configured_curl_is_what_runs(self):
+        with mock.patch.dict(ugg.os.environ, {"TIBBERS_CURL": "/opt/x/curl --impersonate chrome"}):
+            self.assertEqual(ugg._curl_argv()[:3],
+                             ["/opt/x/curl", "--impersonate", "chrome"])
+
+    def test_a_supplied_browser_curl_is_preferred_over_path(self):
+        with mock.patch.dict(ugg.os.environ, {}, clear=False):
+            ugg.os.environ.pop("TIBBERS_CURL", None)
+            with mock.patch.object(ugg.system, "browser_curl",
+                                   lambda: ["C:/t/curl.exe", "--impersonate", "chrome131"]):
+                self.assertEqual(ugg._curl_argv(),
+                                 ["C:/t/curl.exe", "--impersonate", "chrome131"])
+            with mock.patch.object(ugg.system, "browser_curl", lambda: None):
+                self.assertEqual(ugg._curl_argv(), ["curl"])
+
+
+class FallbackAndCache(TransportCase):
+
+    def test_urllib_is_used_when_curl_is_absent(self):
+        self.wire_curl(None)                        # curl cannot run
+        self.wire_urllib({FILE: Response({"v": 4})})
+        self.assertEqual(ugg.UGG()._get(FILE, "k"), {"v": 4})
+        self.assertEqual(self.urllib_calls, [FILE])
+
+    def test_a_challenge_everywhere_reads_as_refused_not_a_missing_file(self):
+        self.wire_curl((403, CHALLENGE, None))
+        self.wire_urllib({FILE: http_error(FILE, 403, CHALLENGE)})
+        with mock.patch.object(ugg.time, "sleep", lambda s: None):
             with self.assertRaises(ugg.Unavailable) as caught:
                 ugg.UGG()._get(FILE, "k")
         self.assertIn("refused", str(caught.exception))
         self.assertNotIn("HTTP Error", str(caught.exception))
 
     def test_a_stale_copy_beats_a_refusal(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            self.wire({}, curl=(200, b'{"v": 1}'))
-            client = ugg.UGG()
-            client._get(FILE, "k")
-            # Time passes; every transport now refuses.
-            with self.later(ugg.CACHE_SECONDS + 1):
-                self.wire({FILE: http_error(FILE, 403, b"<html>")},
-                          curl=(403, b"<html>"))
-                self.assertEqual(client._get(FILE, "k"), {"v": 1})
-
-
-class Lifetimes(TransportCase):
-
-    def test_a_mirror_file_expires_just_after_the_next_refresh(self):
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        self.wire({mirror_file: Response({"ok": 1}, etag='"m1"'),
-                   f"{MIRROR}/status.json": lambda r: self.status(3600)})
+        self.wire_curl((200, b'{"v": 5}', '"e5"'))
+        self.wire_urllib({})
         client = ugg.UGG()
         client._get(FILE, "k")
-        entry = client._memory["k"]
-        self.assertEqual(entry["source"], "mirror")
-        low = time.time() + 3600 + ugg.STATUS_SLACK
-        self.assertGreaterEqual(entry["expires"], low - 2)
-        self.assertLessEqual(entry["expires"], low + ugg.STATUS_SLACK + 2)
+        real = time.time
+        with mock.patch.object(ugg.time, "time",
+                               lambda: real() + ugg.CACHE_SECONDS + 1):
+            self.wire_curl((403, CHALLENGE, None))
+            self.wire_urllib({FILE: http_error(FILE, 403, CHALLENGE)})
+            with mock.patch.object(ugg.time, "sleep", lambda s: None):
+                self.assertEqual(client._get(FILE, "k"), {"v": 5})
 
-    def test_the_schedule_is_read_once_per_window(self):
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        net = self.wire({mirror_file: Response({"ok": 1}),
-                         f"{MIRROR}/status.json": lambda r: self.status()})
-        client = ugg.UGG()
-        for key in ("a", "b", "c"):
-            client._get(FILE, key)
-        self.assertEqual(
-            len([u for u, _ in net.requests if u.endswith("status.json")]), 1)
-
-    def test_without_a_schedule_the_cdn_s_lifetime_applies(self):
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        self.wire({mirror_file: Response({"ok": 1}),
-                   f"{MIRROR}/status.json": http_error("s", 500)})
+    def test_an_expired_file_is_revalidated_with_its_etag(self):
+        # First fetch through the header sets, which carry an ETag.
+        self.wire_curl(None)
+        self.wire_urllib({FILE: Response({"v": 6}, etag='"E"')})
         client = ugg.UGG()
         client._get(FILE, "k")
-        expires = client._memory["k"]["expires"]
-        self.assertAlmostEqual(expires, time.time() + ugg.CACHE_SECONDS, delta=5)
+        self.assertEqual(client._memory["k"]["etag"], '"E"')
 
-    def test_an_expired_mirror_file_is_revalidated_with_its_own_etag(self):
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        net = self.wire({mirror_file: Response({"ok": 1}, etag='"m1"'),
-                         f"{MIRROR}/status.json": lambda r: self.status(-1)})
-        client = ugg.UGG()
-        client._get(FILE, "k")
-        expires = client._memory["k"]["expires"]
+        real = time.time
+        conditional = []
 
-        net.answers[mirror_file] = http_error(mirror_file, 304)
-        with mock.patch.object(ugg.time, "time", lambda: expires + 1):
-            self.assertEqual(client._get(FILE, "k"), {"ok": 1})
-        sent = [h for u, h in net.requests if u == mirror_file][-1]
-        self.assertEqual(sent.get("If-none-match"), '"m1"')
-        # No u.gg traffic at any point.
-        self.assertFalse([u for u, _ in net.requests if "u.gg" in u])
+        def curl(url, etag=None):
+            conditional.append(etag)
+            return (304, b"", None)
 
-    def test_a_ugg_etag_is_never_offered_to_the_mirror(self):
-        with mock.patch.object(ugg, "MIRROR", ""):
-            self.wire({FILE: Response({"v": 1}, etag='"u1"')}, curl=None)
-            client = ugg.UGG()
-            client._get(FILE, "k")
-            self.assertEqual(client._memory["k"]["source"], "ugg")
-        mirror_file = f"{MIRROR}/lol/1.5/overview/16_17/ranked_solo_5x5/18/1.5.0.json"
-        net = self.wire({mirror_file: Response({"v": 2}),
-                         f"{MIRROR}/status.json": lambda r: self.status()})
-        with self.later(ugg.CACHE_SECONDS + 1):
-            self.assertEqual(client._get(FILE, "k"), {"v": 2})
-        sent = [h for u, h in net.requests if u == mirror_file][0]
-        self.assertNotIn("If-none-match", sent)
+        with mock.patch.object(ugg.time, "time",
+                               lambda: real() + ugg.CACHE_SECONDS + 1):
+            with mock.patch.object(ugg, "_curl", curl):
+                self.assertEqual(client._get(FILE, "k"), {"v": 6})
+        self.assertEqual(conditional, ['"E"'])      # the stored ETag was sent
+
+
+class Config(unittest.TestCase):
+
+    def test_cache_hours_can_be_overridden(self):
+        with mock.patch.dict(ugg.os.environ, {"TIBBERS_UGG_CACHE_HOURS": "12"}):
+            self.assertEqual(ugg._cache_hours(), 12.0)
+        with mock.patch.dict(ugg.os.environ, {"TIBBERS_UGG_CACHE_HOURS": "nonsense"}):
+            self.assertEqual(ugg._cache_hours(), 8.0)
+        with mock.patch.dict(ugg.os.environ, {"TIBBERS_UGG_CACHE_HOURS": "0"}):
+            self.assertEqual(ugg._cache_hours(), 0.5)   # floored, never zero
 
 
 if __name__ == "__main__":
