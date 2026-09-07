@@ -1343,8 +1343,6 @@ def main() -> int:
         if not (IS_WINDOWS and getattr(sys, "frozen", False)):
             return
         from tibbers import wintools
-        if wintools.have_tools(tools_dir):
-            return
 
         def report(message: str, percent=None) -> None:
             with state.lock:
@@ -1353,18 +1351,27 @@ def main() -> int:
             log.info("%s%s", message,
                      f" ({percent}%)" if percent is not None else "")
 
+        if not wintools.have_tools(tools_dir):
+            try:
+                report("setting up the injection tools")
+                wintools.ensure(tools_dir, progress=report)
+                with state.lock:
+                    state.setup = {"active": False, "percent": 100,
+                                   "message": "injection tools ready"}
+                state.say("injection tools ready -- skins can now be applied")
+            except Exception as exc:  # noqa: BLE001
+                with state.lock:
+                    state.setup = {"active": False, "error": str(exc),
+                                   "message": "could not download injection tools"}
+                state.say(f"could not download injection tools: {exc}")
+
+        # The build-data fetcher is separate and non-fatal: a miss just means
+        # the guide falls back to the system curl, which u.gg refuses on some
+        # machines. Fetched quietly after the injection tools, no setup bar.
         try:
-            report("setting up the injection tools")
-            wintools.ensure(tools_dir, progress=report)
-            with state.lock:
-                state.setup = {"active": False, "percent": 100,
-                               "message": "injection tools ready"}
-            state.say("injection tools ready -- skins can now be applied")
+            wintools.ensure_browser_curl(tools_dir)
         except Exception as exc:  # noqa: BLE001
-            with state.lock:
-                state.setup = {"active": False, "error": str(exc),
-                               "message": "could not download injection tools"}
-            state.say(f"could not download injection tools: {exc}")
+            log.info("could not fetch the build-data fetcher: %s", exc)
 
     threading.Thread(target=provision_tools, daemon=True).start()
 

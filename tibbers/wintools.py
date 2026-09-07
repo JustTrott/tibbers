@@ -44,6 +44,19 @@ CSLOL_ASSET = "cslol-manager-windows.exe"
 CSLOL_FILES = ("mod-tools.exe", "cslol-dll.dll")
 LTK_FILES = ("ltk_patcher_host.exe", "ltk_patcher_dll.dll")
 
+#: A curl that presents a browser's TLS handshake, for reading u.gg's build
+#: data. u.gg's CDN scores the Windows system curl's handshake worst and
+#: refuses it, where a real browser (and this) passes (see `ugg`,
+#: `system.browser_curl`). Statically linked -- one self-contained exe, no
+#: DLLs -- from the maintained fork; fetched best-effort, since a miss only
+#: falls back to the system curl rather than breaking injection.
+CURL_LATEST = ("https://api.github.com/repos/lexiforest/"
+               "curl-impersonate/releases/latest")
+CURL_EXE = "curl-impersonate.exe"
+
+#: Windows release tarballs are named by architecture; map the machine to one.
+CURL_ARCH = {"AMD64": "x86_64", "ARM64": "arm64", "X86": "i686"}
+
 
 def tools_dir() -> Path:
     """Where the fetched Windows tools live: writable, beside the data dir."""
@@ -171,6 +184,50 @@ def _fetch_ltk(into: Path, progress) -> None:
         _install_pair(host.parent, LTK_FILES, into)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _fetch_browser_curl(into: Path, progress) -> None:
+    import platform
+    import tarfile
+
+    arch = CURL_ARCH.get(platform.machine().upper(), "x86_64")
+    suffix = f".{arch}-win32.tar.gz"
+    asset = _latest_asset(
+        CURL_LATEST,
+        lambda a: str(a.get("name", "")).startswith("curl-impersonate-")
+        and str(a.get("name", "")).endswith(suffix))
+    tmp = Path(tempfile.mkdtemp(prefix="tibbers-curl-"))
+    try:
+        tarball = tmp / asset["name"]
+        _download(asset["browser_download_url"], tarball,
+                  progress, "downloading build-data fetcher")
+        with tarfile.open(tarball) as tar:
+            member = next((m for m in tar.getmembers()
+                           if Path(m.name).name == CURL_EXE), None)
+            if member is None:
+                raise RuntimeError(f"{CURL_EXE} not found in {asset['name']}")
+            member.name = CURL_EXE          # flatten any leading directory
+            tar.extract(member, tmp)
+        shutil.move(str(tmp / CURL_EXE), str(into / CURL_EXE))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def ensure_browser_curl(where: Optional[Path] = None,
+                        progress: Optional[Progress] = None,
+                        force: bool = False) -> Optional[Path]:
+    """Make `curl-impersonate.exe` present in *where*, fetching if missing.
+
+    Returns its path, or None when the fetch fails -- which is not fatal: the
+    u.gg transport falls back to the system curl, so this is best-effort and
+    its caller swallows the error rather than blocking anything on it.
+    """
+    where = Path(where) if where is not None else tools_dir()
+    where.mkdir(parents=True, exist_ok=True)
+    exe = where / CURL_EXE
+    if force or not exe.exists():
+        _fetch_browser_curl(where, progress)
+    return exe if exe.exists() else None
 
 
 def ensure(where: Optional[Path] = None,
