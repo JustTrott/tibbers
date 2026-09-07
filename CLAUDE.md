@@ -74,7 +74,7 @@ needs no venv and no running app.
 
 | source | how |
 |--------|-----|
-| u.gg (`ugg.py`) | static JSON CDN, fetched through curl; the CDN fingerprints clients, so the header sets in `HEADER_SETS` are tried in turn |
+| u.gg (`ugg.py`) | read from **our mirror** `data.tibbers.lol` first (`mirror/`, a Hetzner VM syncing u.gg every 4 h; `TIBBERS_UGG_MIRROR=` empty reads u.gg directly), then u.gg's CDN through curl; the CDN's bot protection refuses urllib outright and curl from some machines |
 | op.gg (`opgg.py`) | Arena only. `robots.txt` permits everything, so the user-agent is honest — keep it that way |
 | metasrc | **off limits.** `robots.txt` names ClaudeBot `Disallow: /`, its terms forbid extraction, and reaching it needs a spoofed browser fingerprint |
 | skin mods | **no network at all.** Built from the install by `skinsmith.py`. There is no download path and no skin repository is contacted; a skin that cannot be built simply has no mod |
