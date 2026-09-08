@@ -333,7 +333,8 @@
   .thead, .trow { display: flex; align-items: center; gap: 9px; padding: 0 16px; }
   .thead { flex: none; height: 19px; border-bottom: 1px solid var(--rule-d);
            background: oklch(0.115 0.010 262); }
-  .thead .tnm, .thead .tn, .thead .tier {
+  .thead .tnm, .thead .tn, .thead .tier,
+  .thead .cfig, .thead .cshare, .thead .cgold {
     font: 500 8.5px ui-monospace, Menlo, monospace; letter-spacing: .11em;
     text-transform: uppercase; color: var(--ink-low); }
   .tbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
@@ -634,9 +635,12 @@
     .plate:has(.preview.show:hover) .naming { opacity: .25; }
   }
   .preview.show::after {
-    content: "hover to enlarge"; position: absolute; left: 0; right: 0; bottom: 0;
+    content: attr(data-hint); position: absolute; left: 0; right: 0; bottom: 0;
     padding: 3px 4px; font: 7.5px ui-monospace, Menlo, monospace;
     letter-spacing: .06em; text-align: center; color: var(--ink-mid);
+    /* 96px wide, 62px when compact: a longer word in another language has to
+       clip rather than spill over the art. */
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     background: oklch(0.10 0.010 260 / .82);
     opacity: 1; transition: opacity 180ms var(--out-quart);
   }
@@ -818,12 +822,12 @@
       <span class="frame"><img id="portrait" alt=""></span>
       <strong id="cname"></strong><em id="ctitle"></em>
     </span>
-    <span class="pill" id="lockpill" hidden>hovering</span>
+    <span class="pill" id="lockpill" data-t="pill.hovering" hidden>hovering</span>
     <span class="beats">
-      <button class="dismiss" id="mini" title="Minimize"
-              aria-label="Minimize the picker">&#8211;</button>
-      <button class="dismiss" id="dismiss" title="Hide (esc)"
-              aria-label="Hide the picker">&#10005;</button>
+      <button class="dismiss" id="mini" title="Minimize" data-t-title="mini.title"
+              aria-label="Minimize the picker" data-t-aria="mini.aria">&#8211;</button>
+      <button class="dismiss" id="dismiss" title="Hide (esc)" data-t-title="hide.title"
+              aria-label="Hide the picker" data-t-aria="hide.aria">&#10005;</button>
     </span>
   </header>
 
@@ -831,7 +835,8 @@
   <nav class="tabs" id="tabs" hidden>
     <span class="tabset" id="tabset"></span>
     <span class="stamp" id="stamp"></span>
-    <select class="patch offpage" id="patch" title="Which patch the build and counters are read from" hidden>
+    <select class="patch offpage" id="patch" title="Which patch the build and counters are read from"
+            data-t-title="patch.title" hidden>
       <option value="">latest</option>
     </select>
     <i class="tabline" id="tabline"></i>
@@ -839,7 +844,8 @@
 
   <main class="stage" id="view-skin">
     <div class="plate" id="plate" hidden>
-      <div class="preview" id="preview"><div class="box"><img id="pvimg" alt=""></div></div>
+      <div class="preview" id="preview" data-hint="hover to enlarge" data-t-hint="preview.hint">
+        <div class="box"><img id="pvimg" alt=""></div></div>
       <div class="naming">
         <h1 class="skinname" id="skinname"></h1>
         <div class="meta"><span class="dash"></span><span id="skinmeta"></span></div>
@@ -850,12 +856,12 @@
   </main>
 
   <nav class="rail" id="rail" hidden>
-    <button class="arrow prev" id="prev" aria-label="Previous skin">
+    <button class="arrow prev" id="prev" aria-label="Previous skin" data-t-aria="prev.aria">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2">
         <path d="M11 2 L4 8 L11 14"/></svg>
     </button>
     <div class="viewport" id="viewport"><div class="track" id="track"></div></div>
-    <button class="arrow next" id="next" aria-label="Next skin">
+    <button class="arrow next" id="next" aria-label="Next skin" data-t-aria="next.aria">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2">
         <path d="M5 2 L12 8 L5 14"/></svg>
     </button>
@@ -865,14 +871,16 @@
     <div class="lane" id="lane"></div>
     <div class="guide" id="guide"></div>
     <div class="ibar" id="ibar" hidden>
-      <button class="igo" id="igo">Import build</button>
+      <button class="igo" id="igo" data-t="import.build">Import build</button>
       <span class="isay" id="isay" role="status" aria-live="polite"></span>
       <button class="tog" id="ispells" role="switch" aria-checked="false"
-              aria-label="Import summoner spells too"
-              title="Set your summoner spells too, in champ select">spells</button>
+              aria-label="Import summoner spells too" data-t-aria="import.spells.aria"
+              title="Set your summoner spells too, in champ select" data-t-title="import.spells.title"
+              data-t="import.spells">spells</button>
       <button class="tog" id="iauto" role="switch" aria-checked="false"
-              aria-label="Import automatically when you lock in"
-              title="Import by itself when you lock a champion in">auto on lock</button>
+              aria-label="Import automatically when you lock in" data-t-aria="import.auto.aria"
+              title="Import by itself when you lock a champion in" data-t-title="import.auto.title"
+              data-t="import.auto">auto on lock</button>
     </div>
   </section>
 
@@ -881,7 +889,7 @@
     <div class="modes inset" id="csegs"></div>
     <div class="thead" id="chead"></div>
     <div class="tbody" id="crows" tabindex="0"
-         aria-label="Counter picks, scrollable"></div>
+         aria-label="Counter picks, scrollable" data-t-aria="counters.aria"></div>
     <div class="tnote" id="cnote"></div>
   </section>
 
@@ -890,7 +898,7 @@
   <section class="sheet" id="view-tiers" hidden>
     <div class="thead" id="thead"></div>
     <div class="tbody" id="trows" tabindex="0"
-         aria-label="Arena champion tier list, scrollable"></div>
+         aria-label="Arena champion tier list, scrollable" data-t-aria="tiers.aria"></div>
     <div class="tnote" id="tnote"></div>
   </section>
 
@@ -899,7 +907,7 @@
     <div class="chips" id="achips"></div>
     <div class="thead" id="ahead"></div>
     <div class="tbody" id="arows" tabindex="0"
-         aria-label="Augments, scrollable"></div>
+         aria-label="Augments, scrollable" data-t-aria="aug.aria"></div>
     <div class="tnote" id="anote"></div>
   </section>
 
@@ -907,7 +915,7 @@
        footer, which is where they were being crushed. -->
   <section class="sheet" id="view-items" hidden>
     <div class="guide" id="aitems" tabindex="0"
-         aria-label="Arena items, scrollable"></div>
+         aria-label="Arena items, scrollable" data-t-aria="ai.aria"></div>
   </section>
 
   <footer class="status">
@@ -925,13 +933,13 @@
        and answered through /api/elevation. -->
   <div class="elevate" id="elevate" hidden>
     <div class="ecard" role="dialog" aria-modal="true" aria-labelledby="e-title">
-      <h2 id="e-title">Skip the password each game?</h2>
-      <p>To apply a skin, tibbers asks macOS for permission. Set it up once and
+      <h2 id="e-title" data-t="elevate.title">Skip the password each game?</h2>
+      <p data-t="elevate.body">To apply a skin, tibbers asks macOS for permission. Set it up once and
          it won&rsquo;t ask again &mdash; or have it ask each time. You can
          change this later in Settings.</p>
       <div class="erow">
-        <button class="ebtn primary" id="e-auto">Set up &middot; one prompt</button>
-        <button class="ebtn" id="e-prompt">Ask each time</button>
+        <button class="ebtn primary" id="e-auto" data-t="elevate.auto">Set up &middot; one prompt</button>
+        <button class="ebtn" id="e-prompt" data-t="elevate.prompt">Ask each time</button>
       </div>
     </div>
   </div>
@@ -941,11 +949,11 @@
        cleared through /api/welcome. -->
   <div class="elevate" id="welcome" hidden>
     <div class="ecard" role="dialog" aria-modal="true" aria-labelledby="w-title">
-      <h2 id="w-title">tibbers is ready</h2>
+      <h2 id="w-title" data-t="welcome.title">tibbers is ready</h2>
       <p id="w-body"></p>
       <div class="erow">
-        <button class="ebtn primary" id="w-settings">Open settings</button>
-        <button class="ebtn" id="w-ok">Got it</button>
+        <button class="ebtn primary" id="w-settings" data-t="welcome.settings">Open settings</button>
+        <button class="ebtn" id="w-ok" data-t="welcome.ok">Got it</button>
       </div>
     </div>
   </div>
@@ -978,13 +986,273 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* ═══ language ═══════════════════════════════════════════════════════
+   Two voices for one page. The server hands out the code (`language` on
+   /api/settings, already resolved from the OS when nothing was chosen) and
+   the page keeps the words. Static markup carries data-t, data-t-title,
+   data-t-aria or data-t-hint and is rewritten in place; everything drawn
+   by script asks t() at draw time, so a language change is one forced
+   redraw and then the ordinary signature gating again. The status line
+   and the log stay English on purpose: they are the record.
+
+   Russian follows the client's own vocabulary: образ, хрома, руны,
+   заклинания призывателя, подтвердить выбор. Plurals are listed as
+   "one|few|many" and picked by plural(). Templates that hold <b> are
+   handed values that are already escaped. */
+const T = {
+  en: {
+    'pill.hovering': 'hovering', 'pill.locked': 'locked in', 'pill.ingame': 'in game',
+    'mini.title': 'Minimize', 'mini.aria': 'Minimize the picker',
+    'hide.title': 'Hide (esc)', 'hide.aria': 'Hide the picker',
+    'patch.title': 'Which patch the build and counters are read from',
+    'patch.latest': 'latest', 'patch.n': 'patch {v}',
+    'prev.aria': 'Previous skin', 'next.aria': 'Next skin',
+    'preview.hint': 'hover to enlarge',
+    'strip.chroma': 'CHROMA', 'strip.base': 'BASE', 'strip.base.title': '{name} (base)',
+    'meta.base': 'base skin', 'meta.nomod': 'no mod available', 'meta.ready': 'ready',
+    'meta.armed': 'armed', 'meta.arming': 'arming…', 'meta.armedas': 'armed: {name}',
+    'empty.client': 'Waiting for League',
+    'empty.client.text': 'Nothing in your install is modified. Launch it however you like.',
+    'empty.champ': 'Hover a champion',
+    'empty.champ.text': 'Skins appear as soon as you hover, before you lock in.',
+    'tab.skin': 'Skin', 'tab.build': 'Build', 'tab.counters': 'Counters',
+    'tab.tiers': 'Tier list', 'tab.augments': 'Augments', 'tab.items': 'Items',
+    'stamp.borrowed': 'borrowed',
+    'stamp.title': '{label} has no data of its own; these are {src} numbers.',
+    'src.aram': 'ARAM', 'src.rift': "Summoner's Rift",
+    'credit': 'numbers from {name}',
+    'credit.title': 'Open the {name} page these numbers come from',
+    'reading': 'Reading {what}…',
+    'subj.build': 'the build', 'subj.tiers': 'the tier list', 'subj.augments': 'the augments',
+    'subj.items': 'the items', 'subj.counters': 'counters',
+    'guide.nochamp': 'No champion yet', 'guide.nochamp.text': 'Hover one and the build appears.',
+    'guide.thismode': 'This mode',
+    'guide.unsupported': 'Skins work here. Nobody publishes build data for it.',
+    'guide.nodata': 'No build data', 'guide.nodata.text': 'u.gg had nothing for this.',
+    'mode.general': 'General', 'mode.vs': 'vs {name}', 'vs.opponent': 'opponent',
+    'games': 'game|games', 'champs': 'champion|champions',
+    'unit.gold': 'g',
+    'runes': 'Runes', 'skills': 'Skills', 'items': 'Items',
+    'opt.4': '4th', 'opt.5': '5th', 'opt.6': '6th',
+    'opt.fourth': 'Fourth', 'opt.fifth': 'Fifth', 'opt.sixth': 'Sixth',
+    'lane.lbl': 'lane opponent', 'lane.none': 'no enemy has locked in yet',
+    'lane.assumed': 'assumed · champ select hides roles',
+    'lane.over': '{wr} over {games}', 'lane.gold': '{g}g {dir}',
+    'lane.ahead': 'ahead', 'lane.behind': 'behind', 'lane.at15': 'at 15',
+    'lane.thin': 'thin sample', 'foe.title': 'Show the matchup against {name}',
+    'th.champion': 'Champion', 'th.tier': 'Tier', 'th.first': '1st', 'th.top3': 'Top 3',
+    'th.place': 'Place', 'th.picked': 'Picked', 'th.augment': 'Augment',
+    'tiers.title': '{name} — {games}, banned {ban}%', 'tiers.hovering': 'hovering',
+    'tiers.none': 'No tier list', 'tiers.none.text': 'op.gg had nothing for this patch.',
+    'tiers.note': 'Six teams of three, so an average place of <b>3.50</b> is the middle'
+      + ' and a top 3 is the top half. <b>{n}</b> champions played on patch {patch}.',
+    'aug.all': 'All', 'aug.bytier': 'by tier',
+    'rarity.prismatic': 'prismatic', 'rarity.gold': 'gold', 'rarity.silver': 'silver',
+    'rarity.prismatic.chip': 'Prismatic', 'rarity.gold.chip': 'Gold', 'rarity.silver.chip': 'Silver',
+    'rarity.prismatic.among': 'prismatics', 'rarity.gold.among': 'golds', 'rarity.silver.among': 'silvers',
+    'aug.title': '{name} — {rarity}, {games}, finishes {fin} against a {rarity} average of {base}',
+    'aug.fewgames': 'too few games to rate', 'aug.own': 'its own rarity',
+    'aug.none': 'No augment data', 'aug.none.text': 'op.gg had nothing for this champion.',
+    'aug.note': 'Tier is average finish against the same rarity for this champion, so it'
+      + ' means <b>best among {pool}</b>, not best in the game. Under <b>50</b> games the'
+      + ' count is shown instead of a letter.',
+    'ai.prismatic': 'Prismatic', 'ai.prismatic.note': 'free anvil, round 2 · 1st place · picked',
+    'ai.core': 'Core build', 'ai.boots': 'Boots', 'ai.late': 'Late items',
+    'ai.note': '1st place · picked', 'ai.skills': 'Skill max order',
+    'ai.skills.n': '{games} · 1st place', 'ai.picked': 'picked',
+    'ai.none': 'No item data',
+    'import.build': 'Import build', 'import.items': 'Import items', 'import.busy': 'importing…',
+    'import.spells': 'spells', 'import.spells.aria': 'Import summoner spells too',
+    'import.spells.title': 'Set your summoner spells too, in champ select',
+    'import.auto': 'auto on lock', 'import.auto.aria': 'Import automatically when you lock in',
+    'import.auto.title': 'Import by itself when you lock a champion in',
+    'import.would': 'would write {what}', 'import.done': 'imported {what}',
+    'import.nothing': 'nothing', 'import.failed': 'import failed',
+    'import.noanswer': 'the app did not answer',
+    'done.spells': 'spells', 'done.items': 'items',
+    'counters.aria': 'Counter picks, scrollable',
+    'tiers.aria': 'Arena champion tier list, scrollable',
+    'aug.aria': 'Augments, scrollable', 'ai.aria': 'Arena items, scrollable',
+    'c.beats': 'Beats {name}', 'c.you': 'you',
+    'c.none': 'No counter data', 'c.none.text': 'Lock a champion to see what beats it.',
+    'role.top': 'Top', 'role.jungle': 'Jungle', 'role.mid': 'Mid', 'role.bot': 'Bot',
+    'role.support': 'Support', 'role.lane': 'Your lane',
+    'c.head': '{role} picks, best against {name}',
+    'c.win': 'Win', 'c.share': 'Pick share', 'c.gold': 'Gold @15',
+    'c.mine': 'your pick · ranked {rank} of {of}',
+    'c.note.rare': '<b>{rare}</b> of the {above} above {mine} are picked in under 2% of'
+      + " {name}'s games. {mine} sits {rank} of {of}.",
+    'c.note.rank': '{mine} ranks <b>{rank}</b> of {of} against {name}.',
+    'c.note.total': "Win rate is the listed champion's, over <b>{total}</b> opponents"
+      + ' played in this lane.',
+    'elevate.title': 'Skip the password each game?',
+    'elevate.body': 'To apply a skin, tibbers asks macOS for permission. Set it up once and'
+      + ' it won’t ask again — or have it ask each time. You can change this later in Settings.',
+    'elevate.auto': 'Set up · one prompt', 'elevate.prompt': 'Ask each time',
+    'welcome.title': 'tibbers is ready',
+    'welcome.body': 'tibbers lives in your {home} and watches champ select. Close this window'
+      + ' whenever — it keeps running there. Hover a champion, pick a skin, and launch your game.',
+    'home.tray': 'system tray', 'home.menubar': 'menu bar',
+    'welcome.settings': 'Open settings', 'welcome.ok': 'Got it',
+  },
+  ru: {
+    'pill.hovering': 'выбор', 'pill.locked': 'выбор подтверждён', 'pill.ingame': 'в игре',
+    'mini.title': 'Свернуть', 'mini.aria': 'Свернуть окно выбора образа',
+    'hide.title': 'Скрыть (esc)', 'hide.aria': 'Скрыть окно выбора образа',
+    'patch.title': 'С какого патча читаются сборка и контрпики',
+    'patch.latest': 'последний', 'patch.n': 'патч {v}',
+    'prev.aria': 'Предыдущий образ', 'next.aria': 'Следующий образ',
+    'preview.hint': 'наведите',
+    'strip.chroma': 'ХРОМА', 'strip.base': 'БАЗОВЫЙ', 'strip.base.title': '{name} (базовый)',
+    'meta.base': 'базовый образ', 'meta.nomod': 'мод недоступен', 'meta.ready': 'готов',
+    'meta.armed': 'применён', 'meta.arming': 'применяется…', 'meta.armedas': 'применён: {name}',
+    'empty.client': 'Ожидание League',
+    'empty.client.text': 'Файлы игры не изменяются. Запускайте её как обычно.',
+    'empty.champ': 'Наведите на чемпиона',
+    'empty.champ.text': 'Образы появляются при наведении, ещё до подтверждения выбора.',
+    'tab.skin': 'Образ', 'tab.build': 'Сборка', 'tab.counters': 'Контрпики',
+    'tab.tiers': 'Тир-лист', 'tab.augments': 'Аугменты', 'tab.items': 'Предметы',
+    'stamp.borrowed': 'заимствовано',
+    'stamp.title': 'У режима {label} нет собственных данных; это цифры {src}.',
+    'src.aram': 'ARAM', 'src.rift': 'Ущелья призывателей',
+    'credit': 'цифры с {name}',
+    'credit.title': 'Открыть страницу {name}, откуда взяты эти цифры',
+    'reading': 'Загружаем {what}…',
+    'subj.build': 'сборку', 'subj.tiers': 'тир-лист', 'subj.augments': 'аугменты',
+    'subj.items': 'предметы', 'subj.counters': 'контрпики',
+    'guide.nochamp': 'Чемпион ещё не выбран',
+    'guide.nochamp.text': 'Наведите на чемпиона — появится сборка.',
+    'guide.thismode': 'Этот режим',
+    'guide.unsupported': 'Образы здесь работают. Данных о сборках для этого режима никто не публикует.',
+    'guide.nodata': 'Нет данных о сборке', 'guide.nodata.text': 'На u.gg ничего нет.',
+    'mode.general': 'Общая', 'mode.vs': 'против {name}', 'vs.opponent': 'соперника',
+    'games': 'игра|игры|игр', 'champs': 'чемпион|чемпиона|чемпионов',
+    'unit.gold': '\u00a0зол.',   /* a word, not a symbol: it needs the gap */
+    'runes': 'Руны', 'skills': 'Порядок прокачки', 'items': 'Предметы',
+    'opt.4': '4-й', 'opt.5': '5-й', 'opt.6': '6-й',
+    'opt.fourth': '4-й', 'opt.fifth': '5-й', 'opt.sixth': '6-й',
+    'lane.lbl': 'соперник', 'lane.none': 'соперники ещё не подтвердили выбор',
+    'lane.assumed': 'предположительно · роли скрыты',
+    'lane.over': '{wr} · {games}', 'lane.gold': '{g} зол. {dir}',
+    'lane.ahead': 'впереди', 'lane.behind': 'позади', 'lane.at15': 'на 15-й',
+    'lane.thin': 'мало игр', 'foe.title': 'Показать статистику против {name}',
+    'th.champion': 'Чемпион', 'th.tier': 'Тир', 'th.first': '1-е', 'th.top3': 'Топ-3',
+    'th.place': 'Место', 'th.picked': 'Пики', 'th.augment': 'Аугмент',
+    'tiers.title': '{name} — {games}, банов {ban}%', 'tiers.hovering': 'ваш выбор',
+    'tiers.none': 'Нет тир-листа', 'tiers.none.text': 'На op.gg ничего нет для этого патча.',
+    'tiers.note': 'Шесть команд по три, так что среднее место <b>3.50</b> — середина,'
+      + ' а топ-3 — верхняя половина. Чемпионов на патче {patch}: <b>{n}</b>.',
+    'aug.all': 'Все', 'aug.bytier': 'по тиру',
+    'rarity.prismatic': 'призматический', 'rarity.gold': 'золотой', 'rarity.silver': 'серебряный',
+    'rarity.prismatic.chip': 'Призматические', 'rarity.gold.chip': 'Золотые',
+    'rarity.silver.chip': 'Серебряные',
+    'rarity.prismatic.among': 'призматических', 'rarity.gold.among': 'золотых',
+    'rarity.silver.among': 'серебряных',
+    'aug.title': '{name} — {rarity}, {games}, среднее место {fin}, у {among} в среднем {base}',
+    'aug.fewgames': 'слишком мало игр для оценки', 'aug.own': 'аугментов своей редкости',
+    'aug.none': 'Нет данных об аугментах', 'aug.none.text': 'На op.gg ничего нет для этого чемпиона.',
+    'aug.note': 'Тир — это среднее место относительно аугментов той же редкости у этого'
+      + ' чемпиона, то есть <b>лучший среди {pool}</b>, а не лучший в игре. При менее чем'
+      + ' <b>50</b> играх вместо буквы показано число игр.',
+    'ai.prismatic': 'Призматические',
+    'ai.prismatic.note': 'бесплатная наковальня, раунд 2 · 1-е место · пики',
+    'ai.core': 'Основная сборка', 'ai.boots': 'Ботинки', 'ai.late': 'Поздние предметы',
+    'ai.note': '1-е место · пики', 'ai.skills': 'Порядок прокачки',
+    'ai.skills.n': '{games} · 1-е место', 'ai.picked': 'пики',
+    'ai.none': 'Нет данных о предметах',
+    'import.build': 'Импорт сборки', 'import.items': 'Импорт предметов',
+    'import.busy': 'импорт…',
+    'import.spells': 'заклинания', 'import.spells.aria': 'Импортировать и заклинания призывателя',
+    'import.spells.title': 'Выставлять и заклинания призывателя при выборе чемпиона',
+    'import.auto': 'авто при подтверждении',
+    'import.auto.aria': 'Импортировать автоматически после подтверждения выбора',
+    'import.auto.title': 'Импортировать самостоятельно, когда вы подтверждаете выбор чемпиона',
+    'import.would': 'записал бы: {what}', 'import.done': 'импортировано: {what}',
+    'import.nothing': 'ничего', 'import.failed': 'импорт не удался',
+    'import.noanswer': 'приложение не ответило',
+    'done.spells': 'заклинания', 'done.items': 'предметы',
+    'counters.aria': 'Контрпики, список прокручивается',
+    'tiers.aria': 'Тир-лист чемпионов Арены, список прокручивается',
+    'aug.aria': 'Аугменты, список прокручивается', 'ai.aria': 'Предметы Арены, список прокручивается',
+    'c.beats': 'Кто бьёт {name}', 'c.you': 'вас',
+    'c.none': 'Нет данных о контрпиках',
+    'c.none.text': 'Подтвердите выбор чемпиона, чтобы увидеть, кто его бьёт.',
+    'role.top': 'на топе', 'role.jungle': 'в лесу', 'role.mid': 'на миде', 'role.bot': 'на боте',
+    'role.support': 'на саппорте', 'role.lane': 'на вашей линии',
+    'c.head': 'Пики {role}, лучшие против {name}',
+    'c.win': 'Победы', 'c.share': 'Доля пиков', 'c.gold': 'Зол. @15',
+    'c.mine': 'ваш пик · {rank} из {of}',
+    'c.note.rare': 'Выше {mine} — {above}, и <b>{rare}</b> из них выбирают менее чем'
+      + ' в 2% игр {name}. {mine} — {rank} из {of}.',
+    'c.note.rank': '{mine} — <b>{rank}</b> из {of} против {name}.',
+    'c.note.total': 'Процент побед — у чемпиона в строке, по всем соперникам на этой линии'
+      + ' (<b>{total}</b>).',
+    'elevate.title': 'Не вводить пароль каждую игру?',
+    'elevate.body': 'Чтобы применить образ, tibbers запрашивает у macOS разрешение. Настройте'
+      + ' один раз — и он больше не спросит, или пусть спрашивает каждый раз. Это можно'
+      + ' изменить позже в настройках.',
+    'elevate.auto': 'Настроить · один запрос', 'elevate.prompt': 'Спрашивать каждый раз',
+    'welcome.title': 'tibbers готов',
+    'welcome.body': 'tibbers живёт в {home} и следит за выбором чемпиона. Закрывайте это окно'
+      + ' когда угодно — он продолжит работать там. Наведите на чемпиона, выберите образ'
+      + ' и запускайте игру.',
+    'home.tray': 'системном трее', 'home.menubar': 'строке меню',
+    'welcome.settings': 'Открыть настройки', 'welcome.ok': 'Понятно',
+  },
+};
+let LANG = 'en';
+/* A key missing in the current language falls back to English; a key nobody
+   wrote shows itself rather than nothing. Values go in as given. */
+const t = (key, vars) => {
+  const s = (T[LANG] || {})[key] ?? T.en[key] ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+};
+/* "{n} games", with the noun in the form the count wants. English lists two
+   forms and Russian three; the Russian rule turns on the last digit, except
+   in the teens. */
+function pluralForm(n, key) {
+  const forms = t(key).split('|');
+  const m10 = n % 10, m100 = n % 100;
+  const at = forms.length < 3 ? (n === 1 ? 0 : 1)
+    : (m10 === 1 && m100 !== 11) ? 0
+    : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? 1 : 2;
+  return forms[at];
+}
+function plural(n, key) { return num(n) + ' ' + pluralForm(n, key); }
+/* The server says where the app lives in its own words; the page says it in
+   the reader's, and in the case the sentence wants. */
+const homeOf = h => h === 'menu bar' ? t('home.menubar')
+  : (!h || h === 'system tray') ? t('home.tray') : h;
+const welcomeBody = wel => t('welcome.body', { home: homeOf(wel.home) });
+
+function applyLanguage(code) {
+  LANG = T[code] ? code : 'en';
+  document.documentElement.lang = LANG;
+  const walk = (attr, put) => {
+    for (const el of document.querySelectorAll(`[${attr}]`)) put(el, t(el.getAttribute(attr)));
+  };
+  walk('data-t', (el, s) => { el.textContent = s; });
+  walk('data-t-title', (el, s) => { el.title = s; });
+  walk('data-t-aria', (el, s) => el.setAttribute('aria-label', s));
+  walk('data-t-hint', (el, s) => { el.dataset.hint = s; });
+  if (!$('welcome').hidden) $('w-body').textContent = welcomeBody(LAST.welcome || {});
+  // Everything drawn by script is gated by a signature, and none of them
+  // knows the language: clear them all, and draw the last state once more.
+  // The rail is left alone -- its tiles carry skin names, which the client
+  // already localised -- so this is the one rebuild a language change costs.
+  GUIDE_SIG = COUNT_SIG = TIER_SIG = AUG_SIG = ITEM_SIG = STRIP_SIG = '';
+  for (const id of ['lane', 'lane2', 'empty', 'tabset']) delete $(id).dataset.sig;
+  paintPatch(PATCH_NOW);
+  if (SEEN_STATE) render(LAST);
+}
+
 /* The credit line under a page of numbers: who published them, as a link to
    the exact page they came from. The payload carries the URL, so what is
    opened is what was fetched, never a reconstruction. */
 const srcline = src => !src || !src.url ? '' :
   `<a class="srca" href="${esc(src.url)}"
-      title="Open the ${esc(src.name)} page these numbers come from">numbers
-      from ${esc(src.name)}&#8202;&#8599;</a>`;
+      title="${t('credit.title', { name: esc(src.name) })}">${
+      t('credit', { name: esc(src.name) })}&#8202;&#8599;</a>`;
 /* The picker window is not a browser, so the click is handed to the server
    to open in the real one; cmd-click and middle-click keep the plain href. */
 document.addEventListener('click', e => {
@@ -1012,6 +1280,8 @@ async function loadSettings() {
     PATCHES = cfg.patches || [];
     SETTINGS = cfg.settings || {};
     PATCH_PREF = SETTINGS.patch || null;
+    // Already resolved server-side: "system" never reaches the page.
+    if (cfg.language && cfg.language !== LANG) applyLanguage(cfg.language);
   } catch (e) { PATCHES = []; }
   paintPatch(PATCH_NOW);
   paintToggles();
@@ -1026,8 +1296,8 @@ function paintPatch(now) {
     sel.innerHTML = want.map(v => `<option value="${esc(v)}"></option>`).join('');
   }
   for (const o of sel.options) {
-    o.textContent = o.value ? 'patch ' + dot(o.value)
-      : 'latest' + (PATCH_NOW && !PATCH_PREF ? ' · ' + dot(PATCH_NOW) : '');
+    o.textContent = o.value ? t('patch.n', { v: dot(o.value) })
+      : t('patch.latest') + (PATCH_NOW && !PATCH_PREF ? ' · ' + dot(PATCH_NOW) : '');
   }
   if (document.activeElement !== sel) sel.value = PATCH_PREF || '';
   sel.classList.toggle('pinned', !!PATCH_PREF);
@@ -1140,12 +1410,7 @@ function render(s) {
   // First-run welcome. Fill the platform-specific body only while showing.
   const wel = s.welcome || {};
   const welEl = $('welcome');
-  if (wel.show && welEl.hidden) {
-    $('w-body').textContent =
-      `tibbers lives in your ${wel.home || 'system tray'} and watches champ ` +
-      `select. Close this window whenever — it keeps running there. Hover ` +
-      `a champion, pick a skin, and launch your game.`;
-  }
+  if (wel.show && welEl.hidden) $('w-body').textContent = welcomeBody(wel);
   welEl.hidden = !wel.show;
 
   // First-run tool download banner.
@@ -1210,11 +1475,9 @@ function render(s) {
     const empty = $('empty'), which = s.connected ? 'champ' : 'client';
     if (empty.dataset.sig !== which) {
       empty.dataset.sig = which;
-      empty.innerHTML = !s.connected
-        ? '<span class="orn"></span><b>Waiting for League</b>' +
-          '<span>Nothing in your install is modified. Launch it however you like.</span>'
-        : '<span class="orn"></span><b>Hover a champion</b>' +
-          '<span>Skins appear as soon as you hover, before you lock in.</span>';
+      const key = s.connected ? 'empty.champ' : 'empty.client';
+      empty.innerHTML = `<span class="orn"></span><b>${esc(t(key))}</b>`
+        + `<span>${esc(t(key + '.text'))}</span>`;
     }
     return;
   }
@@ -1243,7 +1506,7 @@ function render(s) {
   // vanish mid-loading, which left the pill claiming "hovering" during the
   // game. Past champ select there is nothing left to hover.
   const inSelect = s.phase === 'ChampSelect';
-  pill.textContent = inSelect ? (s.locked ? 'locked in' : 'hovering') : 'in game';
+  pill.textContent = t(inSelect ? (s.locked ? 'pill.locked' : 'pill.hovering') : 'pill.ingame');
   pill.classList.toggle('lit', !inSelect || !!s.locked);
   $('count').textContent = SKINS.filter(k => k.available).length + ' / ' + SKINS.length;
 
@@ -1259,15 +1522,16 @@ function render(s) {
 function armedNote(cur) {
   const armed = LAST.armed || {};
   if (isBase(cur)) {
-    if (!armed.skinId) return 'base skin';
-  } else if (!cur.available) return 'no mod available';
+    if (!armed.skinId) return t('meta.base');
+  } else if (!cur.available) return t('meta.nomod');
   const want = CHROMA || null, have = armed.chromaId || null;
-  if (armed.skinId === cur.id && have === want) return 'armed';
-  if (LAST.arming) return 'arming…';
-  if (!armed.skinId) return 'ready';
+  if (armed.skinId === cur.id && have === want) return t('meta.armed');
+  if (LAST.arming) return t('meta.arming');
+  if (!armed.skinId) return t('meta.ready');
   const skin = SKINS.find(k => k.id === armed.skinId);
   const ch = skin && have ? (skin.chromas || []).find(c => c.id === have) : null;
-  return 'armed: ' + (ch ? ch.name : skin ? skin.name : armed.label || armed.skinId);
+  return t('meta.armedas',
+           { name: ch ? ch.name : skin ? skin.name : armed.label || armed.skinId });
 }
 
 /* The splash always shows the skin, full size. A chroma changes only the small
@@ -1308,9 +1572,9 @@ function renderStrip(skin) {
      how you get back to the champion's own look, and a strip that vanishes
      entirely reads as a missing feature rather than an empty one. */
   box.innerHTML =
-    `<span class="lbl">${list.length ? 'CHROMA' : 'BASE'}</span>
+    `<span class="lbl">${t(list.length ? 'strip.chroma' : 'strip.base')}</span>
      <button class="chroma base" data-c="0" aria-pressed="${!CHROMA}"
-             title="${esc(skin.name)} (base)">
+             title="${t('strip.base.title', { name: esc(skin.name) })}">
        <i><b style="background-image:url('${art(skin.icon || skin.tile)}')"></b></i>
      </button>` +
     list.map(c => `
@@ -1335,7 +1599,9 @@ function renderStrip(skin) {
 }
 
 function renderRail() {
-  const t = $('track');
+  /* Named `track`, not `t`: `t` is the translator, and shadowing it here is
+     a trap for whoever next needs a word in this function. */
+  const track = $('track');
   const list = shown();
   const sig = list.map(k => k.id).join(',');
 
@@ -1344,22 +1610,22 @@ function renderRail() {
     /* A new set of tiles: drawn once, in this order, for the rest of this
        champion's time on screen. */
     RAIL_SIG = sig;
-    t.innerHTML = list.map((k, i) => `
+    track.innerHTML = list.map((k, i) => `
       <button class="tile ${ok(k) ? '' : 'locked'}" data-skin="${k.id}"
               style="animation-delay:${Math.min(i * 18, 300)}ms"
               ${ok(k) ? '' : 'disabled'} title="${esc(k.name)}">
         <img loading="lazy" src="${art(k.tile || k.splash)}" alt="">
       </button>`).join('');
-    for (const el of t.querySelectorAll('.tile')) {
+    for (const el of track.querySelectorAll('.tile')) {
       el.onclick = () => { if (!el.disabled) select(parseInt(el.dataset.skin, 10)); };
     }
-    t.classList.add('fresh');
+    track.classList.add('fresh');
     clearTimeout(RAIL_T);
-    RAIL_T = setTimeout(() => t.classList.remove('fresh'), 700);
+    RAIL_T = setTimeout(() => track.classList.remove('fresh'), 700);
   } else {
     /* Same tiles: mods that finished building light up in place. */
     const by = new Map(list.map(k => [k.id, k]));
-    for (const el of t.querySelectorAll('.tile')) {
+    for (const el of track.querySelectorAll('.tile')) {
       const k = by.get(parseInt(el.dataset.skin, 10));
       if (!k) continue;
       el.classList.toggle('locked', !ok(k));
@@ -1374,8 +1640,8 @@ function renderRail() {
    step; it is moved without a transition, so it does not fly across the
    viewport behind the others. */
 function mark() {
-  const t = $('track');
-  const tiles = [...t.querySelectorAll('.tile')];
+  const track = $('track');
+  const tiles = [...track.querySelectorAll('.tile')];
   const n = tiles.length;
   if (!n) return;
   const st = getComputedStyle(document.documentElement);
@@ -1448,6 +1714,9 @@ function placeRail() { $('rail').hidden = !(HAS && VIEW === 'skin'); }
    sent at all, because it would teach that tabs are allowed to be dead. */
 
 let TABS = [{ key: 'skin', label: 'Skin' }];
+/* The server's label is the fallback: a tab this page has no word for keeps
+   the name it arrived with, rather than its key. */
+const tabLabel = tb => ('tab.' + tb.key) in T.en ? t('tab.' + tb.key) : tb.label;
 const VIEW_IDS = ['skin', 'build', 'counters', 'tiers', 'augments', 'items'];
 const viewId = key => 'view-' + key;
 
@@ -1457,17 +1726,18 @@ function tabsOf(s) {
 }
 
 function paintTabs(list) {
-  const sig = list.map(t => t.key + ':' + t.label).join(',');
+  const named = list.map(tb => ({ key: tb.key, label: tabLabel(tb) }));
+  const sig = named.map(tb => tb.key + ':' + tb.label).join(',');
   const bar = $('tabset');
   if (bar.dataset.sig === sig) return false;
   bar.dataset.sig = sig;
-  TABS = list;
-  bar.innerHTML = list.map((t, i) => `
-    <button class="tab ${t.key === VIEW ? 'on' : ''}" data-view="${esc(t.key)}"
-            title="${esc(t.label)} (${i + 1})">${esc(t.label)}</button>`).join('');
+  TABS = named;
+  bar.innerHTML = named.map((tb, i) => `
+    <button class="tab ${tb.key === VIEW ? 'on' : ''}" data-view="${esc(tb.key)}"
+            title="${esc(tb.label)} (${i + 1})">${esc(tb.label)}</button>`).join('');
   for (const b of bar.querySelectorAll('.tab')) b.onclick = () => showView(b.dataset.view);
   // The view that was open may not exist in this mode any more.
-  if (!list.some(t => t.key === VIEW)) showView(list[0].key);
+  if (!list.some(tb => tb.key === VIEW)) showView(list[0].key);
   return true;
 }
 
@@ -1484,7 +1754,7 @@ function followPhase(s) {
   if (now === PHASE_WAS) return;
   const before = PHASE_WAS;
   PHASE_WAS = now;
-  const has = key => TABS.some(t => t.key === key);
+  const has = key => TABS.some(tb => tb.key === key);
   if (now === 'ChampSelect' && before !== 'ChampSelect') showView('skin');
   else if (now === 'InProgress' && has('augments')) showView('augments');
 }
@@ -1528,7 +1798,7 @@ function showView(name) {
 }
 
 const pct = v => (v === undefined || v === null) ? '' : v.toFixed(1) + '%';
-const num = v => (v || 0).toLocaleString();
+const num = v => (v || 0).toLocaleString(LANG);
 /* The percent sign travels with its figure and is drawn smaller, so a column
    of numbers still reads as a column while every one of them stays labelled. */
 const fig = (v, places = 1) => (v === undefined || v === null) ? '<i>&mdash;</i>'
@@ -1557,13 +1827,13 @@ const sigOf = (...parts) => parts.map(p =>
    already safe to insert. */
 function noteEmpty(box, loading, subject, title, text) {
   $(box).innerHTML = '<div class="note-empty">' + (loading
-    ? `<span>Reading ${subject}&hellip;</span>`
+    ? `<span>${esc(t('reading', { what: t(subject) }))}</span>`
     : `${title ? `<b>${title}</b>` : ''}<span>${text}</span>`) + '</div>';
 }
 
 function bandHTML(title, block, note) {
   const wr = block && block.winRate ? `<span class="wr">${pct(block.winRate)}</span>` : '';
-  const n  = block && block.matches ? `<span class="n">${num(block.matches)} games</span>`
+  const n  = block && block.matches ? `<span class="n">${plural(block.matches, 'games')}</span>`
     : (note ? `<span class="n">${esc(note)}</span>` : '');
   return `<div class="band"><h2>${title}</h2>${wr}${n}</div>`;
 }
@@ -1574,21 +1844,23 @@ function bandHTML(title, block, note) {
 function laneNote(s) {
   const g = s.guide || {};
   const foe = (s.enemies || []).find(e => e.championId === g.opponentId);
-  if (!foe) return '<span class="note">assumed &middot; champ select hides roles</span>';
+  if (!foe) return `<span class="note">${esc(t('lane.assumed'))}</span>`;
   const m = g.matchup;
   if (!m || g.state !== 'ready') return '';
   const wr = (m.overall || {}).winRate;
   const seen = (s.guide.against || []).find(a => a.championId === g.opponentId) || {};
   const bits = [esc(foe.name)];
   if (wr !== undefined && wr !== null)
-    bits.push(`<b>${pct(wr)}</b> over ${num(m.matches)} games`);
+    bits.push(t('lane.over', { wr: `<b>${pct(wr)}</b>`, games: plural(m.matches, 'games') }));
   if (seen.goldAt15 !== undefined && seen.goldAt15 !== null) {
     const g15 = Math.round(seen.goldAt15);
-    bits.push(`<b>${num(Math.abs(g15))}g ${g15 < 0 ? 'behind' : 'ahead'}</b> at 15`);
+    const gold = t('lane.gold', { g: num(Math.abs(g15)),
+                                  dir: t(g15 < 0 ? 'lane.behind' : 'lane.ahead') });
+    bits.push(`<b>${esc(gold)}</b> ${esc(t('lane.at15'))}`);
   }
   // A win rate over a few dozen games says nothing, so the count that makes
   // it doubtful is the part that is coloured, not the rate itself.
-  if (m.thin) bits.push(`<b class="warn">thin sample</b>`);
+  if (m.thin) bits.push(`<b class="warn">${esc(t('lane.thin'))}</b>`);
   return `<span class="note">${bits.join(' &middot; ')}</span>`;
 }
 
@@ -1599,15 +1871,15 @@ function renderLane(s, into, note) {
   if (sig === into.dataset.sig) return;
   into.dataset.sig = sig;
 
+  const lbl = `<span class="lbl">${esc(t('lane.lbl'))}</span>`;
   if (!foes.length) {
-    into.innerHTML = '<span class="lbl">lane opponent</span>'
-      + '<span class="note">no enemy has locked in yet</span>';
+    into.innerHTML = lbl + `<span class="note">${esc(t('lane.none'))}</span>`;
     return;
   }
-  into.innerHTML = '<span class="lbl">lane opponent</span>' + foes.map(e => `
+  into.innerHTML = lbl + foes.map(e => `
     <button class="foe" data-champ="${e.championId}"
             aria-pressed="${e.championId === s.opponentId}"
-            title="Show the matchup against ${esc(e.name)}">
+            title="${t('foe.title', { name: esc(e.name) })}">
       <img src="${esc(art(e.icon))}" alt="">
     </button>`).join('') + note;
   for (const b of into.querySelectorAll('.foe')) {
@@ -1646,30 +1918,29 @@ function renderGuide(s) {
   if (sig === GUIDE_SIG) return;
   GUIDE_SIG = sig;
   const stamp = [q.label && q.kind !== 'rift' ? q.label : '',
-                 q.borrowed ? 'borrowed' : ''];
+                 q.borrowed ? t('stamp.borrowed') : ''];
   $('stamp').textContent = stamp.filter(Boolean).join(' · ');
   $('stamp').title = q.borrowed
-    ? `${q.label} has no data of its own; these are ${
-        q.kind === 'mayhem' ? 'ARAM' : "Summoner's Rift"} numbers.` : '';
+    ? t('stamp.title', { label: q.label,
+                         src: t(q.kind === 'mayhem' ? 'src.aram' : 'src.rift') }) : '';
   paintPatch(g.patch);
 
   if (!s.championId) {
-    noteEmpty('guide', false, '', 'No champion yet',
-              'Hover one and the build appears.');
+    noteEmpty('guide', false, '', esc(t('guide.nochamp')), esc(t('guide.nochamp.text')));
     return;
   }
   if (g.state === 'unsupported') {
-    noteEmpty('guide', false, '', esc(g.label || 'This mode'),
-              'Skins work here. Nobody publishes build data for it.');
+    noteEmpty('guide', false, '', esc(g.label || t('guide.thismode')),
+              esc(t('guide.unsupported')));
     return;
   }
   if (g.state === 'loading' || !g.state) {
-    noteEmpty('guide', true, 'the build');
+    noteEmpty('guide', true, 'subj.build');
     return;
   }
   if (g.state !== 'ready') {
-    noteEmpty('guide', false, '', 'No build data',
-              esc(g.error || 'u.gg had nothing for this.'));
+    noteEmpty('guide', false, '', esc(t('guide.nodata')),
+              esc(g.error || t('guide.nodata.text')));
     return;
   }
 
@@ -1687,10 +1958,10 @@ function renderGuide(s) {
   // about sample size, and the label is where that judgement is made.
   const toggle = !g.matchup ? '' : `
     <div class="modes">
-      <button class="mode" aria-pressed="${!useMatchup}" data-mode="general">General
+      <button class="mode" aria-pressed="${!useMatchup}" data-mode="general">${esc(t('mode.general'))}
         <em>${num((g.general || {}).matches)}</em></button>
       <button class="mode" aria-pressed="${useMatchup}" data-mode="matchup">
-        vs ${esc(opponent ? opponent.name : 'opponent')}
+        ${t('mode.vs', { name: esc(opponent ? opponent.name : t('vs.opponent')) })}
         <em>${num(g.matchup.matches)}</em></button>
     </div>`;
 
@@ -1723,7 +1994,7 @@ function renderGuide(s) {
   const optBlock = (cap, rows) => !rows || !rows.length ? '' : `
     <div class="opt"><span class="cap">${cap}</span><div class="picks">` +
     rows.slice(0, 2).map(o => `<span class="pick ${o.matches < THIN ? 'thin' : ''}"
-        title="${esc(o.name)} &mdash; ${num(o.matches)} games">
+        title="${esc(o.name)} &mdash; ${plural(o.matches, 'games')}">
       <span class="it small"><img src="${esc(art(o.icon))}" alt=""></span>
       <span class="wr">${fig(o.winRate, 2)}</span>
       <span class="n">${num(o.matches)}</span></span>`).join('') + `</div></div>`;
@@ -1738,7 +2009,7 @@ function renderGuide(s) {
       <span class="it small" title="${esc(o.name)}"><img src="${esc(art(o.icon))}" alt=""></span>
       <span class="nm">${esc(o.name)}</span>
       <span class="wr">${fig(o.winRate, 2)}</span>
-      <span class="n">${num(o.matches)}<i>games</i></span></span>`).join('') + `</div>`;
+      <span class="n">${num(o.matches)}<i>${esc(pluralForm(o.matches, 'games'))}</i></span></span>`).join('') + `</div>`;
 
   const wide = q.roles === false;
 
@@ -1746,7 +2017,7 @@ function renderGuide(s) {
   box.innerHTML = toggle + `
     <div class="split">
       <section class="block">
-        ${bandHTML('Runes', runes)}
+        ${bandHTML(esc(t('runes')), runes)}
         <div class="trees">
           ${runes.primary ? treeHTML(runes.primary) : ''}
           ${runes.secondary ? treeHTML(runes.secondary) : ''}
@@ -1754,7 +2025,7 @@ function renderGuide(s) {
         <div class="shards">${shards}</div>
       </section>
       <section class="block">
-        ${bandHTML('Skills', sk)}
+        ${bandHTML(esc(t('skills')), sk)}
         <div class="duo">
           <div class="spells">${(sp.spells || []).map(x =>
             `<img src="${esc(art(x.icon))}" alt="" title="${esc(x.name)}">`).join('')}</div>
@@ -1764,19 +2035,19 @@ function renderGuide(s) {
       </section>
     </div>
     <section class="block">
-      ${bandHTML('Items', b.core)}
+      ${bandHTML(esc(t('items')), b.core)}
       ${wide ? `
       <div class="items">${itemRow(b.start, 'small')}
         <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
       <div class="aopts">
-        ${namedOpts('Fourth', b.fourth)}${namedOpts('Fifth', b.fifth)}
-        ${namedOpts('Sixth', b.sixth)}
+        ${namedOpts(esc(t('opt.fourth')), b.fourth)}${namedOpts(esc(t('opt.fifth')), b.fifth)}
+        ${namedOpts(esc(t('opt.sixth')), b.sixth)}
       </div>` : `
       <div class="igrid">
         <div class="items">${itemRow(b.start, 'small')}
           <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
         <div class="opts">
-          ${optBlock('4th', b.fourth)}${optBlock('5th', b.fifth)}${optBlock('6th', b.sixth)}
+          ${optBlock(esc(t('opt.4')), b.fourth)}${optBlock(esc(t('opt.5')), b.fifth)}${optBlock(esc(t('opt.6')), b.sixth)}
         </div>
       </div>`}
     </section>
@@ -1826,12 +2097,12 @@ const RARITIES = ['prismatic', 'gold', 'silver'];
    maps 1 to 5 onto letters, so inventing an S/A/B scale would be dressing a
    rank up as a grade it never claimed to be. The rank column carries the
    ordering that the tier only bands. */
-const tierClass = t => t == 1 ? 'hi' : t == 2 ? 's' : t == 3 ? 'mid' : 'lo';
+const tierClass = n => n == 1 ? 'hi' : n == 2 ? 's' : n == 3 ? 'mid' : 'lo';
 
 /* The augment letters ARE derived here, from placement, so they get the
    letter treatment. Gold is spent only on the top band, so it stays scarce. */
-const bandClass = t => t === 'S+' ? 'hi' : t === 'S' ? 's'
-  : t === 'A' ? 'mid' : 'lo';
+const bandClass = band => band === 'S+' ? 'hi' : band === 'S' ? 's'
+  : band === 'A' ? 'mid' : 'lo';
 
 function renderArenaViews(s) {
   const g = s.guide || {};
@@ -1845,21 +2116,21 @@ function renderArenaViews(s) {
    hovered found at its own place and scrolled to, so "is this worth picking"
    is answered by position rather than by a number beside a list. */
 function renderTiers(s, g) {
-  const t = g.tierList, rows = (t || {}).champions || [];
-  const sig = sigOf(s.championId, g.state, t);
+  const tl = g.tierList, rows = (tl || {}).champions || [];
+  const sig = sigOf(s.championId, g.state, tl);
   if (sig === TIER_SIG) return;
   TIER_SIG = sig;
 
   $('thead').innerHTML = rows.length ? `
     <span class="tn rank">#</span><span class="tic"></span>
-    <span class="tnm">Champion</span>
-    <span class="tier">Tier</span>
-    <span class="tn">1st</span><span class="tn">Top 3</span>
-    <span class="tn">Place</span><span class="tn">Picked</span>` : '';
+    <span class="tnm">${esc(t('th.champion'))}</span>
+    <span class="tier">${esc(t('th.tier'))}</span>
+    <span class="tn">${esc(t('th.first'))}</span><span class="tn">${esc(t('th.top3'))}</span>
+    <span class="tn">${esc(t('th.place'))}</span><span class="tn">${esc(t('th.picked'))}</span>` : '';
 
   if (!rows.length) {
-    noteEmpty('trows', g.state === 'loading', 'the tier list',
-              'No tier list', 'op.gg had nothing for this patch.');
+    noteEmpty('trows', g.state === 'loading', 'subj.tiers',
+              esc(t('tiers.none')), esc(t('tiers.none.text')));
     $('tnote').textContent = '';
     return;
   }
@@ -1869,11 +2140,12 @@ function renderTiers(s, g) {
   $('trows').innerHTML = rows.map(c => `
     <div class="trow ${c.championId === mine ? 'me' : ''}"
          ${c.championId === mine ? 'data-me="1"' : ''}
-         title="${esc(c.name)} &mdash; ${num(c.matches)} games, banned ${c.banRate}%">
+         title="${t('tiers.title', { name: esc(c.name), games: plural(c.matches, 'games'),
+                                     ban: c.banRate })}">
       <span class="tn rank">${c.rank || ''}</span>
       <span class="tic round"><img src="${esc(art(c.icon))}" alt=""></span>
       <span class="tnm">${esc(c.name)}${c.championId === mine
-        ? '<em>hovering</em>' : ''}</span>
+        ? `<em>${esc(t('tiers.hovering'))}</em>` : ''}</span>
       <span class="tier ${tierClass(c.tier)}">${c.tier == null ? '' : c.tier}</span>
       <span class="tn lead">${fig(c.firstRate)}</span>
       <span class="tn dim">${fig(c.topRate)}</span>
@@ -1882,10 +2154,8 @@ function renderTiers(s, g) {
     </div>`).join('');
 
   // What the columns are measured against, said once, under them.
-  $('tnote').innerHTML = 'Six teams of three, so an average place of <b>3.50</b>'
-    + ' is the middle and a top 3 is the top half.'
-    + ` <b>${rows.length}</b> champions played on patch ${esc(t.patch || '')}.`
-    + (t.source ? ' &middot; ' + srcline(t.source) : '');
+  $('tnote').innerHTML = t('tiers.note', { n: rows.length, patch: esc(tl.patch || '') })
+    + (tl.source ? ' &middot; ' + srcline(tl.source) : '');
 
   const row = $('trows').querySelector('[data-me]');
   if (row) row.scrollIntoView({ block: 'center' });
@@ -1905,20 +2175,20 @@ function renderAugments(s, g) {
 
   $('achips').innerHTML = ['all'].concat(RARITIES).map(k => `
     <button class="chip" data-rarity="${k}" aria-pressed="${AUG_FILTER === k}">
-      ${k === 'all' ? 'All' : k[0].toUpperCase() + k.slice(1)}
+      ${esc(t(k === 'all' ? 'aug.all' : 'rarity.' + k + '.chip'))}
       <b>${counts[k] || 0}</b></button>`).join('')
-    + '<span class="sort">by tier</span>';
+    + `<span class="sort">${esc(t('aug.bytier'))}</span>`;
   for (const b of $('achips').querySelectorAll('.chip'))
     b.onclick = () => { AUG_FILTER = b.dataset.rarity; AUG_SIG = ''; render(LAST); };
 
   $('ahead').innerHTML = all.length ? `
-    <span class="tic"></span><span class="tnm">Augment</span>
-    <span class="tier">Tier</span>
-    <span class="tn">1st</span><span class="tn">Picked</span>` : '';
+    <span class="tic"></span><span class="tnm">${esc(t('th.augment'))}</span>
+    <span class="tier">${esc(t('th.tier'))}</span>
+    <span class="tn">${esc(t('th.first'))}</span><span class="tn">${esc(t('th.picked'))}</span>` : '';
 
   if (!all.length) {
-    noteEmpty('arows', g.state === 'loading', 'the augments',
-              'No augment data', 'op.gg had nothing for this champion.');
+    noteEmpty('arows', g.state === 'loading', 'subj.augments',
+              esc(t('aug.none')), esc(t('aug.none.text')));
     $('anote').textContent = '';
     return;
   }
@@ -1926,22 +2196,21 @@ function renderAugments(s, g) {
   const rows = AUG_FILTER === 'all' ? all : all.filter(a => a.rarity === AUG_FILTER);
   freshen($('arows'));
   $('arows').innerHTML = rows.map(a => `
-    <div class="trow" title="${esc(a.name)} &mdash; ${esc(a.rarity)}, ${
-      num(a.matches)} games, finishes ${a.avgFinish} against a ${
-      esc(a.rarity)} average of ${a.baseline}">
+    <div class="trow" title="${t('aug.title', {
+        name: esc(a.name), rarity: esc(t('rarity.' + a.rarity)),
+        among: esc(t('rarity.' + a.rarity + '.among')),
+        games: plural(a.matches, 'games'), fin: a.avgFinish, base: a.baseline })}">
       <span class="tic r-${esc(a.rarity)}"><img src="${esc(art(a.icon))}" alt=""></span>
       <span class="tnm">${esc(a.name)}</span>
       ${a.tier ? `<span class="tier ${bandClass(a.tier)}">${a.tier}</span>`
-        : `<span class="tier none" title="too few games to rate">${num(a.matches)}</span>`}
+        : `<span class="tier none" title="${esc(t('aug.fewgames'))}">${num(a.matches)}</span>`}
       <span class="tn">${fig(a.firstRate)}</span>
       <span class="tn dim">${fig(a.pickRate)}</span>
     </div>`).join('');
 
   // The letter is a claim about a pool, and the page has to say which pool.
-  $('anote').innerHTML = 'Tier is average finish against the same rarity for'
-    + ' this champion, so it means <b>best among ' + (AUG_FILTER === 'all'
-      ? 'its own rarity' : esc(AUG_FILTER) + 's') + '</b>, not best in the game.'
-    + ' Under <b>50</b> games the count is shown instead of a letter.'
+  $('anote').innerHTML = t('aug.note', { pool: esc(t(AUG_FILTER === 'all'
+      ? 'aug.own' : 'rarity.' + AUG_FILTER + '.among')) })
     + (g.source ? ' &middot; ' + srcline(g.source) : '');
 }
 
@@ -1953,8 +2222,8 @@ function renderArenaItems(s, g) {
   const box = $('aitems');
 
   if (!Object.keys(items).length) {
-    noteEmpty('aitems', g.state === 'loading', 'the items',
-              'No item data', 'op.gg had nothing for this champion.');
+    noteEmpty('aitems', g.state === 'loading', 'subj.items',
+              esc(t('ai.none')), esc(t('aug.none.text')));
     return;
   }
 
@@ -1964,11 +2233,11 @@ function renderArenaItems(s, g) {
   const list = (rows, limit) => (rows || []).slice(0, limit).map(r => {
     const name = (r.items || []).map(i => i.name).join(' › ');
     return `<div class="aoptrow"><span class="aopt"
-        title="${esc(name)} &mdash; ${num(r.matches)} games">
+        title="${esc(name)} &mdash; ${plural(r.matches, 'games')}">
       <span class="it small"><img src="${esc(art(r.icon))}" alt=""></span>
       <span class="nm">${esc(name)}</span>
       <span class="wr">${fig(r.firstRate)}</span>
-      <span class="n">${fig(r.pickRate)}<i>picked</i></span>
+      <span class="n">${fig(r.pickRate)}<i>${esc(t('ai.picked'))}</i></span>
     </span></div>`;
   }).join('');
 
@@ -1980,15 +2249,14 @@ function renderArenaItems(s, g) {
   box.innerHTML =
     // Round 2 is the one round op.gg's data and the game's structure agree
     // on, so it is the one round this page names.
-    section('Prismatic', 'free anvil, round 2 · 1st place · picked',
-            items.prismatic, 6)
-    + section('Core build', '1st place · picked', items.core, 4)
-    + section('Boots', '1st place · picked', items.boots, 3)
-    + section('Late items', '1st place · picked', items.late, 5)
+    section(esc(t('ai.prismatic')), t('ai.prismatic.note'), items.prismatic, 6)
+    + section(esc(t('ai.core')), t('ai.note'), items.core, 4)
+    + section(esc(t('ai.boots')), t('ai.note'), items.boots, 3)
+    + section(esc(t('ai.late')), t('ai.note'), items.late, 5)
     + ((sk.priority || []).length ? `<section class="block">
-        <div class="band"><h2>Skill max order</h2>
+        <div class="band"><h2>${esc(t('ai.skills'))}</h2>
           <span class="wr">${fig(sk.firstRate)}</span>
-          <span class="n">${num(sk.matches)} games · 1st place</span></div>
+          <span class="n">${esc(t('ai.skills.n', { games: plural(sk.matches, 'games') }))}</span></div>
         <div class="prio">${(sk.priority || []).join(' &rsaquo; ')}</div>
       </section>` : '')
     + (g.source ? `<div class="gsrc">${srcline(g.source)}</div>` : '');
@@ -2043,8 +2311,8 @@ function renderImport(s) {
 
   // Arena publishes no runes and no spells, so the button is honest about
   // writing only the shop's item set there.
-  $('igo').textContent = IMPORT_BUSY ? 'importing…'
-    : arena ? 'Import items' : 'Import build';
+  $('igo').textContent = t(IMPORT_BUSY ? 'import.busy'
+    : arena ? 'import.items' : 'import.build');
   $('igo').disabled = IMPORT_BUSY;
   $('ispells').hidden = arena;
 
@@ -2059,10 +2327,13 @@ function renderImport(s) {
 
 function showImport(r) {
   if (r.ok) {
-    noteImport((r.dryRun ? 'would write ' : 'imported ')
-               + ((r.done || []).join(' · ') || 'nothing'), false);
+    // The server names what it wrote: "spells", "items", or the rune page's
+    // own name, which is data and stays as it is.
+    const what = (r.done || []).map(d =>
+      ('done.' + d) in T.en ? t('done.' + d) : d).join(' · ') || t('import.nothing');
+    noteImport(t(r.dryRun ? 'import.would' : 'import.done', { what }), false);
   } else {
-    noteImport(r.error || 'import failed', true);
+    noteImport(r.error || t('import.failed'), true);
   }
 }
 
@@ -2070,7 +2341,7 @@ async function runImport() {
   if (IMPORT_BUSY) return;
   IMPORT_BUSY = true;
   $('igo').disabled = true;
-  $('igo').textContent = 'importing…';
+  $('igo').textContent = t('import.busy');
   noteImport('', false);
   let r;
   try {
@@ -2078,7 +2349,7 @@ async function runImport() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ what: 'all', mode: BUILD_MODE }),
     })).json();
-  } catch (e) { r = { ok: false, error: 'the app did not answer' }; }
+  } catch (e) { r = { ok: false, error: t('import.noanswer') }; }
   IMPORT_BUSY = false;
   IMPORT_SEEN = r.at || IMPORT_SEEN;
   showImport(r);
@@ -2125,80 +2396,78 @@ function renderCounters(s) {
   COUNT_SIG = sig;
   COUNTER_SIDE = side;
 
-  const t = tables[side];
-  const me = (s.championName || 'you');
+  const tb = tables[side];
+  const me = (s.championName || t('c.you'));
 
   $('csegs').innerHTML = (tables.them || tables.you) ? `
     ${tables.them ? `<button class="mode" aria-pressed="${side === 'them'}"
-        data-side="them">Beats ${esc(tables.them.name)}</button>` : ''}
+        data-side="them">${t('c.beats', { name: esc(tables.them.name) })}</button>` : ''}
     ${tables.you ? `<button class="mode" aria-pressed="${side === 'you'}"
-        data-side="you">Beats ${esc(tables.you.name || me)}</button>` : ''}` : '';
+        data-side="you">${t('c.beats', { name: esc(tables.you.name || me) })}</button>` : ''}` : '';
   for (const b of $('csegs').querySelectorAll('.mode'))
     b.onclick = () => { COUNTER_SIDE = b.dataset.side; COUNT_SIG = ''; render(LAST); };
 
-  if (!t || !(t.rows || []).length) {
+  if (!tb || !(tb.rows || []).length) {
     $('chead').innerHTML = '';
-    noteEmpty('crows', g.state === 'loading', 'counters',
-              'No counter data', 'Lock a champion to see what beats it.');
+    noteEmpty('crows', g.state === 'loading', 'subj.counters',
+              esc(t('c.none')), esc(t('c.none.text')));
     $('cnote').textContent = '';
     return;
   }
 
-  const role = s.role ? s.role.replace('utility', 'support').replace('middle', 'mid')
-                          .replace('bottom', 'bot') : 'your lane';
+  // The client's position names, said the way the sentence wants them.
+  const role = t({ top: 'role.top', jungle: 'role.jungle', middle: 'role.mid',
+                   bottom: 'role.bot', utility: 'role.support' }[s.role] || 'role.lane');
   $('chead').innerHTML = `
     <span class="cic"></span>
-    <span class="tnm">${esc(role[0].toUpperCase() + role.slice(1))} picks,
-      best against ${esc(t.name)}</span>
-    <span class="cfig">Win</span>
-    <span class="cshare">Pick share</span>
-    <span class="cgold">Gold @15</span>`;
+    <span class="tnm">${t('c.head', { role: esc(role), name: esc(tb.name) })}</span>
+    <span class="cfig">${esc(t('c.win'))}</span>
+    <span class="cshare">${esc(t('c.share'))}</span>
+    <span class="cgold">${esc(t('c.gold'))}</span>`;
 
   // The widest share on screen sets the bar's full length, so the bars
   // compare with each other rather than with an invisible 100%.
   // Your own champion sits at its true rank among the others, not pinned
   // to the end: "where do I actually sit" is answered by position.
-  const rows = t.rows.slice();
-  if (t.mine && !rows.some(r => r.championId === t.mine.championId)) {
-    const at = Math.min(Math.max((t.mine.rank || rows.length + 1) - 1, 0), rows.length);
-    rows.splice(at, 0, t.mine);
+  const rows = tb.rows.slice();
+  if (tb.mine && !rows.some(r => r.championId === tb.mine.championId)) {
+    const at = Math.min(Math.max((tb.mine.rank || rows.length + 1) - 1, 0), rows.length);
+    rows.splice(at, 0, tb.mine);
   }
   const top = Math.max(...rows.map(r => r.pickShare || 0), 0.01);
 
   const line = (c, mine) => `
     <div class="trow crow ${mine ? 'me' : ''}" ${mine ? 'data-me="1"' : ''}
-         title="${esc(c.name)} &mdash; ${num(c.matches)} games">
+         title="${esc(c.name)} &mdash; ${plural(c.matches, 'games')}">
       <span class="cic"><img src="${esc(art(c.icon))}" alt=""></span>
       <span class="tnm">${esc(c.name)}${mine
-        ? `<em>your pick &middot; ranked ${c.rank} of ${c.of}</em>` : ''}</span>
+        ? `<em>${esc(t('c.mine', { rank: c.rank, of: c.of }))}</em>` : ''}</span>
       <span class="cfig"><b>${fig(c.winRate, 2)}</b></span>
       <span class="cshare"><b>${fig(c.pickShare, 2)}</b>
         <span class="prop"><i style="width:${
           Math.round((c.pickShare || 0) / top * 100)}%"></i></span></span>
       <span class="cgold">${c.goldAt15 === undefined || c.goldAt15 === null ? '&mdash;'
-        : (c.goldAt15 >= 0 ? '+' : '') + num(Math.round(c.goldAt15)) + '<i>g</i>'}</span>
+        : (c.goldAt15 >= 0 ? '+' : '') + num(Math.round(c.goldAt15))
+          + `<i>${esc(t('unit.gold'))}</i>`}</span>
     </div>`;
 
   freshen($('crows'));
-  $('crows').innerHTML = rows.map(c => line(c, c === t.mine)).join('');
+  $('crows').innerHTML = rows.map(c => line(c, c === tb.mine)).join('');
 
   /* The note is computed, not written: the reason the top of a counter list
      is usually unactionable is that the champions on it are barely played in
      this lane, and that is a fact about the numbers beside it. */
-  if (t.mine) {
-    const above = t.rows.filter(r => r.winRate > t.mine.winRate);
+  if (tb.mine) {
+    const above = tb.rows.filter(r => r.winRate > tb.mine.winRate);
     const rare = above.filter(r => (r.pickShare || 0) < 2).length;
-    $('cnote').innerHTML = (rare
-      ? `<b>${rare}</b> of the ${above.length} above ${esc(t.mine.name)} are picked in`
-        + ` under 2% of ${esc(t.name)}'s games.`
-        + ` ${esc(t.mine.name)} sits ${t.mine.rank} of ${t.mine.of}.`
-      : `${esc(t.mine.name)} ranks <b>${t.mine.rank}</b> of ${t.mine.of}`
-        + ` against ${esc(t.name)}.`)
-      + (t.source ? ' &middot; ' + srcline(t.source) : '');
+    const vars = { rare, above: plural(above.length, 'champs'),
+                   mine: esc(tb.mine.name), name: esc(tb.name),
+                   rank: tb.mine.rank, of: tb.mine.of };
+    $('cnote').innerHTML = t(rare ? 'c.note.rare' : 'c.note.rank', vars)
+      + (tb.source ? ' &middot; ' + srcline(tb.source) : '');
   } else {
-    $('cnote').innerHTML = `Win rate is the listed champion's, over`
-      + ` <b>${t.total}</b> opponents played in this lane.`
-      + (t.source ? ' &middot; ' + srcline(t.source) : '');
+    $('cnote').innerHTML = t('c.note.total', { total: tb.total })
+      + (tb.source ? ' &middot; ' + srcline(tb.source) : '');
   }
 }
 
@@ -2292,7 +2561,7 @@ document.addEventListener('keydown', e => {
       return;
     }
     e.preventDefault();
-    const keys = TABS.map(t => t.key);
+    const keys = TABS.map(tb => tb.key);
     const here = keys.indexOf(VIEW);
     showView(keys[(here + (e.shiftKey ? keys.length - 1 : 1)) % keys.length]);
     return;
