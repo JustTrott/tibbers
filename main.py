@@ -30,9 +30,9 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from tibbers import (downloader, i18n, importer, injector, lcu, library,
-                       modes, prefs as prefs_mod, server, shell, skinsmith,
-                       system)  # noqa: E402
+from tibbers import (autostart, downloader, i18n, importer, injector, lcu,
+                       library, modes, prefs as prefs_mod, server, shell,
+                       skinsmith, system)  # noqa: E402
 
 log = logging.getLogger("tibbers")
 
@@ -1531,6 +1531,11 @@ def main() -> int:
             # the raw choice is in settings.language for the selector.
             "language": i18n.resolve(prefs.get("language")),
             "languages": list(i18n.SUPPORTED),
+            # Read from the machine, not from a preference: the installer's
+            # own task writes it, so a stored flag would disagree with
+            # reality from the very first launch.
+            "autostart": autostart.enabled(),
+            "autostartSupported": autostart.supported(),
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
@@ -1582,6 +1587,13 @@ def main() -> int:
             return {"ok": True, "updating": True}
 
         name, value = payload.get("name"), payload.get("value")
+        if name == "autostart":
+            # Not a preference: it lives in the Run key or the LaunchAgent,
+            # so it is written there and read straight back.
+            now = autostart.set_enabled(bool(value))
+            state.say("starts when you sign in" if now
+                      else "no longer starts when you sign in")
+            return {"ok": now == bool(value), "autostart": now}
         # Not every setting is a switch: the patch is a string, and coercing
         # it to a bool would quietly store True.
         if name == "patch":

@@ -155,8 +155,11 @@ Source: "{#CurlUrl}"; DestDir: "{tmp}"; DestName: "curl.tar.gz"; ExternalSize: {
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-; Run at sign-in: a quiet launch that comes up in the tray without stealing focus.
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--quiet"; Tasks: startup
+; Run at sign-in: a quiet launch that comes up in the tray without stealing
+; focus. Never written by a self-update: Settings owns this switch afterwards
+; (tibbers/autostart.py), and Inno remembers the task from the first install,
+; so an update would put the shortcut back for someone who had turned it off.
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--quiet"; Tasks: startup; Check: not WantsRelaunch
 
 [Run]
 ; Offer to launch after a normal (non-silent) install.

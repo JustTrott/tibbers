@@ -139,6 +139,24 @@
       </div>
     </section>
 
+    <!-- Hidden from a checkout, which has no installed exe to point at. -->
+    <section id="sec-startup">
+      <h2 data-t="sec.startup">Startup</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b data-t="autostart.title">Start automatically when you sign in</b>
+            <span data-t="autostart.note">Opens in the background, ready for
+                  your next champ select.</span>
+          </div>
+          <!-- data-top: the truth is the Run key or the LaunchAgent, which
+               the server reports at the top level, not a stored preference. -->
+          <button class="sw" role="switch" data-set="autostart"
+                  data-top="autostart"></button>
+        </div>
+      </div>
+    </section>
+
     <section>
       <h2 data-t="sec.picker">Picker</h2>
       <div class="rows">
@@ -298,9 +316,13 @@ const T = {
     'lamp.patcher_error': 'patcher error',
     'lamp.no_password': 'no password needed', 'lamp.will_prompt': 'will prompt',
 
-    'sec.language': 'Language', 'sec.picker': 'Picker', 'sec.build': 'Build data',
+    'sec.language': 'Language', 'sec.startup': 'Startup',
+    'sec.picker': 'Picker', 'sec.build': 'Build data',
     'sec.memory': 'Memory', 'sec.library': 'Library', 'sec.elevation': 'Elevation',
     'sec.updates': 'Updates',
+
+    'autostart.title': 'Start automatically when you sign in',
+    'autostart.note': 'Opens in the background, ready for your next champ select.',
 
     'language.title': 'Language',
     'language.note': "The language of the app's windows. System follows the "
@@ -389,9 +411,13 @@ const T = {
     'lamp.patcher_error': 'ошибка патчера',
     'lamp.no_password': 'пароль не нужен', 'lamp.will_prompt': 'спросит пароль',
 
-    'sec.language': 'Язык', 'sec.picker': 'Окно выбора', 'sec.build': 'Данные сборок',
+    'sec.language': 'Язык', 'sec.startup': 'Автозапуск',
+    'sec.picker': 'Окно выбора', 'sec.build': 'Данные сборок',
     'sec.memory': 'Память', 'sec.library': 'Библиотека', 'sec.elevation': 'Права доступа',
     'sec.updates': 'Обновления',
+
+    'autostart.title': 'Запускать при входе в систему',
+    'autostart.note': 'Запускается в фоне и ждёт следующего выбора чемпионов.',
 
     'language.title': 'Язык',
     'language.note': 'Язык окон приложения. «Системный» — язык интерфейса Windows '
@@ -581,8 +607,12 @@ function draw(s, cfg) {
   }
 
   for (const b of document.querySelectorAll('[data-set]')) {
-    b.setAttribute('aria-checked', String(!!cfg.settings[b.dataset.set]));
+    // A switch marked data-top reads a top-level field: its state lives on
+    // the machine (the sign-in list), not in the preferences file.
+    b.setAttribute('aria-checked', String(!!(b.dataset.top
+      ? cfg[b.dataset.top] : cfg.settings[b.dataset.set])));
   }
+  $('sec-startup').hidden = !cfg.autostartSupported;
   const sel = $('patch');
   if (cfg.patches && cfg.patches.length && sel.options.length <= 1) {
     for (const p of cfg.patches) {
@@ -684,7 +714,13 @@ document.addEventListener('click', async e => {
   if (sw) {
     const next = sw.getAttribute('aria-checked') !== 'true';
     sw.setAttribute('aria-checked', String(next));
-    await api('/api/settings', {name: sw.dataset.set, value: next});
+    const r = await api('/api/settings', {name: sw.dataset.set, value: next});
+    // A machine-level write can be refused -- a locked-down profile, a policy
+    // -- so the switch is corrected from what the server read back rather
+    // than left showing a change that did not happen.
+    if (sw.dataset.top && r && sw.dataset.top in r) {
+      sw.setAttribute('aria-checked', String(!!r[sw.dataset.top]));
+    }
     return;
   }
   if (e.target.id === 'forget') {
