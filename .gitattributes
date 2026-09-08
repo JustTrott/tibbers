@@ -1,0 +1,4 @@
+# Batch files must keep CRLF in the working tree: cmd.exe mis-parses an
+# LF-only .bat, and party_id.bat is a batch/PowerShell polyglot that
+# depends on cmd reading its first lines correctly.
+*.bat text eol=crlf
