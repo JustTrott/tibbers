@@ -53,11 +53,10 @@ Confirmed live in a three-player ranked flex lobby: both endpoints report
 the **same** `partyId`, every occurrence of it in either body is the same
 value, and it is a UUID.
 
-**Confirmed across machines.** Two members of one party ran
-`scripts/party_id.bat` independently and printed the same room,
-`26a673432508`. The second machine also printed its own member id as
-`2881cd20fe`, which is the value the *first* machine had already derived
-for that person from the party roster alone. So both halves of the scheme
+**Confirmed across machines.** Two members of one party independently
+derived the room from their own client and got the same value. The second
+machine also derived its own member id as the value the *first* machine
+had already computed for that person from the party roster alone. So both halves of the scheme
 hold in practice: everyone agrees on the room, and each client can compute
 every other member's id locally. That is what lets a row identify its
 author with nothing on the wire naming anyone.
