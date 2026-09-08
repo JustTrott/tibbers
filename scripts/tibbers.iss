@@ -105,12 +105,26 @@ var
 begin
   Result := '';
   waited := 0;
-  // Only a silent run (the self-update) has an app on its way out to wait
-  // for; someone running Setup by hand is told at once.
+  // A silent run (the self-update) has an app on its way out: wait for it.
   while WizardSilent and CheckForMutexes(AppMutex) and (waited < WaitForAppMs) do
   begin
     Sleep(250);
     waited := waited + 250;
+  end;
+  // Someone running Setup by hand is asked to quit the app and can try
+  // again from here. The old message sent them back to run Setup over:
+  // this page checks once, so quitting the app after it appeared did not
+  // let the wizard continue.
+  while (not WizardSilent) and CheckForMutexes(AppMutex) do
+  begin
+    if MsgBox('Tibbers is still running.' + #13#10#13#10 +
+              'Quit it from the tray icon, then click Retry.',
+              mbError, MB_RETRYCANCEL) <> IDRETRY then
+      break;
+    // The mutex is released as the process exits, a moment after the tray
+    // icon goes; give it that moment rather than fail a click that was
+    // right.
+    Sleep(500);
   end;
   if CheckForMutexes(AppMutex) then
     Result := 'Tibbers is still running. Quit it from the tray icon and run Setup again.';
