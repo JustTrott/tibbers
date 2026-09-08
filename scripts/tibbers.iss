@@ -286,7 +286,7 @@ begin
   src := FindFile(FromDir, Name);
   if src = '' then
     RaiseException(Name + ' not found after unpacking');
-  if not FileCopy(src, ToolsDir + '\' + Name, False) then
+  if not CopyFile(src, ToolsDir + '\' + Name, False) then
     RaiseException('could not copy ' + Name);
 end;
 
