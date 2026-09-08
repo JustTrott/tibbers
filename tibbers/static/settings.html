@@ -113,20 +113,40 @@
 
   <main>
     <div class="status">
-      <div><i class="lamp" id="l1"></i><span id="t1">client</span></div>
-      <div><i class="lamp" id="l2"></i><span id="t2">library</span></div>
-      <div><i class="lamp" id="l3"></i><span id="t3">patcher</span></div>
-      <div id="lamp-elevation"><i class="lamp" id="l4"></i><span id="t4">elevation</span></div>
+      <div><i class="lamp" id="l1"></i><span id="t1" data-t="lamp.client">client</span></div>
+      <div><i class="lamp" id="l2"></i><span id="t2" data-t="lamp.library">library</span></div>
+      <div><i class="lamp" id="l3"></i><span id="t3" data-t="lamp.patcher">patcher</span></div>
+      <div id="lamp-elevation"><i class="lamp" id="l4"></i><span id="t4" data-t="lamp.elevation">elevation</span></div>
     </div>
 
     <section>
-      <h2>Picker</h2>
+      <h2 data-t="sec.language">Language</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
-            <b>Show when a champion is locked</b>
-            <span>The picker opens by itself at lock-in so a skin is one click
-                  away, instead of sitting over the client the whole time.</span>
+            <b data-t="language.title">Language</b>
+            <span data-t="language.note">The language of the app's windows. System follows
+                  the display language of Windows or macOS.</span>
+          </div>
+          <!-- The two language names stay in their own language: whoever
+               needs to switch back must be able to read the option. -->
+          <select class="sel" id="language">
+            <option value="" data-t="language.system">System</option>
+            <option value="en">English</option>
+            <option value="ru">Русский</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-t="sec.picker">Picker</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b data-t="auto_show.title">Open the picker on lock-in</b>
+            <span data-t="auto_show.note">Opens the picker when you lock in a champion, so a skin
+                  is one click away.</span>
           </div>
           <button class="sw" role="switch" data-set="auto_show"></button>
         </div>
@@ -134,90 +154,86 @@
     </section>
 
     <section>
-      <h2>Build data</h2>
+      <h2 data-t="sec.build">Build data</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
-            <b>Patch</b>
-            <span>A patch needs a week or two before there are enough games
-                  behind it. Reading an older one trades currency for
-                  evidence.</span>
+            <b data-t="patch.title">Patch</b>
+            <span data-t="patch.note">Data for a new patch takes a week or two to build up.
+                  An older patch has more games behind it but is less current.</span>
           </div>
           <select class="sel" id="patch">
-            <option value="">Latest</option>
+            <option value="" data-t="patch.latest">Latest</option>
           </select>
         </div>
         <div class="row">
           <div class="txt">
-            <b>Import summoner spells too</b>
-            <span>Sets the build's spells in champ select, keeping your keys:
-                  whichever key you flash on, you still flash on.</span>
+            <b data-t="spells.title">Also import summoner spells</b>
+            <span data-t="spells.note">Sets the build's summoner spells in champ select. Your key
+                  bindings are kept.</span>
           </div>
           <button class="sw" role="switch" data-set="import_spells"></button>
         </div>
         <div class="row">
           <div class="txt">
-            <b>Import when I lock in</b>
-            <span>Off by default. On, locking a champion writes the build
-                  showing in the picker without being asked. It never deletes
-                  a rune page to make room; if all three are full it says so
-                  and stops.</span>
+            <b data-t="auto_import.title">Import the build automatically on lock-in</b>
+            <span data-t="auto_import.note">Writes the build shown in the picker when you lock in a
+                  champion. Existing rune pages are never deleted; if all three
+                  are full, the import stops.</span>
           </div>
           <button class="sw" role="switch" data-set="auto_import"></button>
         </div>
         <div class="memory">
-          <span>Builds, runes and counters come from
-                <b>u.gg</b>; every name and icon is your own client's.
+          <span data-t-html="build.memory">Builds, runes and counters come from
+                <b>u.gg</b>; names and icons come from your client.
                 Importing writes one rune page named
-                <b>Tibbers: &lt;Champion&gt;</b> and one item set, and replaces
-                the same two every time. Your other pages and sets are left
-                alone.</span>
+                <b>Tibbers: &lt;Champion&gt;</b> and one item set, replacing
+                the same two each time. Your other pages and sets are not
+                changed.</span>
         </div>
       </div>
     </section>
 
     <section>
-      <h2>Memory</h2>
+      <h2 data-t="sec.memory">Memory</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
-            <b>Remember what I picked</b>
-            <span>Re-applies your last skin for a champion, and your last
-                  chroma for that skin, as soon as you lock in.</span>
+            <b data-t="remember.title">Remember my selections</b>
+            <span data-t="remember.note">Re-applies your last skin and chroma for a champion when
+                  you lock in.</span>
           </div>
           <button class="sw" role="switch" data-set="remember_selections"></button>
         </div>
         <div class="memory">
-          <span>Remembered: <b id="mem-champs">0</b> champions,
-                <b id="mem-chromas">0</b> chromas</span>
-          <button class="btn" id="forget" style="margin-left:auto">Forget all</button>
+          <span id="mem-line">Remembered: <b>0</b> champions, <b>0</b> chromas</span>
+          <button class="btn" id="forget" style="margin-left:auto" data-t="memory.forget">Clear</button>
         </div>
       </div>
     </section>
 
     <section>
-      <h2>Library</h2>
+      <h2 data-t="sec.library">Library</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
-            <b>Build on hover</b>
-            <span>Builds a champion's mods while you are still deciding, so
-                  they are there if you commit. They are made straight out of
-                  your game install &mdash; nothing is downloaded. About a
-                  second per champion.</span>
+            <b data-t="hover.title">Prepare skins on hover</b>
+            <span data-t="hover.note">Builds a champion's skin mods while you hover over it in
+                  champ select. Mods are made from your game files; nothing is
+                  downloaded.</span>
           </div>
           <button class="sw" role="switch" data-set="download_on_hover"></button>
         </div>
         <div class="memory">
-          <span><b id="lib-skins">0</b> skins across <b id="lib-champs">0</b> champions
-                &middot; <b id="lib-made">0</b> built here<span id="lib-foreign"></span></span>
-          <button class="btn" id="rebuild" style="margin-left:auto">Rebuild library</button>
+          <span id="lib-line"><b>0</b> skins across <b>0</b> champions
+                &middot; <b>0</b> built here</span>
+          <button class="btn" id="rebuild" style="margin-left:auto" data-t="library.rebuild">Rebuild library</button>
         </div>
       </div>
     </section>
 
     <section id="sec-elevation">
-      <h2>Elevation</h2>
+      <h2 data-t="sec.elevation">Elevation</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
@@ -230,14 +246,14 @@
     </section>
 
     <section>
-      <h2>Updates</h2>
+      <h2 data-t="sec.updates">Updates</h2>
       <div class="rows">
         <div class="row">
           <div class="txt">
-            <b>Install updates by itself</b>
-            <span>New releases are checked for every few hours. A new build
-                  is downloaded and swapped in while League is idle, never
-                  during champ select or a game.</span>
+            <b data-t="auto_update.title">Install updates automatically</b>
+            <span data-t="auto_update.note">Checks for new releases every few hours and installs
+                  them while League is idle, never during champ select or a
+                  game.</span>
           </div>
           <button class="sw" role="switch" data-set="auto_update"></button>
         </div>
@@ -246,17 +262,17 @@
             <b id="update-title">tibbers</b>
             <span id="update-note"></span>
           </div>
-          <button class="btn" id="update-btn" hidden>Update &amp; restart</button>
+          <button class="btn" id="update-btn" hidden>Update and restart</button>
         </div>
       </div>
     </section>
 
     <section>
-      <button class="btn gold" id="open-picker">Open picker now</button>
+      <button class="btn gold" id="open-picker" data-t="open_picker">Open the picker</button>
     </section>
   </main>
 
-  <footer>
+  <footer data-t="footer">
     Nothing inside the League installation is modified. Injection hooks the
     running game only, and the exact command is written to the log before it
     runs.
@@ -264,6 +280,214 @@
 
 <script>
 const $ = id => document.getElementById(id);
+
+/* Every string the page shows, in both languages. Static markup carries
+   data-t="key" (text) or data-t-html="key" (the few lines with inline <b>),
+   and everything the script writes goes through t(). Plural nouns are arrays
+   of forms -- two for English, three for Russian -- picked by tn(). The
+   server's own status lines (phase, errors) are its log and stay English. */
+const T = {
+  en: {
+    'lamp.client': 'client', 'lamp.library': 'library', 'lamp.patcher': 'patcher',
+    'lamp.elevation': 'elevation', 'lamp.idle': 'idle', 'lamp.no_client': 'no client',
+    'lamp.unreachable': 'app unreachable',
+    'lamp.rebuilding': 'rebuilding {done}/{total} · {made} built',
+    'lamp.building': 'building {done}/{total}',
+    'lamp.patcher_idle': 'patcher idle', 'lamp.watching': 'watching',
+    'lamp.patching': 'patching', 'lamp.applied': 'skin applied',
+    'lamp.patcher_error': 'patcher error',
+    'lamp.no_password': 'no password needed', 'lamp.will_prompt': 'will prompt',
+
+    'sec.language': 'Language', 'sec.picker': 'Picker', 'sec.build': 'Build data',
+    'sec.memory': 'Memory', 'sec.library': 'Library', 'sec.elevation': 'Elevation',
+    'sec.updates': 'Updates',
+
+    'language.title': 'Language',
+    'language.note': "The language of the app's windows. System follows the "
+      + 'display language of Windows or macOS.',
+    'language.system': 'System',
+
+    'auto_show.title': 'Open the picker on lock-in',
+    'auto_show.note': 'Opens the picker when you lock in a champion, so a skin is one '
+      + 'click away.',
+
+    'patch.title': 'Patch',
+    'patch.note': 'Data for a new patch takes a week or two to build up. An older '
+      + 'patch has more games behind it but is less current.',
+    'patch.latest': 'Latest',
+    'spells.title': 'Also import summoner spells',
+    'spells.note': "Sets the build's summoner spells in champ select. Your key "
+      + 'bindings are kept.',
+    'auto_import.title': 'Import the build automatically on lock-in',
+    'auto_import.note': 'Writes the build shown in the picker when you lock in a '
+      + 'champion. Existing rune pages are never deleted; if all three are full, '
+      + 'the import stops.',
+    'build.memory': 'Builds, runes and counters come from <b>u.gg</b>; names and '
+      + 'icons come from your client. Importing writes one rune page named '
+      + '<b>Tibbers: &lt;Champion&gt;</b> and one item set, replacing the same two '
+      + 'each time. Your other pages and sets are not changed.',
+
+    'remember.title': 'Remember my selections',
+    'remember.note': 'Re-applies your last skin and chroma for a champion when you '
+      + 'lock in.',
+    'memory.count': 'Remembered: {champions}, {chromas}',
+    'memory.forget': 'Clear',
+
+    'hover.title': 'Prepare skins on hover',
+    'hover.note': "Builds a champion's skin mods while you hover over it in champ "
+      + 'select. Mods are made from your game files; nothing is downloaded.',
+    'library.count': '{skins} across {champions} · <b>{made}</b> built here',
+    'library.foreign': ' · {n} not built here',
+    'library.rebuild': 'Rebuild library', 'library.rebuilding': 'Rebuilding…',
+
+    'helper.title': 'Passwordless injection',
+    'helper.title_on': 'Passwordless injection is on',
+    'helper.note_on': 'Applying a skin no longer asks for your password.',
+    'helper.note_off': 'Applying a skin asks for your password each time. A small '
+      + 'root-owned helper removes the prompt and can only run the injection command.',
+    'helper.install': 'Install', 'helper.remove': 'Remove', 'helper.working': 'Working…',
+
+    'auto_update.title': 'Install updates automatically',
+    'auto_update.note': 'Checks for new releases every few hours and installs them '
+      + 'while League is idle, never during champ select or a game.',
+    'update.checkout': 'Running from a checkout',
+    'update.checkout_note': 'Updates come with git, not from here.',
+    'update.installing': 'Installing {version}…',
+    'update.installing_note': 'Tibbers will restart in a moment.',
+    'update.available': 'Update available: {version}',
+    'update.available_auto': 'Installs when League is idle, or now.',
+    'update.available_note': 'A newer version is ready to install.',
+    'update.now': 'Update now', 'update.restart': 'Update and restart',
+    'update.title': 'Updates', 'update.checking': 'Checking for updates…',
+    'update.current': 'You are up to date',
+    'update.error_note': 'Could not check for updates. Trying again later. '
+      + 'Version {version}.',
+    'update.version': 'Version {version}.',
+    'update.checked': 'Version {version}. Checked {ago}.',
+    'update.updating': 'Updating…', 'update.failed': 'Update failed',
+    'ago.now': 'just now', 'ago.min': '{n} min ago', 'ago.hours': '{n} {hours} ago',
+
+    'failed': 'Failed',
+    'open_picker': 'Open the picker',
+    'footer': 'Nothing inside the League installation is modified. Injection hooks '
+      + 'the running game only, and the exact command is written to the log before '
+      + 'it runs.',
+
+    'n.champions': ['champion', 'champions'],
+    'n.chromas': ['chroma', 'chromas'],
+    'n.skins': ['skin', 'skins'],
+    'n.hours': ['hour', 'hours'],
+  },
+  ru: {
+    'lamp.client': 'клиент', 'lamp.library': 'библиотека', 'lamp.patcher': 'патчер',
+    'lamp.elevation': 'права', 'lamp.idle': 'ожидание', 'lamp.no_client': 'нет клиента',
+    'lamp.unreachable': 'приложение недоступно',
+    'lamp.rebuilding': 'пересборка {done}/{total} · собрано {made}',
+    'lamp.building': 'сборка {done}/{total}',
+    'lamp.patcher_idle': 'патчер не запущен', 'lamp.watching': 'ждёт игру',
+    'lamp.patching': 'патчит', 'lamp.applied': 'образ применён',
+    'lamp.patcher_error': 'ошибка патчера',
+    'lamp.no_password': 'пароль не нужен', 'lamp.will_prompt': 'спросит пароль',
+
+    'sec.language': 'Язык', 'sec.picker': 'Окно выбора', 'sec.build': 'Данные сборок',
+    'sec.memory': 'Память', 'sec.library': 'Библиотека', 'sec.elevation': 'Права доступа',
+    'sec.updates': 'Обновления',
+
+    'language.title': 'Язык',
+    'language.note': 'Язык окон приложения. «Системный» — язык интерфейса Windows '
+      + 'или macOS.',
+    'language.system': 'Системный',
+
+    'auto_show.title': 'Открывать окно выбора при подтверждении',
+    'auto_show.note': 'Открывает окно выбора, когда вы подтверждаете чемпиона, чтобы '
+      + 'образ был в одном клике.',
+
+    'patch.title': 'Патч',
+    'patch.note': 'Данные по новому патчу накапливаются неделю-две. По старому патчу '
+      + 'игр больше, но он менее актуален.',
+    'patch.latest': 'Последний',
+    'spells.title': 'Также импортировать заклинания призывателя',
+    'spells.note': 'Ставит заклинания призывателя из сборки на стадии выбора чемпиона. '
+      + 'Ваши клавиши сохраняются.',
+    'auto_import.title': 'Импортировать сборку автоматически при подтверждении',
+    'auto_import.note': 'Записывает сборку из окна выбора, когда вы подтверждаете '
+      + 'чемпиона. Существующие страницы рун не удаляются; если все три заняты, '
+      + 'импорт останавливается.',
+    'build.memory': 'Сборки, руны и контрпики берутся с <b>u.gg</b>; названия и '
+      + 'иконки — из вашего клиента. Импорт записывает одну страницу рун с именем '
+      + '<b>Tibbers: &lt;Чемпион&gt;</b> и один набор предметов, каждый раз заменяя '
+      + 'те же два. Остальные страницы и наборы не изменяются.',
+
+    'remember.title': 'Запоминать мой выбор',
+    'remember.note': 'Повторно применяет последний образ и хрому чемпиона при '
+      + 'подтверждении выбора.',
+    'memory.count': 'Запомнено: {champions}, {chromas}',
+    'memory.forget': 'Очистить',
+
+    'hover.title': 'Подготавливать образы при наведении',
+    'hover.note': 'Собирает моды образов чемпиона, пока вы наводите на него курсор на '
+      + 'стадии выбора. Моды создаются из файлов игры; ничего не скачивается.',
+    // No preposition before the counts: "у" would want the genitive, and the
+    // plural helper hands back nominative forms ("у 1 чемпион").
+    'library.count': '{skins} · {champions} · собрано здесь: <b>{made}</b>',
+    'library.foreign': ' · собрано не здесь: {n}',
+    'library.rebuild': 'Пересобрать библиотеку', 'library.rebuilding': 'Пересборка…',
+
+    'helper.title': 'Инъекция без пароля',
+    'helper.title_on': 'Инъекция без пароля включена',
+    'helper.note_on': 'Применение образа больше не запрашивает пароль.',
+    'helper.note_off': 'Применение образа каждый раз запрашивает пароль. Небольшой '
+      + 'помощник с правами root убирает запрос и может выполнять только команду инъекции.',
+    'helper.install': 'Установить', 'helper.remove': 'Удалить', 'helper.working': 'Выполняется…',
+
+    'auto_update.title': 'Устанавливать обновления автоматически',
+    'auto_update.note': 'Проверяет новые версии каждые несколько часов и устанавливает '
+      + 'их, пока League простаивает, — не во время выбора чемпиона или игры.',
+    'update.checkout': 'Запущено из репозитория',
+    'update.checkout_note': 'Обновления приходят через git, не отсюда.',
+    'update.installing': 'Установка {version}…',
+    'update.installing_note': 'Tibbers сейчас перезапустится.',
+    'update.available': 'Доступно обновление: {version}',
+    'update.available_auto': 'Установится, когда League простаивает, или сейчас.',
+    'update.available_note': 'Новая версия готова к установке.',
+    'update.now': 'Обновить сейчас', 'update.restart': 'Обновить и перезапустить',
+    'update.title': 'Обновления', 'update.checking': 'Проверка обновлений…',
+    'update.current': 'У вас последняя версия',
+    'update.error_note': 'Не удалось проверить обновления. Повторная попытка позже. '
+      + 'Версия {version}.',
+    'update.version': 'Версия {version}.',
+    'update.checked': 'Версия {version}. Проверено {ago}.',
+    'update.updating': 'Обновление…', 'update.failed': 'Не удалось обновить',
+    'ago.now': 'только что', 'ago.min': '{n} {minutes} назад', 'ago.hours': '{n} {hours} назад',
+
+    'failed': 'Не удалось',
+    'open_picker': 'Открыть окно выбора',
+    'footer': 'Внутри установленной League ничего не меняется. Инъекция подключается '
+      + 'только к запущенной игре, и точная команда записывается в лог перед запуском.',
+
+    'n.champions': ['чемпион', 'чемпиона', 'чемпионов'],
+    'n.chromas': ['хрома', 'хромы', 'хром'],
+    'n.skins': ['образ', 'образа', 'образов'],
+    'n.minutes': ['минуту', 'минуты', 'минут'],
+    'n.hours': ['час', 'часа', 'часов'],
+  },
+};
+
+let LANG = 'en';
+const lookup = key => (T[LANG] && T[LANG][key]) ?? T.en[key] ?? key;
+const t = (key, vars) => {
+  const s = lookup(key);
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m) : s;
+};
+/* The noun form for a count: Russian has one/few/many, English one/other. */
+const tn = (key, n) => {
+  const forms = lookup(key), m10 = n % 10, m100 = n % 100;
+  const i = LANG === 'ru'
+    ? (m10 === 1 && m100 !== 11 ? 0 : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 1 : 2)
+    : (n === 1 ? 0 : 1);
+  return forms[Math.min(i, forms.length - 1)];
+};
+const count = (key, n) => `<b>${n}</b> ${tn(key, n)}`;
 
 async function api(path, body) {
   const r = await fetch(path, body ? {
@@ -283,18 +507,52 @@ function lamp(el, txt, state, label) {
    announces itself as "switch" and nothing more, and the patch select had no
    name at all. Taken from the heading rather than written out again, so the
    label and the sentence above it cannot drift apart. The ordinary buttons
-   are left alone -- their own text already names them. */
-for (const row of document.querySelectorAll('.row')) {
-  const heading = row.querySelector('.txt b');
-  const control = row.querySelector('[data-set], select');
-  if (heading && control) control.setAttribute('aria-label', heading.textContent.trim());
+   are left alone -- their own text already names them. Run again after a
+   language change, since the headings it reads have just been rewritten. */
+function labelControls() {
+  for (const row of document.querySelectorAll('.row')) {
+    const heading = row.querySelector('.txt b');
+    const control = row.querySelector('[data-set], select');
+    if (heading && control) control.setAttribute('aria-label', heading.textContent.trim());
+  }
+}
+labelControls();
+
+/* The last answer the page drew from, kept so a language change can redraw
+   the dynamic text at once instead of waiting for the next poll. */
+let last = null;
+/* Bumped by a language change. A poll that left before the bump answers
+   with the old choice, and would flip the page back until the next one. */
+let epoch = 0;
+
+function applyLanguage(code) {
+  LANG = T[code] ? code : 'en';
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = t(el.dataset.t);
+  for (const el of document.querySelectorAll('[data-t-html]')) el.innerHTML = t(el.dataset.tHtml);
+  labelControls();
+  if (last) draw(...last);
 }
 
 async function refresh() {
   // Both in flight at once: they are independent, and one of them walks the
   // whole skin library before it answers.
+  const gen = epoch;
   const [s, cfg] = await Promise.all([api('/api/state'), api('/api/settings')]);
-  lamp('l1', 't1', s.connected, s.connected ? (s.phase || 'idle') : 'no client');
+  if (gen !== epoch) {
+    cfg.language = LANG;
+    cfg.settings.language = $('language').value || 'system';
+  }
+  last = [s, cfg];
+  // A language chosen elsewhere (or resolved from the system) lands here;
+  // applyLanguage draws, so drawing twice is avoided.
+  if (cfg.language !== LANG) applyLanguage(cfg.language);
+  else draw(s, cfg);
+}
+
+/* The part of a refresh that writes text, from an answer already in hand. */
+function draw(s, cfg) {
+  lamp('l1', 't1', s.connected, s.connected ? (s.phase || t('lamp.idle')) : t('lamp.no_client'));
 
   /* One lamp, two jobs: a champion being prepared on hover, and a rebuild
      of the whole library. The rebuild wins while it runs -- it is the one the
@@ -302,15 +560,16 @@ async function refresh() {
   const d = s.download || {}, rb = s.rebuild || {};
   const rebuilding = rb.state === 'rebuilding';
   lamp('l2', 't2', true, rebuilding
-    ? `rebuilding ${rb.champions||0}/${rb.total_champions||0} · ${rb.made||0} built`
+    ? t('lamp.rebuilding', {done: rb.champions||0, total: rb.total_champions||0, made: rb.made||0})
     : d.state === 'downloading'
-    ? `building ${(d.fetched||0)+(d.missing||0)}/${d.total}` : 'library');
+    ? t('lamp.building', {done: (d.fetched||0)+(d.missing||0), total: d.total}) : t('lamp.library'));
   $('rebuild').disabled = rebuilding;
-  $('rebuild').textContent = rebuilding ? 'Rebuilding…' : 'Rebuild library';
+  $('rebuild').textContent = rebuilding ? t('library.rebuilding') : t('library.rebuild');
 
   const p = s.patcher || {}, live = Object.keys(p).length > 0;
-  lamp('l3', 't3', p.error ? 'bad' : live, p.error ? 'patcher error'
-    : p.patched ? 'skin applied' : p.found ? 'patching' : live ? 'watching' : 'patcher idle');
+  lamp('l3', 't3', p.error ? 'bad' : live, p.error ? t('lamp.patcher_error')
+    : p.patched ? t('lamp.applied') : p.found ? t('lamp.patching')
+    : live ? t('lamp.watching') : t('lamp.patcher_idle'));
 
   // Windows injects with no elevation, so the whole passwordless section and
   // its lamp are macOS-only.
@@ -318,7 +577,7 @@ async function refresh() {
   $('sec-elevation').hidden = !elevation;
   $('lamp-elevation').hidden = !elevation;
   if (elevation) {
-    lamp('l4', 't4', cfg.helper, cfg.helper ? 'no password needed' : 'will prompt');
+    lamp('l4', 't4', cfg.helper, cfg.helper ? t('lamp.no_password') : t('lamp.will_prompt'));
   }
 
   for (const b of document.querySelectorAll('[data-set]')) {
@@ -333,26 +592,29 @@ async function refresh() {
     }
   }
   if (document.activeElement !== sel) sel.value = cfg.settings.patch || '';
+  // "system" is the empty option; a concrete code is its own.
+  const lang = $('language'), choice = cfg.settings.language;
+  if (document.activeElement !== lang) lang.value = T[choice] ? choice : '';
 
-  $('mem-champs').textContent = cfg.memory.champions;
-  $('mem-chromas').textContent = cfg.memory.chromas;
-  $('lib-skins').textContent = cfg.library.skins;
-  $('lib-champs').textContent = cfg.library.champions;
-  $('lib-made').textContent = cfg.library.generated ?? 0;
+  // Only numbers from the server go into this markup; the words are ours.
+  $('mem-line').innerHTML = t('memory.count', {
+    champions: count('n.champions', cfg.memory.champions),
+    chromas: count('n.chromas', cfg.memory.chromas),
+  });
   /* Mods with no sidecar were not built here -- imported, or left from when
      they were downloaded. Named only when there are some, so a library that
      is entirely ours does not carry a permanent "0 foreign". */
   const foreign = cfg.library.foreign ?? 0;
-  $('lib-foreign').textContent = foreign ? ` · ${foreign} not built here` : '';
+  $('lib-line').innerHTML = t('library.count', {
+    skins: count('n.skins', cfg.library.skins),
+    champions: count('n.champions', cfg.library.champions),
+    made: cfg.library.generated ?? 0,
+  }) + (foreign ? t('library.foreign', {n: foreign}) : '');
   $('ver').textContent = cfg.version;
 
-  $('helper-title').textContent = cfg.helper
-    ? 'Passwordless injection is on' : 'Passwordless injection';
-  $('helper-note').textContent = cfg.helper
-    ? 'Applying a skin no longer asks for your password.'
-    : 'Applying a skin asks for your password every time. Installing a small '
-      + 'root-owned helper removes that; it can only run the injection command.';
-  $('helper-btn').textContent = cfg.helper ? 'Remove' : 'Install';
+  $('helper-title').textContent = t(cfg.helper ? 'helper.title_on' : 'helper.title');
+  $('helper-note').textContent = t(cfg.helper ? 'helper.note_on' : 'helper.note_off');
+  $('helper-btn').textContent = t(cfg.helper ? 'helper.remove' : 'helper.install');
   $('helper-btn').dataset.action = cfg.helper ? 'uninstall' : 'install';
 
   // The latest update check. Empty from a checkout, which never checks;
@@ -360,28 +622,26 @@ async function refresh() {
   const up = cfg.update || {};
   const auto = !!cfg.settings.auto_update;
   const btn = $('update-btn');
+  const v = {version: cfg.version};
   if (!('checked' in up)) {
-    $('update-title').textContent = 'Running from a checkout';
-    $('update-note').textContent = 'Updates come with git, not from here.';
+    $('update-title').textContent = t('update.checkout');
+    $('update-note').textContent = t('update.checkout_note');
     btn.hidden = true;
   } else if (up.installing) {
-    $('update-title').textContent = `Installing ${up.version}…`;
-    $('update-note').textContent = 'tibbers will reopen in a moment.';
+    $('update-title').textContent = t('update.installing', {version: up.version});
+    $('update-note').textContent = t('update.installing_note');
     btn.hidden = true;
   } else if (up.available) {
-    $('update-title').textContent = `Update available: ${up.version}`;
-    $('update-note').textContent = auto
-      ? 'It installs itself once League is idle, or now if you like.'
-      : 'A newer version is ready to install.';
-    if (!btn.disabled) btn.textContent = auto ? 'Update now' : 'Update & restart';
+    $('update-title').textContent = t('update.available', {version: up.version});
+    $('update-note').textContent = t(auto ? 'update.available_auto' : 'update.available_note');
+    if (!btn.disabled) btn.textContent = t(auto ? 'update.now' : 'update.restart');
     btn.hidden = false;
   } else {
-    $('update-title').textContent = up.error ? 'Updates'
-      : up.checked == null ? 'Checking for updates…' : 'You are up to date';
-    $('update-note').textContent = up.error
-      ? `Couldn't check for updates right now; trying again later. Version ${cfg.version}.`
-      : up.checked == null ? `Version ${cfg.version}.`
-      : `Version ${cfg.version}. Checked ${ago(up.checked)}.`;
+    $('update-title').textContent = t(up.error ? 'update.title'
+      : up.checked == null ? 'update.checking' : 'update.current');
+    $('update-note').textContent = up.error ? t('update.error_note', v)
+      : up.checked == null ? t('update.version', v)
+      : t('update.checked', {...v, ago: ago(up.checked)});
     btn.hidden = true;
   }
 }
@@ -389,14 +649,30 @@ async function refresh() {
 /* "Checked 4 min ago", from a count of seconds. Coarse on purpose: the page
    polls every two seconds and a ticking figure would draw the eye. */
 function ago(seconds) {
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 60) return t('ago.now');
+  if (seconds < 3600) {
+    const n = Math.floor(seconds / 60);
+    return t('ago.min', {n, minutes: tn('n.minutes', n)});
+  }
   const h = Math.floor(seconds / 3600);
-  return `${h} hour${h === 1 ? '' : 's'} ago`;
+  return t('ago.hours', {n: h, hours: tn('n.hours', h)});
 }
 
 $('patch').addEventListener('change', async e => {
   await api('/api/settings', {name: 'patch', value: e.target.value || null});
+});
+
+$('language').addEventListener('change', async e => {
+  const value = e.target.value || 'system';
+  epoch++;
+  // The answer on hand still carries the old choice, and the redraw below
+  // would put the select back to it.
+  if (last) last[1].settings.language = value;
+  // A named language is drawn before the answer comes back; "system" is
+  // resolved by the server, so that one is drawn from the refresh it asks for.
+  if (value !== 'system') applyLanguage(value);
+  await api('/api/settings', {name: 'language', value});
+  if (value === 'system') nudge();
 });
 
 // A redraw asked for by a click, which must not become an unhandled
@@ -420,29 +696,29 @@ document.addEventListener('click', async e => {
        second click cannot start while the first answer is in flight. */
     e.target.disabled = true;
     const r = await api('/api/settings', {action: 'rebuild'});
-    if (!r.ok) { e.target.disabled = false; alert(r.message || 'Failed'); }
+    if (!r.ok) { e.target.disabled = false; alert(r.message || t('failed')); }
     nudge(); return;
   }
   if (e.target.id === 'update-btn') {
     const btn = e.target;
-    btn.textContent = 'Updating…'; btn.disabled = true;
+    btn.textContent = t('update.updating'); btn.disabled = true;
     // The app quits and reopens as the new build, so this page will drop its
     // connection mid-request; a failure to even start is the only thing to
     // report here.
     const r = await api('/api/settings', {action: 'update'});
     if (r && r.ok === false) {
-      btn.disabled = false; btn.textContent = 'Update now';
-      alert(r.error || 'Update failed');
+      btn.disabled = false; btn.textContent = t('update.now');
+      alert(r.error || t('update.failed'));
     }
     return;
   }
   if (e.target.id === 'open-picker') { await api('/api/window', {open: 'picker'}); return; }
   if (e.target.id === 'helper-btn') {
     const btn = e.target, was = btn.textContent;
-    btn.textContent = 'Working…'; btn.disabled = true;
+    btn.textContent = t('helper.working'); btn.disabled = true;
     const r = await api('/api/settings', {action: btn.dataset.action});
     btn.disabled = false;
-    if (!r.ok) { btn.textContent = was; alert(r.message || 'Failed'); }
+    if (!r.ok) { btn.textContent = was; alert(r.message || t('failed')); }
     nudge(); return;
   }
 });
@@ -453,7 +729,7 @@ document.addEventListener('click', async e => {
    console every two seconds and leaving the page frozen on stale numbers. */
 async function loop() {
   try { await refresh(); }
-  catch (e) { lamp('l1', 't1', 'bad', 'app unreachable'); }
+  catch (e) { lamp('l1', 't1', 'bad', t('lamp.unreachable')); }
   setTimeout(loop, 2000);
 }
 loop();

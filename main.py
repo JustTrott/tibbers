@@ -30,8 +30,8 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from tibbers import (downloader, importer, injector, lcu, library, modes,
-                       prefs as prefs_mod, server, shell, skinsmith,
+from tibbers import (downloader, i18n, importer, injector, lcu, library,
+                       modes, prefs as prefs_mod, server, shell, skinsmith,
                        system)  # noqa: E402
 
 log = logging.getLogger("tibbers")
@@ -1527,6 +1527,10 @@ def main() -> int:
         return {
             "patches": patches,
             "settings": prefs.settings(),
+            # The code the pages draw in, with "system" already resolved;
+            # the raw choice is in settings.language for the selector.
+            "language": i18n.resolve(prefs.get("language")),
+            "languages": list(i18n.SUPPORTED),
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
@@ -1582,6 +1586,8 @@ def main() -> int:
         # it to a bool would quietly store True.
         if name == "patch":
             value = str(value) if value else None
+        elif name == "language":
+            value = value if value in i18n.SUPPORTED else "system"
         else:
             value = bool(value)
         try:

@@ -28,6 +28,9 @@ from . import system
 log = logging.getLogger("tibbers.prefs")
 
 DEFAULTS: Dict[str, Any] = {
+    # The language the windows are drawn in: "system" follows the OS display
+    # language (see i18n.py), or a code -- "en", "ru".
+    "language": "system",
     # Raise the picker by itself when a champion is locked in.
     "auto_show": True,
     # Re-apply the remembered skin as soon as a champion is locked.

@@ -60,8 +60,8 @@ skins, builds and counters in one place while you're deciding.
 - An optional one-time setup lets it apply skins without asking for your
   password every game.
 - Close the window and it drops into the menu bar, still watching champ select.
-  A small picker raises itself when you lock a champion and closes when the
-  lobby ends.
+  A small picker opens when you lock a champion.
+- English and Russian, following your system language; switch in Settings.
 
 <p align="center">
   <img src="docs/build-guide.jpg" width="720" alt="The build page: runes, skills and items from u.gg">
@@ -98,9 +98,10 @@ once.
 
 **Windows** — click **[Download for Windows](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-setup.exe)**
 and run the installer. It is unsigned for now, so SmartScreen may say "Windows
-protected your PC" — click **More info → Run anyway**. tibbers installs for your
-user (no admin), lands in the system tray, and downloads its injection tools on
-first launch. Unlike macOS, applying a skin needs no password.
+protected your PC" — click **More info → Run anyway**. Setup speaks English and
+Russian, installs for your user (no admin), downloads the injection tools as it
+goes, and leaves tibbers in the system tray. Unlike macOS, applying a skin needs
+no password.
 
 Prefer no installer at all? Grab **[Tibbers-windows-portable.zip](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-portable.zip)**,
 unzip it anywhere (a USB stick works) and run `Tibbers.exe`. Everything it

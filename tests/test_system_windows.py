@@ -307,7 +307,10 @@ class InstanceMutex(unittest.TestCase):
     def test_the_installer_waits_on_the_same_mutex(self):
         iss = (Path(__file__).resolve().parent.parent / "scripts"
                / "tibbers.iss").read_text(encoding="utf-8")
-        self.assertIn(f"AppMutex = '{win.INSTANCE_MUTEX}';", iss)
+        # The name is a define so a stand-in install can be exercised while
+        # the real app is running; its default is what the app claims.
+        self.assertIn(f'#define MyAppMutex "{win.INSTANCE_MUTEX}"', iss)
+        self.assertIn("AppMutex = '{#MyAppMutex}';", iss)
         self.assertIn("CheckForMutexes(AppMutex)", iss)
         self.assertIn("WantsRelaunch", iss)
 
