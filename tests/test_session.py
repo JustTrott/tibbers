@@ -74,5 +74,123 @@ class SessionDefaults(unittest.TestCase):
             session.was_lockd = True
 
 
+class Arming(unittest.TestCase):
+    """The worker that arms the patcher runs one build at a time and always
+    the newest request. A pick made while a build was in flight used to be
+    dropped, and stepping through the rail armed the first skin passed over.
+    """
+
+    def worker(self):
+        import threading
+        ran, gate = [], threading.Event()
+        started = threading.Event()
+
+        def run(request):
+            started.set()
+            gate.wait(2)
+            ran.append(request)
+
+        return main.LatestOnly(run), ran, gate, started
+
+    def settle(self, worker):
+        for _ in range(200):
+            if not worker.busy():
+                return
+            import time
+            time.sleep(0.01)
+        self.fail("the worker never went idle")
+
+    def test_a_request_made_during_a_build_runs_after_it(self):
+        worker, ran, gate, started = self.worker()
+        self.assertTrue(worker.submit("first"))
+        started.wait(2)
+        self.assertFalse(worker.submit("second"))
+        self.assertTrue(worker.has_pending())
+        gate.set()
+        self.settle(worker)
+        self.assertEqual(ran, ["first", "second"])
+
+    def test_only_the_newest_of_several_survives_the_wait(self):
+        """Arrow through five skins: the first builds, the fifth is what ends
+        up armed, and the three in between are never built at all."""
+        worker, ran, gate, started = self.worker()
+        worker.submit(1)
+        started.wait(2)
+        for request in (2, 3, 4, 5):
+            worker.submit(request)
+        gate.set()
+        self.settle(worker)
+        self.assertEqual(ran, [1, 5])
+        self.assertFalse(worker.has_pending())
+
+    def test_a_stop_can_be_queued_behind_a_build(self):
+        worker, ran, gate, started = self.worker()
+        worker.submit(("mod", {}))
+        started.wait(2)
+        worker.submit(None)
+        gate.set()
+        self.settle(worker)
+        self.assertEqual(ran, [("mod", {}), None])
+
+    def test_a_build_that_raises_does_not_take_the_next_one_with_it(self):
+        import threading
+        ran = []
+        first = threading.Event()
+
+        def run(request):
+            if request == "bad":
+                first.set()
+                raise RuntimeError("mkoverlay fell over")
+            ran.append(request)
+
+        worker = main.LatestOnly(run)
+        worker.submit("bad")
+        first.wait(2)
+        self.settle(worker)
+        worker.submit("good")
+        self.settle(worker)
+        self.assertEqual(ran, ["good"])
+
+    def test_the_worker_is_idle_again_once_the_queue_drains(self):
+        worker, ran, gate, started = self.worker()
+        gate.set()
+        worker.submit("a")
+        self.settle(worker)
+        self.assertFalse(worker.busy())
+        self.assertTrue(worker.submit("b"), "a fresh run, not a queued one")
+        self.settle(worker)
+        self.assertEqual(ran, ["a", "b"])
+
+
+class RememberedChroma(unittest.TestCase):
+    """A skin picked on its own brings back the chroma remembered for it --
+    but only a chroma that exists on disk, or the restore fails outright."""
+
+    SKINS = [
+        {"id": 103005, "available": True,
+         "chromas": [{"id": 103006, "available": True},
+                     {"id": 103007, "available": False}]},
+        {"id": 103001, "available": True, "chromas": []},
+    ]
+
+    def test_a_remembered_chroma_with_a_mod_comes_back(self):
+        self.assertEqual(main.remembered_chroma(self.SKINS, 103005, 103006),
+                         103006)
+
+    def test_a_remembered_chroma_with_no_mod_falls_back_to_the_skin(self):
+        self.assertIsNone(main.remembered_chroma(self.SKINS, 103005, 103007))
+
+    def test_a_chroma_of_another_skin_is_not_carried_over(self):
+        self.assertIsNone(main.remembered_chroma(self.SKINS, 103001, 103006))
+
+    def test_nothing_remembered_is_nothing(self):
+        self.assertIsNone(main.remembered_chroma(self.SKINS, 103005, None))
+        self.assertIsNone(main.remembered_chroma(self.SKINS, None, 103006))
+
+    def test_the_keep_marker_is_not_a_chroma_and_not_none(self):
+        self.assertIsNot(main.KEEP_CHROMA, None)
+        self.assertFalse(isinstance(main.KEEP_CHROMA, int))
+
+
 if __name__ == "__main__":
     unittest.main()

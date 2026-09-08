@@ -240,6 +240,12 @@ class State:
         self.skins: list = []
         self.selected_skin_id: Optional[int] = None
         self.selected_chroma_id: Optional[int] = None
+        # What the patcher was last armed with, {"skinId", "chromaId",
+        # "label"}, and whether a build is still on its way there. Kept apart
+        # from the selection above: that is what was clicked, this is what
+        # the game will actually load, and the picker shows when they differ.
+        self.armed: dict = {}
+        self.arming = False
         self.status = "starting"
         self.locked = False
         self.download: dict = {}
@@ -273,7 +279,7 @@ class State:
         # What the last import wrote, or why it did not. Kept in state rather
         # than only returned to the caller because auto-import has no caller:
         # it fires on lock-in and the picker has to be able to show what
-        # happened, including a needs-a-slot question nobody clicked for.
+        # happened.
         self.last_import: dict = {}
 
     def snapshot(self) -> dict:
@@ -296,6 +302,8 @@ class State:
                 "skins": list(self.skins),
                 "selectedSkinId": self.selected_skin_id,
                 "selectedChromaId": self.selected_chroma_id,
+                "armed": dict(self.armed),
+                "arming": self.arming,
                 "locked": self.locked,
                 "download": self.download,
                 "rebuild": self.rebuild,
@@ -530,9 +538,20 @@ def make_handler(state: State, get_lcu, on_select, mock=None,
                     if value is not None and not isinstance(value, int):
                         self._json({"error": f"{name} must be an integer"}, 400)
                         return
-                on_select(skin_id, chroma_id)
-                self._json({"ok": True, "selectedSkinId": skin_id,
-                            "selectedChromaId": chroma_id})
+                # A payload with no chromaId at all -- a click on a skin
+                # tile -- leaves the chroma to the app, which restores the
+                # one remembered for that skin. An explicit null is the base
+                # swatch: this skin, no chroma.
+                if "chromaId" in payload:
+                    on_select(skin_id, chroma_id)
+                else:
+                    on_select(skin_id)
+                # Answered from the state, not the request: the chroma the
+                # app settled on is the answer the picker is waiting for.
+                with state.lock:
+                    chosen = (state.selected_skin_id, state.selected_chroma_id)
+                self._json({"ok": True, "selectedSkinId": chosen[0],
+                            "selectedChromaId": chosen[1]})
                 return
 
             self._json({"error": "not found"}, 404)

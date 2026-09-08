@@ -144,7 +144,7 @@ class Geometry(unittest.TestCase):
         self.assertEqual(self.writes, [])
 
     def test_a_setting_is_still_written_at_once(self):
-        self.prefs.set("auto_hide", True)
+        self.prefs.set("auto_show", False)
         self.assertEqual(len(self.writes), 1)
         self.prefs.remember(103, 103001, None)
         self.assertEqual(len(self.writes), 2)

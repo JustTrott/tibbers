@@ -112,8 +112,6 @@ class Session:
     selected: Optional[int] = None
     chroma: Optional[int] = None
     champion_id: Optional[int] = None
-    #: The overlay build and patcher start, while it runs.
-    thread: Optional[threading.Thread] = None
     #: What the last poll reported, so a change can be told from a repeat.
     #: Tracked here rather than inferred from `state`: the mock writes state
     #: before notifying, so comparing against it always reports "unchanged".
@@ -146,6 +144,93 @@ def memoise(memo: OrderedDict, key, value, keep: int):
     return value
 
 
+class LatestOnly:
+    """Run one job at a time, and always the most recent one asked for.
+
+    Arming is a build plus a patcher start, several seconds of work on its
+    own thread. Requests arriving while it ran used to be dropped on the
+    floor: the selection changed on screen, the status line said "queued",
+    and the overlay stayed whatever was being built when the click landed.
+    Stepping through the rail with the arrows made that a certainty -- the
+    first skin passed over was built and every later one was lost, so the
+    game loaded a skin nobody ever chose.
+
+    Here a request made mid-run is kept, and only the newest is kept: when
+    the run finishes, the worker runs that one before it goes idle. Whatever
+    was asked for last is what ends up armed.
+    """
+
+    def __init__(self, run):
+        self._run = run
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._pending = None
+        self._has_pending = False
+
+    def busy(self) -> bool:
+        with self._lock:
+            return self._thread is not None and self._thread.is_alive()
+
+    def has_pending(self) -> bool:
+        with self._lock:
+            return self._has_pending
+
+    def submit(self, request) -> bool:
+        """Run *request* now, or after the current run. True if it started."""
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                self._pending, self._has_pending = request, True
+                return False
+            self._pending, self._has_pending = None, False
+            self._thread = threading.Thread(
+                target=self._loop, args=(request,), daemon=True)
+            self._thread.start()
+            return True
+
+    def _loop(self, request) -> None:
+        while True:
+            try:
+                self._run(request)
+            except Exception:  # noqa: BLE001 - the next request must still run
+                log.exception("arming failed")
+            with self._lock:
+                # Decided under the lock, and the thread is retired under it
+                # too, so a request arriving between the check and the exit
+                # starts a fresh worker rather than waiting for one that has
+                # just decided to stop.
+                if not self._has_pending:
+                    self._thread = None
+                    return
+                request = self._pending
+                self._pending, self._has_pending = None, False
+
+
+#: Passed for the chroma when a selection names only the skin: the picker's
+#: tiles, and the restore on champion change. The chroma remembered for that
+#: skin comes back with it. Distinct from None, which is the base swatch --
+#: this skin and explicitly no chroma.
+KEEP_CHROMA = object()
+
+
+def remembered_chroma(skins: list, skin_id, chroma_id) -> Optional[int]:
+    """*chroma_id* if it is one of *skin_id*'s chromas and its mod exists.
+
+    Preferences remember a chroma by skin, but what is on disk decides what
+    can be armed: a chroma whose mod is missing must fall back to the skin
+    rather than fail the whole selection.
+    """
+    if not skin_id or not chroma_id:
+        return None
+    for skin in skins:
+        if skin.get("id") != skin_id:
+            continue
+        for chroma in skin.get("chromas") or []:
+            if chroma.get("id") == chroma_id and chroma.get("available"):
+                return chroma_id
+        return None
+    return None
+
+
 def build_skin_list(client: lcu.LCU, champion_id: int) -> list:
     """Every skin for the champion, marked with whether we have a mod for it."""
     available = library.available_for_champion(champion_id)
@@ -159,45 +244,6 @@ def build_skin_list(client: lcu.LCU, champion_id: int) -> list:
     # obvious what is missing rather than silently absent.
     skins.sort(key=lambda s: (not s["available"], s["id"]))
     return skins
-
-
-def _make_overlay(window) -> None:
-    """Raise the window above other apps and let it follow every Space.
-
-    on_top alone puts it at NSStatusWindowLevel, which is enough over ordinary
-    windows. The collection behaviour is what keeps it visible when the game
-    is on another Space or in macOS's own fullscreen.
-
-    Nothing can float over an *exclusive fullscreen* game: that mode captures
-    the display outright. League has to be in borderless for this to work.
-    """
-    try:
-        import AppKit
-    except ImportError:
-        return
-
-    native = getattr(window, "native", None)
-    if native is None:
-        log.debug("no native window handle; overlay flags not applied")
-        return
-
-    def apply() -> None:
-        try:
-            native.setCollectionBehavior_(
-                AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
-                | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
-                | AppKit.NSWindowCollectionBehaviorStationary
-            )
-            native.setLevel_(AppKit.NSStatusWindowLevel + 1)
-            native.setHidesOnDeactivate_(False)
-            log.info("overlay window configured (level %d)", native.level())
-        except Exception as exc:  # noqa: BLE001
-            log.debug("could not configure overlay window: %s", exc)
-
-    # pywebview fires `shown` on a worker thread, and AppKit aborts the whole
-    # process (SIGTRAP, no Python traceback) if a window is touched from off
-    # the main thread. Hand the work to the main queue.
-    AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(apply)
 
 
 def main() -> int:
@@ -553,9 +599,6 @@ def main() -> int:
         what = str(payload.get("what") or "all").lower()
         if what not in ("all", "runes", "spells", "items"):
             return {"ok": False, "error": f"unknown import target: {what}"}
-        raw = payload.get("confirmReplacePageId")
-        replace = int(raw) if raw not in (None, "", 0) else None
-
         try:
             context = build_on_screen("general" if mode == "general" else "matchup")
         except importer.Incomplete as exc:
@@ -564,8 +607,7 @@ def main() -> int:
             result = imports.run(
                 context["build"], context["championId"], context["championName"],
                 what=what, kind=context["kind"], map_id=context["mapId"],
-                arena=context["arena"], spells=prefs.get("import_spells"),
-                replace_page_id=replace)
+                arena=context["arena"], spells=prefs.get("import_spells"))
         result["at"] = time.time()
         with state.lock:
             state.last_import = result
@@ -592,13 +634,7 @@ def main() -> int:
         else:
             state.say("auto import: no build arrived in time")
             return
-        result = import_build({"what": "all", "mode": "matchup"})
-        if result.get("needsSlot"):
-            # Said once and then left alone. Making room means deleting a page
-            # the player owns, and that is never done without being asked for
-            # by name -- least of all by something that fired on its own.
-            state.say("auto import: all three rune pages are in use -- "
-                      "press Import and choose one to replace")
+        import_build({"what": "all", "mode": "matchup"})
 
     windows = None      # set once the UI shell exists
     menubar = None      # ditto; the tooltip is where state is reported
@@ -783,9 +819,48 @@ def main() -> int:
         """Stop the patcher, if one is running."""
         if inject.is_running():
             inject.stop_patcher()
-        session.thread = None
+        with state.lock:
+            state.armed = {}
         if reason:
             state.say(reason)
+
+    def apply_request(request) -> None:
+        """One arming job: None stops the patcher, anything else arms it.
+
+        Runs on the worker's thread. Stopping goes through the same worker
+        as arming so a cleared selection cannot race a build already in
+        flight -- the build would otherwise finish after the stop and leave
+        a patcher serving a skin nobody wants any more.
+        """
+        if request is None:
+            disarm()
+            return
+        mod, meta = request
+        # Arrowing away and back lands on what is already armed. The worker
+        # serialises every change to the overlay, so `armed` is the overlay,
+        # and rebuilding the same one only costs time.
+        with state.lock:
+            same = (state.armed.get("skinId") == meta["skinId"]
+                    and state.armed.get("chromaId") == meta["chromaId"])
+        if same and inject.is_running():
+            state.say(f"{meta['label']} is already armed")
+            return
+        with state.lock:
+            state.arming = True
+        try:
+            result = inject.prepare(mod, progress=state.say, meta=meta)
+        finally:
+            with state.lock:
+                state.arming = armer.has_pending()
+        if not result.ok:
+            state.say("failed: " + result.message)
+            return
+        with state.lock:
+            state.armed = {"skinId": meta["skinId"],
+                           "chromaId": meta["chromaId"],
+                           "label": meta["label"]}
+
+    armer = LatestOnly(apply_request)
 
     def arm(skip_ask: bool = False) -> None:
         """Build the overlay and start the patcher, ready for the next game.
@@ -800,8 +875,6 @@ def main() -> int:
         skin_id = session.selected
         champ = session.champion_id
         if not skin_id or not champ:
-            return
-        if session.thread is not None and session.thread.is_alive():
             return
 
         # A chroma is a separate mod living inside its parent skin's folder;
@@ -850,17 +923,24 @@ def main() -> int:
 
         meta = {"championId": champ, "skinId": skin_id, "chromaId": chroma_id,
                 "label": label}
+        # Queued behind a build already running, if there is one, and only
+        # the newest request survives the wait: the last thing picked is
+        # what gets armed, however fast the picks came.
+        if not armer.submit((mod, meta)):
+            with state.lock:
+                state.arming = True
+            state.say(f"{label} will be armed after the current build")
 
-        def work():
-            result = inject.prepare(mod, progress=state.say, meta=meta)
-            if not result.ok:
-                state.say("failed: " + result.message)
-
-        thread = threading.Thread(target=work, daemon=True)
-        session.thread = thread
-        thread.start()
-
-    def on_select(skin_id, chroma_id=None):
+    def on_select(skin_id, chroma_id=KEEP_CHROMA):
+        # Asked for the skin alone: bring back the chroma remembered for it,
+        # if there is one and its mod is on disk. Anything else is a choice.
+        if chroma_id is KEEP_CHROMA:
+            with state.lock:
+                skins = list(state.skins)
+            chroma_id = remembered_chroma(
+                skins, skin_id,
+                prefs.chroma_for(skin_id)
+                if skin_id and prefs.get("remember_selections") else None)
         session.selected = skin_id
         session.chroma = chroma_id
         with state.lock:
@@ -870,7 +950,8 @@ def main() -> int:
         if champ and prefs.get("remember_selections"):
             prefs.remember(champ, skin_id, chroma_id)
         if skin_id is None:
-            disarm("selection cleared")
+            state.say("selection cleared")
+            armer.submit(None)
             return
         state.say(f"queued skin {skin_id}"
                   + (f" chroma {chroma_id}" if chroma_id else ""))
@@ -1030,17 +1111,9 @@ def main() -> int:
                     windows.open_picker(raise_it=True)
                 session.was_locked = locked
             else:
-                # Close whatever is open, not only what was opened here: the
-                # app can start mid-champ-select and never see the lock, and
-                # the picker can be opened from the menu bar. Keying the close
-                # off the opening left it sitting over the whole match.
-                if leaving_select and windows.picker_open():
-                    if prefs.get("auto_hide"):
-                        windows.close_picker()
-                    else:
-                        # The game has started: stop covering it, but leave
-                        # the build on screen to tab back to.
-                        windows.stand_down()
+                # Left where it is: it is an ordinary window, so the game
+                # comes up over it like over anything else, and the build is
+                # still there to tab back to.
                 session.was_locked = False
 
         if changed:
@@ -1064,7 +1137,15 @@ def main() -> int:
                     state.champion_icon = info["icon"]
                     state.skins = skins
                     state.selected_skin_id = None
+                    state.selected_chroma_id = None
                 session.selected = None
+                session.chroma = None
+                # The old champion's skin must not stay armed: a mod applies
+                # to whoever plays that champion, so after a bench swap the
+                # teammate who took it would show up in the skin picked here.
+                # Restoring below arms the new champion's own choice, if any.
+                if inject.is_running() or armer.busy():
+                    armer.submit(None)
                 have = sum(1 for k in skins if k["available"])
                 state.say(f"{'locked' if locked else 'hovering'} {name} "
                           f"-- {have} skins ready")
@@ -1076,8 +1157,12 @@ def main() -> int:
                     remembered = prefs.skin_for(champ)
                     if remembered and any(k["id"] == remembered and k["available"]
                                           for k in skins):
-                        chroma = prefs.chroma_for(remembered)
-                        on_select(remembered, chroma)
+                        # The chroma comes back with the skin, checked
+                        # against what is on disk: a remembered chroma with
+                        # no mod used to stop the whole restore dead, skin
+                        # included, with "no mod file" in the log.
+                        on_select(remembered)
+                        chroma = session.chroma
                         state.say(f"restored {remembered}"
                                   + (f" chroma {chroma}" if chroma else ""))
 
@@ -1503,8 +1588,6 @@ def main() -> int:
         except KeyError:
             return {"ok": False, "error": f"unknown setting: {name}"}
 
-        if name == "always_on_top" and windows is not None:
-            windows.set_on_top(value)
         if name == "patch":
             # The guide is entirely patch-dependent, so it is refetched rather
             # than left showing figures from another one.
@@ -1599,6 +1682,8 @@ def main() -> int:
             windows.open_settings()
         elif payload.get("close") == "picker":
             windows.close_picker()
+        elif payload.get("minimize") == "picker":
+            windows.minimize_picker()
         return {"ok": True}
 
     # The file watch is a dev-only cost; the reload endpoint itself is on
@@ -1717,7 +1802,6 @@ def main() -> int:
         return 0
 
     windows = shell.Windows(url, prefs=prefs)
-    windows.set_on_top(prefs.get("always_on_top"))
     # The watcher has been running since before this existed, and it only
     # reports changes; without this, a launch during champ select misses the
     # lock-in entirely and the picker never appears.

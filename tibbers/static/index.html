@@ -111,17 +111,10 @@
           transition: color 220ms ease, border-color 220ms ease; }
   .pill.lit { color: var(--gold); border-color: var(--gold-d); }
 
-  .beats { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-  .beat { display: flex; align-items: center; gap: 6px; white-space: nowrap;
-          font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink-mid); }
-  .lamp { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-low); flex: none;
-          transition: background-color 200ms ease, box-shadow 200ms ease; }
-  .lamp.on   { background: var(--live); box-shadow: 0 0 6px oklch(0.74 0.13 155 / .8); }
-  .lamp.bad  { background: var(--warn); box-shadow: 0 0 6px oklch(0.66 0.17 30 / .8); }
-  .lamp.busy { background: var(--gold); animation: breathe 1.5s var(--inout) infinite; }
-  @keyframes breathe { 50% { opacity: .25; transform: scale(.7); } }
+  .beats { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 
-  /* The window has no title bar, so it needs its own way out. */
+  /* The window has no title bar, so it carries its own two buttons: into
+     the taskbar, and away. */
   .dismiss { appearance: none; margin-left: 2px; padding: 0; width: 20px;
              height: 20px; flex: none; display: grid; place-items: center;
              font: 13px/1 ui-monospace, Menlo, monospace; cursor: pointer;
@@ -579,35 +572,11 @@
                               background: var(--ctl-on); }
   .tog:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
   /* A dot rather than colour alone: the two switches sit next to each other
-     and "on" has to survive being glanced at. Only the switches get one --
-     the same class dresses the chooser's Cancel, which is not one -- and both
-     carry an aria-label, because generated content lands in the accessible
-     name and "●SPELLS" is not what a switch should announce itself as. */
+     and "on" has to survive being glanced at. Both carry an aria-label,
+     because generated content lands in the accessible name and "●SPELLS" is
+     not what a switch should announce itself as. */
   .tog[role="switch"]::before { content: "○"; margin-right: 5px; font-size: 8px; }
   .tog[aria-checked="true"]::before { content: "●"; }
-
-  /* All three rune slots are the player's. Choosing which one Tibbers takes
-     is the only destructive step in the app, so it is asked here, in place,
-     and never implied by the button that started it. */
-  .chooser { flex: none; padding: 8px 16px 9px; border-top: 1px solid var(--rule-d);
-             background: oklch(0.15 0.014 264);
-             animation: chooseIn 200ms var(--out-quart) both; }
-  @keyframes chooseIn { from { opacity: 0; transform: translateY(5px); } }
-  .chooser p { margin: 0 0 6px; font: 9.5px ui-monospace, Menlo, monospace;
-               letter-spacing: .06em; color: var(--ink-mid); }
-  .picks-pages { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
-  .pgpick { appearance: none; display: flex; flex-direction: column; gap: 1px;
-            padding: 4px 9px; cursor: pointer; text-align: left;
-            background: oklch(0.18 0.014 264); border: 1px solid var(--rule-d);
-            border-radius: 3px; transition: border-color 160ms ease,
-            background-color 160ms ease; }
-  .pgpick b { font: 600 10.5px "Beaufort", Georgia, serif; color: var(--ink-mid); }
-  .pgpick em { font: 8.5px ui-monospace, Menlo, monospace; font-style: normal;
-               color: var(--ink-low); }
-  .pgpick[aria-pressed="true"] { border-color: var(--gold); }
-  .pgpick[aria-pressed="true"] b { color: var(--gold-b); }
-  .pgpick:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-  .chooser .acts { display: flex; align-items: center; gap: 6px; }
 
   .note-empty { display: grid; place-items: center; height: 100%; text-align: center;
                 gap: 6px; color: var(--ink-low); font-size: 12px; padding: 20px; }
@@ -795,8 +764,6 @@
     .frame { width: 28px; height: 28px; }
     .who strong { font-size: 12px; }
     .who em { display: none; }
-    .beats { gap: 10px; }
-    .beat span { display: none; }
     .stage { padding: 0 14px 2px; }
     .skinname { font-size: clamp(19px, 4.6vw, 26px); }
     .meta { margin-top: 4px; font-size: 10px; }
@@ -827,7 +794,6 @@
     .fresh > .split > .block, .fresh > section.block,
     .fresh > .modes, .fresh.tbody { animation: none; }
     .foe::after { transition: none; }
-    .chooser { animation: none; }
     /* The tables and the tier list scroll themselves to a row; do it without
        the smooth scroll when motion is unwelcome. */
     .tbody { scroll-behavior: auto; }
@@ -846,9 +812,8 @@
     </span>
     <span class="pill" id="lockpill" hidden>hovering</span>
     <span class="beats">
-      <span class="beat"><i class="lamp" id="l1"></i><span id="t1">client</span></span>
-      <span class="beat"><i class="lamp" id="l2"></i><span id="t2">library</span></span>
-      <span class="beat"><i class="lamp" id="l3"></i><span id="t3">patcher</span></span>
+      <button class="dismiss" id="mini" title="Minimize"
+              aria-label="Minimize the picker">&#8211;</button>
       <button class="dismiss" id="dismiss" title="Hide (esc)"
               aria-label="Hide the picker">&#10005;</button>
     </span>
@@ -891,7 +856,6 @@
   <section class="sheet" id="view-build" hidden>
     <div class="lane" id="lane"></div>
     <div class="guide" id="guide"></div>
-    <div class="chooser" id="ichoose" hidden></div>
     <div class="ibar" id="ibar" hidden>
       <button class="igo" id="igo">Import build</button>
       <span class="isay" id="isay" role="status" aria-live="polite"></span>
@@ -989,6 +953,18 @@
 <script>
 let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
 let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
+/* The order the rail was first drawn in for this champion. The server sorts
+   ready skins first and re-sorts as mods finish building, which during the
+   first seconds of champ select moves tiles under the pointer: a click aimed
+   at one skin landed on the one that had just slid into its place. The
+   order is pinned at first sight instead, and a skin that becomes ready
+   lights up where it is. */
+let ORDER = [];
+function shown() {
+  const rank = new Map(ORDER.map((id, i) => [id, i]));
+  return SKINS.map((k, i) => [rank.has(k.id) ? rank.get(k.id) : ORDER.length + i, k])
+    .sort((a, b) => a[0] - b[0]).map(p => p[1]);
+}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -1148,18 +1124,6 @@ let LAST = {};
 
 function render(s) {
   LAST = s;
-  $('l1').className = 'lamp' + (s.connected ? ' on' : '');
-  $('t1').textContent = s.connected ? (s.phase || 'idle') : 'no client';
-
-  const d = s.download || {}, busy = d.state === 'downloading';
-  $('l2').className = 'lamp' + (busy ? ' busy' : ' on');
-  $('t2').textContent = busy ? `${(d.fetched||0)+(d.missing||0)}/${d.total}` : 'library';
-
-  const p = s.patcher || {}, live = Object.keys(p).length > 0;
-  $('l3').className = 'lamp' + (p.error ? ' bad' : live ? ' on' : '');
-  $('t3').textContent = p.error ? 'error' : p.patched ? 'applied'
-    : p.found ? 'patching' : live ? 'watching' : 'idle';
-
   $('msg').textContent = s.status || '';
   // The one-time passwordless offer. The server clears the flag once answered,
   // and the click hides it optimistically so there is no flash on the way.
@@ -1187,6 +1151,7 @@ function render(s) {
     $('setup-fill').style.width = known ? setup.percent + '%'
                                         : (setup.error ? '100%' : '0');
   }
+  const d = s.download || {}, busy = d.state === 'downloading';
   const bar = $('bar');
   bar.hidden = !busy || !d.total;
   if (!bar.hidden) bar.querySelector('i').style.width =
@@ -1249,10 +1214,16 @@ function render(s) {
   SKINS = s.skins;
   if (s.championId !== CHAMP) {
     CHAMP = s.championId; SEL = null; CHROMA = null; PEEK = null;
-    RAIL_SIG = ''; STRIP_SIG = '';
+    RAIL_SIG = ''; STRIP_SIG = ''; ORDER = [];
     $('plate').classList.remove('in');
   }
-  if (s.selectedSkinId && !SEL) SEL = s.selectedSkinId;
+  /* Nothing chosen here yet: adopt what the app restored for this champion,
+     chroma included. Taking the skin alone drew the base swatch pressed
+     over a chroma that was in fact armed, and the first click on anything
+     then posted "no chroma" and forgot it. */
+  if (s.selectedSkinId && !SEL) {
+    SEL = s.selectedSkinId; CHROMA = s.selectedChromaId || null; STRIP_SIG = '';
+  }
   const cur = SKINS.find(k => k.id === SEL) || SKINS.find(k => k.available) || SKINS[0];
   SEL = cur.id;
 
@@ -1273,6 +1244,22 @@ function render(s) {
   requestAnimationFrame(() => $('plate').classList.add('in'));
 }
 
+/* What the game will actually load, next to what is on screen. The server
+   reports the skin its patcher was last armed with; while that is not the
+   one selected here the line says so, rather than reading "ready" over a
+   choice that has not reached the patcher yet -- or never will. */
+function armedNote(cur) {
+  if (!cur.available) return 'no mod available';
+  const armed = LAST.armed || {};
+  const want = CHROMA || null, have = armed.chromaId || null;
+  if (armed.skinId === cur.id && have === want) return 'armed';
+  if (LAST.arming) return 'arming…';
+  if (!armed.skinId) return 'ready';
+  const skin = SKINS.find(k => k.id === armed.skinId);
+  const ch = skin && have ? (skin.chromas || []).find(c => c.id === have) : null;
+  return 'armed: ' + (ch ? ch.name : skin ? skin.name : armed.label || armed.skinId);
+}
+
 /* The splash always shows the skin, full size. A chroma changes only the small
    preview beside the name, so the art is never covered up. */
 function paint() {
@@ -1285,9 +1272,7 @@ function paint() {
 
   showSplash(art(cur.splash || cur.tile));
   $('skinname').textContent = ch ? ch.name : cur.name;
-  $('skinmeta').textContent = [
-    cur.id, cur.available ? 'ready' : 'no mod available',
-  ].filter(Boolean).join('   ·   ');
+  $('skinmeta').textContent = [cur.id, armedNote(cur)].filter(Boolean).join('   ·   ');
 
   /* Chromas (and the base of a skin that has them) come with a model render.
      A skin with no chromas has none, so it shows its load-screen card instead:
@@ -1341,23 +1326,35 @@ function renderStrip(skin) {
 
 function renderRail() {
   const t = $('track');
-  const sig = SKINS.map(k => k.id + (k.available ? '1' : '0') +
-    (k.chromas || []).filter(c => c.available).length).join(',');
+  const list = shown();
+  const sig = list.map(k => k.id).join(',');
 
   if (sig !== RAIL_SIG) {
+    /* A new set of tiles: drawn once, in this order, for the rest of this
+       champion's time on screen. */
     RAIL_SIG = sig;
-    t.innerHTML = SKINS.map((k, i) => `
+    ORDER = list.map(k => k.id);
+    t.innerHTML = list.map((k, i) => `
       <button class="tile ${k.available ? '' : 'locked'}" data-skin="${k.id}"
               style="animation-delay:${Math.min(i * 18, 300)}ms"
               ${k.available ? '' : 'disabled'} title="${esc(k.name)}">
         <img loading="lazy" src="${art(k.tile || k.splash)}" alt="">
       </button>`).join('');
-    for (const el of t.querySelectorAll('.tile:not(.locked)')) {
-      el.onclick = () => select(parseInt(el.dataset.skin, 10));
+    for (const el of t.querySelectorAll('.tile')) {
+      el.onclick = () => { if (!el.disabled) select(parseInt(el.dataset.skin, 10)); };
     }
     t.classList.add('fresh');
     clearTimeout(RAIL_T);
     RAIL_T = setTimeout(() => t.classList.remove('fresh'), 700);
+  } else {
+    /* Same tiles: mods that finished building light up in place. */
+    const by = new Map(list.map(k => [k.id, k]));
+    for (const el of t.querySelectorAll('.tile')) {
+      const k = by.get(parseInt(el.dataset.skin, 10));
+      if (!k) continue;
+      el.classList.toggle('locked', !k.available);
+      el.disabled = !k.available;
+    }
   }
   mark();
 }
@@ -1380,15 +1377,19 @@ function mark() {
     total <= vp.clientWidth ? (vp.clientWidth - total) / 2
                             : Math.min(0, Math.max(vp.clientWidth - total, offset))}px)`;
 
-  const usable = SKINS.filter(k => k.available);
+  const usable = shown().filter(k => k.available);
   const at = usable.findIndex(k => k.id === SEL);
   $('prev').disabled = at <= 0;
   $('next').disabled = at < 0 || at >= usable.length - 1;
 }
 
-function select(id) { SEL = id; CHROMA = null; PEEK = null; STRIP_SIG = ''; queue(); paint(); mark(); }
+/* A skin tile asks for the skin with whatever chroma is remembered for it,
+   which only the app knows: CHROMA is left undefined, the request carries no
+   chromaId, and the answer says which chroma was restored. The base swatch on
+   the strip is the explicit "no chroma", a null that is sent. */
+function select(id) { SEL = id; CHROMA = undefined; PEEK = null; STRIP_SIG = ''; queue(); paint(); mark(); }
 function step(delta) {
-  const usable = SKINS.filter(k => k.available);
+  const usable = shown().filter(k => k.available);
   const at = usable.findIndex(k => k.id === SEL);
   const next = usable[at + delta];
   if (next) select(next.id);
@@ -1397,10 +1398,19 @@ $('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
 
 async function queue() {
-  await fetch('/api/select', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ skinId: SEL, chromaId: CHROMA }),
-  });
+  const asked = SEL;
+  let r = null;
+  try {
+    r = await (await fetch('/api/select', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ skinId: SEL, chromaId: CHROMA }),
+    })).json();
+  } catch (e) { return; }
+  /* Still on the same skin with the chroma left to the app: show the one
+     it chose. A click that came in meanwhile has its own answer coming. */
+  if (r && r.ok && SEL === asked && CHROMA === undefined) {
+    CHROMA = r.selectedChromaId || null; STRIP_SIG = ''; paint();
+  }
 }
 
 /* ═══ tabs, build and counters ══════════════════════════════════════ */
@@ -1969,10 +1979,10 @@ function renderArenaItems(s, g) {
 /* ═══ import: putting the build on screen into the client ═══════════
    The server resolves the build from the same state this page renders, so
    the only thing sent is which of the two it is showing. Everything else --
-   which rune page to overwrite, whether spells are in scope -- is decided
+   which rune page is taken over, whether spells are in scope -- is decided
    there, and comes back as one result to display. */
 
-let IMPORT_BUSY = false, IMPORT_SEEN = 0, CHOICE = null, SAY_TIMER = 0;
+let IMPORT_BUSY = false, IMPORT_SEEN = 0, SAY_TIMER = 0;
 
 function paintToggles() {
   $('ispells').setAttribute('aria-checked',
@@ -2011,7 +2021,7 @@ function renderImport(s) {
   const arena = g.mode === 'arena';
   const ready = g.state === 'ready' && !!s.championId;
   bar.hidden = !ready;
-  if (!ready) { closeChooser(); return; }
+  if (!ready) return;
 
   // Arena publishes no runes and no spells, so the button is honest about
   // writing only the shop's item set there.
@@ -2021,26 +2031,15 @@ function renderImport(s) {
   $('ispells').hidden = arena;
 
   // Auto-import has no caller to answer, so its outcome arrives here. Only a
-  // genuinely new result opens anything: the same one arriving on every poll
-  // must not reopen a chooser that was just cancelled, and a result the
-  // server has dropped -- it does that when the champion changes -- takes its
-  // question away with it.
+  // genuinely new result is shown: the same one arrives on every poll.
   const done = s.import || {};
   if (done.at && done.at !== IMPORT_SEEN) {
     IMPORT_SEEN = done.at;
     showImport(done);
-  } else if (!done.needsSlot) {
-    closeChooser();
   }
 }
 
 function showImport(r) {
-  if (r.needsSlot) {
-    openChooser(r.pages || []);
-    noteImport('all three rune pages are in use', true);
-    return;
-  }
-  closeChooser();
   if (r.ok) {
     noteImport((r.dryRun ? 'would write ' : 'imported ')
                + ((r.done || []).join(' · ') || 'nothing'), false);
@@ -2049,7 +2048,7 @@ function showImport(r) {
   }
 }
 
-async function runImport(replacePageId) {
+async function runImport() {
   if (IMPORT_BUSY) return;
   IMPORT_BUSY = true;
   $('igo').disabled = true;
@@ -2059,9 +2058,7 @@ async function runImport(replacePageId) {
   try {
     r = await (await fetch('/api/import', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(replacePageId
-        ? { what: 'all', mode: BUILD_MODE, confirmReplacePageId: replacePageId }
-        : { what: 'all', mode: BUILD_MODE }),
+      body: JSON.stringify({ what: 'all', mode: BUILD_MODE }),
     })).json();
   } catch (e) { r = { ok: false, error: 'the app did not answer' }; }
   IMPORT_BUSY = false;
@@ -2070,61 +2067,7 @@ async function runImport(replacePageId) {
   render(LAST);
 }
 
-/* The only destructive step in the app: making room means deleting a page
-   that is not ours. It is asked in place, one page named at a time, and the
-   confirm carries that page's name rather than the word "OK". */
-function openChooser(pages) {
-  const box = $('ichoose');
-  if (!pages.length) { closeChooser(); return; }
-  if (!pages.some(p => p.id === CHOICE)) {
-    // The one in use is what the other importers overwrite, and it is the
-    // one the player is least likely to be keeping for a different champion.
-    CHOICE = (pages.find(p => p.current) || pages[0]).id;
-  }
-  const sig = pages.map(p => p.id).join(',');
-  if (box.dataset.sig !== sig) {
-    box.dataset.sig = sig;
-    box.innerHTML =
-      '<p>All three rune pages are in use. Choose the one Tibbers takes over.</p>'
-      + '<div class="picks-pages">' + pages.map(p => `
-        <button class="pgpick" data-id="${p.id}" data-name="${esc(p.name)}"
-                aria-pressed="${p.id === CHOICE}">
-          <b>${esc(p.name)}</b>
-          <em>${esc(p.keystone || 'no keystone')}${p.current ? ' · in use now' : ''}</em>
-        </button>`).join('') + '</div>'
-      + '<div class="acts"><button class="igo named" id="iconfirm"></button>'
-      + '<button class="tog" id="icancel">Cancel</button></div>';
-    for (const b of box.querySelectorAll('.pgpick')) {
-      b.onclick = () => { CHOICE = parseInt(b.dataset.id, 10); markChoice(box); };
-    }
-    $('iconfirm').onclick = () => { closeChooser(); runImport(CHOICE); };
-    $('icancel').onclick = () => { closeChooser(); noteImport('', false); };
-  }
-  markChoice(box);
-  box.hidden = false;
-  // Reachable without a mouse from the moment it appears.
-  if (!box.contains(document.activeElement))
-    (box.querySelector('.pgpick[aria-pressed="true"]') || box).focus();
-}
-
-function markChoice(box) {
-  let name = '';
-  for (const b of box.querySelectorAll('.pgpick')) {
-    const mine = parseInt(b.dataset.id, 10) === CHOICE;
-    b.setAttribute('aria-pressed', String(mine));
-    if (mine) name = b.dataset.name;
-  }
-  const confirm = $('iconfirm');
-  if (confirm) confirm.textContent = 'Replace ' + name;
-}
-
-function closeChooser() {
-  const box = $('ichoose');
-  if (!box.hidden && box.contains(document.activeElement)) $('igo').focus();
-  box.hidden = true;
-}
-
-$('igo').onclick = () => runImport(null);
+$('igo').onclick = () => runImport();
 $('ispells').onclick = () => flipSetting($('ispells'), 'import_spells');
 $('iauto').onclick = () => flipSetting($('iauto'), 'auto_import');
 
@@ -2248,6 +2191,12 @@ function dismiss() {
   });
 }
 document.getElementById('dismiss').addEventListener('click', dismiss);
+document.getElementById('mini').addEventListener('click', () => {
+  fetch('/api/window', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ minimize: 'picker' }),
+  });
+});
 
 /* The one-time elevation choice. Both answers resume the pending skin apply on
    the server; "auto" additionally installs the passwordless helper (one OS
@@ -2275,19 +2224,17 @@ $('w-settings').addEventListener('click', () => dismissWelcome(true));
 $('w-ok').addEventListener('click', () => dismissWelcome(false));
 
 /* Tab moves between the views this mode has, which is what it is for here. The
-   import row is the one place that also needs ordinary tabbing -- its button,
-   two switches and the page chooser all have to be reachable without a mouse
-   -- so Tab steps into the row, walks it natively, and hands itself back to
-   the view cycle on the way out. Nothing ever traps focus. */
+   import row is the one place that also needs ordinary tabbing -- its button
+   and two switches have to be reachable without a mouse -- so Tab steps into
+   the row, walks it natively, and hands itself back to the view cycle on the
+   way out. Nothing ever traps focus. */
 function importControls() {
-  const box = $('ichoose').hidden ? null : $('ichoose');
   const bar = $('ibar').hidden ? null : $('ibar');
   // A disabled button cannot take focus, so listing one leaves Tab pointing
   // at nothing: the import button is disabled for as long as an import is in
   // flight, and tabbing into the row during one dropped focus on the floor.
   const live = 'button:not([hidden]):not(:disabled)';
-  return [...(box ? box.querySelectorAll(live) : []),
-          ...(bar ? bar.querySelectorAll(live) : [])];
+  return [...(bar ? bar.querySelectorAll(live) : [])];
 }
 
 /* What Tab walks through before it goes back to cycling views. Every page
@@ -2310,9 +2257,6 @@ function viewControls() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     e.preventDefault();
-    // A chooser open over the build is what Escape is about at that moment;
-    // taking the window away instead would lose the question.
-    if (!$('ichoose').hidden) { closeChooser(); noteImport('', false); return; }
     dismiss();
     return;
   }
@@ -2344,8 +2288,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'i' && VIEW === 'build' && !$('ibar').hidden
       && (document.activeElement || {}).tagName !== 'SELECT') {
     e.preventDefault();
-    // With the chooser open the answer is a page, not another attempt.
-    if ($('ichoose').hidden) runImport(null);
+    runImport();
     return;
   }
   if (VIEW !== 'skin') return;
