@@ -30,10 +30,6 @@ log = logging.getLogger("tibbers.prefs")
 DEFAULTS: Dict[str, Any] = {
     # Raise the picker by itself when a champion is locked in.
     "auto_show": True,
-    # Close it when champ select ends. Off by default: once the game starts
-    # the picker still has the build worth reading, so it stops floating
-    # rather than disappearing.
-    "auto_hide": False,
     # Re-apply the remembered skin as soon as a champion is locked.
     "remember_selections": True,
     # Build a champion's mods on hover rather than waiting for a lock. The
@@ -42,11 +38,6 @@ DEFAULTS: Dict[str, Any] = {
     # and the switch means what it always meant -- do it while they are
     # still deciding.
     "download_on_hover": True,
-    # Keep the picker above the client. It is small and movable, so floating
-    # costs nothing; the earlier objection was to a window that sat over
-    # everything permanently, which this still is not -- it comes and goes
-    # with champ select.
-    "always_on_top": True,
     # Which patch to read build data from. None follows the newest published,
     # which is also the one with the least data behind it for a week or two.
     "patch": None,
@@ -109,8 +100,12 @@ class Prefs:
             return
         with self._lock:
             # Merge rather than replace: a file written by an older version is
-            # missing keys added since, and should not wipe the defaults.
-            self._data["settings"] = {**DEFAULTS, **(raw.get("settings") or {})}
+            # missing keys added since, and should not wipe the defaults. A
+            # key this version no longer has is dropped on the way in, so a
+            # retired setting does not linger in the file for good.
+            stored_settings = raw.get("settings") or {}
+            self._data["settings"] = {**DEFAULTS, **{
+                k: v for k, v in stored_settings.items() if k in DEFAULTS}}
             stored_geometry = raw.get("geometry")
             if isinstance(stored_geometry, dict):
                 self._data["geometry"] = stored_geometry

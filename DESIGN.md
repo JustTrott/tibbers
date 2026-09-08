@@ -125,7 +125,7 @@ Where motion is spent:
 | Tab changes | one underline travels, 220ms; the labels never move |
 | Tile hover | `scale(1.02)` and full saturation, 160ms, gated to `hover: hover` |
 | Chroma preview | the panel grows 280ms from its own bottom-left corner |
-| Status | the lamp breathes while working; progress is a width transition |
+| Status | progress is a width transition, never a spinner |
 
 The entrance animations are one-shots. A CSS animation restarts every time
 its element comes back from `display: none`, so anything that lives inside a
@@ -172,9 +172,12 @@ their chosen state in `aria-pressed`, and the switches in `aria-checked`.
 The state is never only a class, and never only a colour: the switches also
 draw a filled or hollow dot, and the chips carry live counts.
 
-**Status.** One line, always present, never modal. Three lamps (client,
-library, patcher) plus a message. Progress is a 1px rule, not a spinner,
-because both waits have a known duration.
+**Status.** One line, always present, never modal: a message, and under the
+skin name whether the patcher actually holds it ("arming…", "armed", or the
+name of what it holds instead). The picker's header carries no lamps -- the
+client, library and patcher indicators told nobody anything they acted on,
+and the diagnostic set lives on the Settings page. Progress is a 1px rule,
+not a spinner, because both waits have a known duration.
 
 ## Rendering rules
 

@@ -73,7 +73,7 @@ def test_window_ops_never_touch_the_ui_synchronously_off_thread():
     assert ".on_top =" not in src.replace("on_top=(name", "")
     # _gui_run posts to the GUI thread and does not wait (BeginInvoke).
     assert "BeginInvoke" in inspect.getsource(shell._gui_run)
-    for method in ("_show", "_hide", "set_on_top", "stand_down"):
+    for method in ("_show", "_hide", "minimize_picker"):
         assert "_gui_run" in inspect.getsource(getattr(shell.Windows, method)), method
 
 

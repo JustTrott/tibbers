@@ -81,8 +81,8 @@ def _gui_run(fn: Callable[[], object], wait: bool = False) -> None:
     When the GUI thread is momentarily busy -- a frameless drag's
     SetWindowPos, a resize -- that call and the GUI thread wait on each other
     for good: the app stops responding, no picker, dead tray, dead API. It hit
-    on lock-in (set_on_top while the library rebuilt) and at game start
-    (stand_down mid-drag).
+    on lock-in (a TopMost set while the library rebuilt, back when the picker
+    floated) and at game start (a window-state change mid-drag).
 
     BeginInvoke posts *fn* to the GUI thread's message queue and returns at
     once, so the watcher never blocks. Called from the GUI thread itself
@@ -159,7 +159,6 @@ class Windows:
         self.settings = None
         self._lock = threading.Lock()
         self._quitting = False
-        self._on_top = False
         self._visible = {"picker": False, "settings": False}
 
     # -- geometry ----------------------------------------------------------
@@ -220,7 +219,6 @@ class Windows:
                 x=box["x"], y=box["y"],
                 min_size=(460, 380), background_color=BACKDROP,
                 frameless=True, easy_drag=True,
-                on_top=(name == "picker" and self._on_top),
                 hidden=hidden,
             )
 
@@ -270,23 +268,32 @@ class Windows:
             return self.settings if name == "settings" else self.picker
 
     @staticmethod
-    def _apply_top(window, on_top: bool) -> None:
-        """Set TopMost directly. Only call from inside a _gui_run body, where
-        this thread *is* the GUI thread and the assignment cannot marshal."""
+    def _set_minimized(window, minimized: bool) -> None:
+        """Set the form's window state directly. Only call from inside a
+        _gui_run body, where this thread *is* the GUI thread and the
+        assignment cannot marshal.
+
+        Not pywebview's own minimize()/restore(): those wait for the window's
+        `shown` event first, and a picker built hidden up front has not had
+        one -- the call would sit out pywebview's 20s timeout.
+        """
         try:
+            from System.Windows.Forms import FormWindowState
             from webview.platforms.winforms import BrowserView
             form = BrowserView.instances.get(window.uid)
             if form is not None:
-                form.TopMost = bool(on_top)
+                form.WindowState = (FormWindowState.Minimized if minimized
+                                    else FormWindowState.Normal)
         except Exception as exc:  # noqa: BLE001
-            log.debug("could not set on_top: %s", exc)
+            log.debug("could not change the window state: %s", exc)
 
     def _show(self, name: str, raise_it: bool) -> None:
         w = self._ensure(name, hidden=True)
 
         def _do():
-            if name == "picker":
-                self._apply_top(w, self._on_top)
+            # A lock-in brings back a minimised picker too; show() alone
+            # leaves it in the taskbar.
+            self._set_minimized(w, False)
             w.show()  # inline on the GUI thread: no cross-thread Invoke
 
         _gui_run(_do)
@@ -313,17 +320,12 @@ class Windows:
     def picker_open(self) -> bool:
         return bool(self._visible.get("picker"))
 
-    def set_on_top(self, on_top: bool) -> None:
-        self._on_top = bool(on_top)
+    def minimize_picker(self) -> None:
+        """Into the taskbar, like any other window. The picker is frameless,
+        so this is its title-bar button."""
         w = self._window("picker")
         if w is not None:
-            _gui_run(lambda: self._apply_top(w, self._on_top))
-
-    def stand_down(self) -> None:
-        """Drop always-on-top without hiding -- the game is being played."""
-        w = self._window("picker")
-        if w is not None:
-            _gui_run(lambda: self._apply_top(w, False))
+            _gui_run(lambda: self._set_minimized(w, True))
 
     def go_background(self) -> None:
         """No visible window: live in the tray."""

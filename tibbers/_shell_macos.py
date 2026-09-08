@@ -280,7 +280,6 @@ class Windows:
         self.picker = None
         self._visible: set = set()
         self._quitting = False
-        self._on_top = False
         self._lock = threading.Lock()
 
     # -- construction ------------------------------------------------------
@@ -418,8 +417,9 @@ class Windows:
             # Back into the Dock and Cmd-Tab while a window is up; the policy
             # has to change before activating or the app cannot come forward.
             app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyRegular)
-            if name == "picker" and self._on_top:
-                native.setLevel_(AppKit.NSFloatingWindowLevel)
+            # A lock-in brings back a minimised picker too.
+            if native.isMiniaturized():
+                native.deminiaturize_(None)
             if raise_it:
                 app.activateIgnoringOtherApps_(True)
                 native.makeKeyAndOrderFront_(None)
@@ -463,33 +463,9 @@ class Windows:
     def close_picker(self) -> None:
         self._hide("picker")
 
-    def set_on_top(self, on_top: bool) -> None:
-        """Float the picker above other windows, or stop."""
-        with self._lock:
-            window = self.picker
-        self._on_top = bool(on_top)
-        if window is None:
-            return
-
-        def apply():
-            native = getattr(window, "native", None)
-            if native is None:
-                return
-            import AppKit
-            native.setLevel_(AppKit.NSFloatingWindowLevel if on_top
-                             else AppKit.NSNormalWindowLevel)
-
-        on_main(apply)
-
-    def stand_down(self) -> None:
-        """Stop floating, stay open.
-
-        Once the game starts the picker is still worth reading -- the build
-        and the counters are as useful in the loading screen as in champ
-        select -- but it has no business sitting over the game. Dropping the
-        window level leaves it a normal window: behind the game, still there
-        when you tab to it.
-        """
+    def minimize_picker(self) -> None:
+        """Into the Dock, like any other window. The picker is frameless, so
+        this is its title-bar button."""
         with self._lock:
             window = self.picker
         if window is None:
@@ -497,10 +473,8 @@ class Windows:
 
         def apply():
             native = getattr(window, "native", None)
-            if native is None:
-                return
-            import AppKit
-            native.setLevel_(AppKit.NSNormalWindowLevel)
+            if native is not None:
+                native.miniaturize_(None)
 
         on_main(apply)
 
