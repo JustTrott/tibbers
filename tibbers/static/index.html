@@ -690,13 +690,21 @@
   /* ═══ carousel ═════════════════════════════════════════════════════ */
   .rail { position: relative; z-index: 2; flex: none; padding: 12px 0 12px; }
   .viewport { position: relative; overflow: hidden; margin: 0 44px; }
-  .track { display: flex; gap: var(--tile-gap); will-change: transform;
-           transition: transform 340ms var(--inout); }
+  /* The rail is a ring. Every tile is placed by its distance from the chosen
+     one, measured the short way round, so the base skin sits in the middle
+     with the newest skins to its left and the oldest to its right -- the
+     way the client's own carousel reads -- and stepping off either end
+     comes round the other side. Each tile keeps its element; only `left`
+     moves, so nothing is re-decoded on a step. */
+  .track { position: relative; height: calc(var(--tile-w) * 560 / 308 + 2px); }
 
-  .tile { position: relative; flex: none; width: var(--tile-w); padding: 0;
+  .tile { position: absolute; top: 0; left: 50%; width: var(--tile-w); padding: 0;
+          margin-left: calc(var(--tile-w) / -2);
           border: 1px solid transparent; background: var(--raised); cursor: pointer;
           overflow: hidden;
-          transition: border-color 160ms ease, transform 160ms ease; }
+          transition: left 340ms var(--inout), border-color 160ms ease,
+                      transform 160ms ease; }
+  .tile.wrap { transition: border-color 160ms ease, transform 160ms ease; }
   /* The rise is a one-shot for a freshly built rail. A CSS animation restarts
      every time its element comes back from display:none, so it must not live
      on the tile itself or every return to this tab replays the whole
@@ -953,18 +961,18 @@
 <script>
 let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
 let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
-/* The order the rail was first drawn in for this champion. The server sorts
-   ready skins first and re-sorts as mods finish building, which during the
-   first seconds of champ select moves tiles under the pointer: a click aimed
-   at one skin landed on the one that had just slid into its place. The
-   order is pinned at first sight instead, and a skin that becomes ready
-   lights up where it is. */
-let ORDER = [];
+/* The base skin is the one with no mod: what the game shows on its own. It is
+   always offered -- picking it is how you ask for nothing to be armed -- and
+   it is the default, as in the client. */
+const isBase = k => !!(k && (k.isBase || k.id % 1000 === 0));
+const isBaseId = id => !!id && id % 1000 === 0;
+/* Release order: base first, then by id, which is the order skins came out
+   in. Fixed for the champion, whatever the server's own sort does as mods
+   finish building, so a tile never moves under the pointer. */
 function shown() {
-  const rank = new Map(ORDER.map((id, i) => [id, i]));
-  return SKINS.map((k, i) => [rank.has(k.id) ? rank.get(k.id) : ORDER.length + i, k])
-    .sort((a, b) => a[0] - b[0]).map(p => p[1]);
+  return [...SKINS].sort((a, b) => (isBase(b) - isBase(a)) || (a.id - b.id));
 }
+const usable = () => shown().filter(k => k.available || isBase(k));
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -1214,7 +1222,7 @@ function render(s) {
   SKINS = s.skins;
   if (s.championId !== CHAMP) {
     CHAMP = s.championId; SEL = null; CHROMA = null; PEEK = null;
-    RAIL_SIG = ''; STRIP_SIG = ''; ORDER = [];
+    RAIL_SIG = ''; STRIP_SIG = '';
     $('plate').classList.remove('in');
   }
   /* Nothing chosen here yet: adopt what the app restored for this champion,
@@ -1224,7 +1232,7 @@ function render(s) {
   if (s.selectedSkinId && !SEL) {
     SEL = s.selectedSkinId; CHROMA = s.selectedChromaId || null; STRIP_SIG = '';
   }
-  const cur = SKINS.find(k => k.id === SEL) || SKINS.find(k => k.available) || SKINS[0];
+  const cur = SKINS.find(k => k.id === SEL) || SKINS.find(isBase) || SKINS[0];
   SEL = cur.id;
 
   $('portrait').src = art(s.championIcon);
@@ -1249,8 +1257,10 @@ function render(s) {
    one selected here the line says so, rather than reading "ready" over a
    choice that has not reached the patcher yet -- or never will. */
 function armedNote(cur) {
-  if (!cur.available) return 'no mod available';
   const armed = LAST.armed || {};
+  if (isBase(cur)) {
+    if (!armed.skinId) return 'base skin';
+  } else if (!cur.available) return 'no mod available';
   const want = CHROMA || null, have = armed.chromaId || null;
   if (armed.skinId === cur.id && have === want) return 'armed';
   if (LAST.arming) return 'arming…';
@@ -1329,15 +1339,15 @@ function renderRail() {
   const list = shown();
   const sig = list.map(k => k.id).join(',');
 
+  const ok = k => k.available || isBase(k);
   if (sig !== RAIL_SIG) {
     /* A new set of tiles: drawn once, in this order, for the rest of this
        champion's time on screen. */
     RAIL_SIG = sig;
-    ORDER = list.map(k => k.id);
     t.innerHTML = list.map((k, i) => `
-      <button class="tile ${k.available ? '' : 'locked'}" data-skin="${k.id}"
+      <button class="tile ${ok(k) ? '' : 'locked'}" data-skin="${k.id}"
               style="animation-delay:${Math.min(i * 18, 300)}ms"
-              ${k.available ? '' : 'disabled'} title="${esc(k.name)}">
+              ${ok(k) ? '' : 'disabled'} title="${esc(k.name)}">
         <img loading="lazy" src="${art(k.tile || k.splash)}" alt="">
       </button>`).join('');
     for (const el of t.querySelectorAll('.tile')) {
@@ -1352,35 +1362,41 @@ function renderRail() {
     for (const el of t.querySelectorAll('.tile')) {
       const k = by.get(parseInt(el.dataset.skin, 10));
       if (!k) continue;
-      el.classList.toggle('locked', !k.available);
-      el.disabled = !k.available;
+      el.classList.toggle('locked', !ok(k));
+      el.disabled = !ok(k);
     }
   }
   mark();
 }
 
+/* Place every tile by its signed distance from the chosen one, the short way
+   round the ring. Exactly one tile crosses from one end to the other on a
+   step; it is moved without a transition, so it does not fly across the
+   viewport behind the others. */
 function mark() {
-  const t = $('track'), vp = $('viewport');
-  let index = 0, i = 0;
-  for (const el of t.querySelectorAll('.tile')) {
-    const on = parseInt(el.dataset.skin, 10) === SEL;
-    el.setAttribute('aria-current', String(on));
-    if (on) index = i;
-    i++;
-  }
+  const t = $('track');
+  const tiles = [...t.querySelectorAll('.tile')];
+  const n = tiles.length;
+  if (!n) return;
   const st = getComputedStyle(document.documentElement);
   const w = parseFloat(st.getPropertyValue('--tile-w'));
   const gap = parseFloat(st.getPropertyValue('--tile-gap'));
-  const step = w + gap, total = SKINS.length * step - gap;
-  const offset = vp.clientWidth / 2 - w / 2 - index * step;
-  t.style.transform = `translateX(${
-    total <= vp.clientWidth ? (vp.clientWidth - total) / 2
-                            : Math.min(0, Math.max(vp.clientWidth - total, offset))}px)`;
-
-  const usable = shown().filter(k => k.available);
-  const at = usable.findIndex(k => k.id === SEL);
-  $('prev').disabled = at <= 0;
-  $('next').disabled = at < 0 || at >= usable.length - 1;
+  const stride = w + gap;
+  let at = tiles.findIndex(el => parseInt(el.dataset.skin, 10) === SEL);
+  if (at < 0) at = 0;
+  tiles.forEach((el, i) => {
+    el.setAttribute('aria-current', String(i === at));
+    let d = i - at;
+    if (d > n / 2) d -= n;
+    if (d <= -n / 2) d += n;
+    const was = el.dataset.d === undefined ? d : parseInt(el.dataset.d, 10);
+    el.dataset.d = d;
+    el.classList.toggle('wrap', Math.abs(d - was) > n / 2);
+    el.style.left = `calc(50% + ${d * stride}px)`;
+  });
+  const few = usable().length < 2;
+  $('prev').disabled = few;
+  $('next').disabled = few;
 }
 
 /* A skin tile asks for the skin with whatever chroma is remembered for it,
@@ -1388,11 +1404,12 @@ function mark() {
    chromaId, and the answer says which chroma was restored. The base swatch on
    the strip is the explicit "no chroma", a null that is sent. */
 function select(id) { SEL = id; CHROMA = undefined; PEEK = null; STRIP_SIG = ''; queue(); paint(); mark(); }
+/* Round the ring: off the last skin comes the base, off the base the newest. */
 function step(delta) {
-  const usable = shown().filter(k => k.available);
-  const at = usable.findIndex(k => k.id === SEL);
-  const next = usable[at + delta];
-  if (next) select(next.id);
+  const list = usable();
+  if (list.length < 2) return;
+  const at = Math.max(0, list.findIndex(k => k.id === SEL));
+  select(list[(at + delta + list.length) % list.length].id);
 }
 $('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
@@ -1403,7 +1420,8 @@ async function queue() {
   try {
     r = await (await fetch('/api/select', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ skinId: SEL, chromaId: CHROMA }),
+      // The base skin is a request for nothing: no mod, nothing armed.
+      body: JSON.stringify({ skinId: isBaseId(SEL) ? null : SEL, chromaId: CHROMA }),
     })).json();
   } catch (e) { return; }
   /* Still on the same skin with the chroma left to the app: show the one

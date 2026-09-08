@@ -950,7 +950,8 @@ def main() -> int:
         if champ and prefs.get("remember_selections"):
             prefs.remember(champ, skin_id, chroma_id)
         if skin_id is None:
-            state.say("selection cleared")
+            # The base skin, or nothing: either way there is nothing to arm.
+            state.say("base skin -- nothing to arm")
             armer.submit(None)
             return
         state.say(f"queued skin {skin_id}"

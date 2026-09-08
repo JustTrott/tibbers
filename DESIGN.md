@@ -210,9 +210,12 @@ and made the champion the subject instead of the skin.
 
 - **Naming plate**, bottom-left over the splash: skin name at display scale,
   id and readiness in mono beneath, chroma strip below that.
-- **Carousel** keeps the selection centred and slides as one object, arrows
-  either side, rather than free-scrolling. The eye returns to the same place
-  every time, which is what makes a pick fast.
+- **Carousel** keeps the selection centred, arrows either side, rather than
+  free-scrolling. The eye returns to the same place every time, which is what
+  makes a pick fast. It is a ring, as in the client: the base skin is the
+  default and sits in the middle, the newest skins are one step to its left,
+  the oldest one step to its right, and either end comes round to the other.
+  The base skin is always offered; picking it is how you ask for nothing.
 
 **On the data pages the splash is a backdrop**, dropped to 35% opacity with a
 3px blur under the sheet's own content. The blur sits below the content in
