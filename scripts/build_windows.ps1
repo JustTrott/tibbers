@@ -108,8 +108,42 @@ if ($Installer) {
     }
     # Stamp the installer with the app's own version, so the two never drift.
     $version = (& $python -c "import tibbers; print(tibbers.__version__)").Trim()
+
+    # The tools Setup downloads: the newest release of each, resolved here so
+    # the installer carries fixed links and makes no API call of its own (a
+    # shared connection can be over GitHub's unauthenticated limit for an
+    # hour at a time, which is no way to start an install). Without a network
+    # the installer still builds; it just fetches nothing, and the app fetches
+    # the tools itself on first launch.
+    function Resolve-Asset($repo, $match) {
+        try {
+            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" `
+                -Headers @{ Accept = "application/vnd.github+json"; "User-Agent" = "tibbers-build" }
+            $asset = $rel.assets | Where-Object { & $match $_.name } | Select-Object -First 1
+            if ($asset) { return @{ url = $asset.browser_download_url; size = [int64]$asset.size } }
+        } catch {
+            Write-Warning "could not resolve the latest $repo release: $_"
+        }
+        return $null
+    }
+    $ltk = Resolve-Asset "LeagueToolkit/ltk-manager" { param($n) $n -like "*.msi" }
+    $cslol = Resolve-Asset "LeagueToolkit/cslol-manager" { param($n) $n -eq "cslol-manager-windows.exe" }
+    $curl = Resolve-Asset "lexiforest/curl-impersonate" { param($n) $n -like "curl-impersonate-*.x86_64-win32.tar.gz" }
+    $defines = @("/DMyAppVersion=$version")
+    if ($ltk -and $cslol -and $curl) {
+        $defines += "/DLtkUrl=$($ltk.url)", "/DLtkSize=$($ltk.size)",
+                    "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)",
+                    "/DCurlUrl=$($curl.url)", "/DCurlSize=$($curl.size)"
+        Write-Host "==> Setup will download:"
+        Write-Host "    $($ltk.url)"
+        Write-Host "    $($cslol.url)"
+        Write-Host "    $($curl.url)"
+    } else {
+        Write-Warning "building an installer that downloads no tools; the app fetches them on first launch"
+    }
+
     Write-Host "==> Building the installer with Inno Setup (v$version)"
-    & $iscc "/DMyAppVersion=$version" $iss
+    & $iscc @defines $iss
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
     Write-Host "==> Installer written to dist\Tibbers-windows-setup.exe (v$version)"
 }

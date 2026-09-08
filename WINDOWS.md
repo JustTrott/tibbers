@@ -76,21 +76,29 @@ This produces three things in `dist\`:
 The patcher binaries are **not** bundled — cslol's DLL is unlicensed and LTK's
 is signed by its own publisher, so neither is ours to redistribute. Instead:
 
-- the installer runs `Tibbers.exe --fetch-tools` right after install, so the
-  first real launch is ready;
-- failing that, the app fetches them itself on first run (`tibbers/wintools.py`),
-  into `%LOCALAPPDATA%\tibbers\tools` (writable, unlike Program Files).
+- Setup downloads them, on its own download page with a progress bar, as a
+  task the user can untick. `build_windows.ps1` resolves the newest release of
+  each tool and bakes the exact links in, so Setup makes no API call; it
+  unpacks the MSI (an administrative install, no service), the 7-Zip
+  self-extractor and the tarball into `%LOCALAPPDATA%\tibbers\tools`
+  (writable, unlike Program Files). An update over a working install skips
+  the task; a failed unpack is reported once and is not fatal;
+- failing that, the app fetches whatever is missing itself on first run
+  (`tibbers/wintools.py`), with a progress bar in the picker.
 
-The same first-run fetch also brings in `curl-impersonate.exe` (lexiforest's
-statically linked build), which is how the build and counters pages read
-u.gg on Windows: the CDN refuses the system curl's TLS handshake, and most
-machines have no system curl anyway. It is fetched after the injection tools
-with no setup bar, retried a few times if GitHub is rate-limiting, and a miss
-only leaves the build pages empty until the next launch.
+The third download is `curl-impersonate.exe` (lexiforest's statically linked
+build), which is how the build and counters pages read u.gg on Windows: the
+CDN refuses the system curl's TLS handshake, and most machines have no system
+curl anyway. When the app has to fetch it itself, it does so after the
+injection tools, retried a few times if GitHub is rate-limiting; a miss only
+leaves the build pages empty until the next launch.
 
 The installer installs per-user into `%LOCALAPPDATA%\Programs\Tibbers`, adds a
-Start Menu entry, and offers a run-at-login tray launch. The skin library and
-preferences live in the data dir and survive an uninstall.
+Start Menu entry, and offers a run-at-sign-in tray launch. It speaks English
+and Russian, opening in the Windows display language with a language dialog
+first; its own strings live in `[CustomMessages]` and the task and launch
+lines use Inno's stock messages so they read like every other installer. The
+skin library and preferences live in the data dir and survive an uninstall.
 
 ## Releasing (and OTA)
 
