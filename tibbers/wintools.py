@@ -207,7 +207,8 @@ def _fetch_browser_curl(into: Path, progress) -> None:
             if member is None:
                 raise RuntimeError(f"{CURL_EXE} not found in {asset['name']}")
             member.name = CURL_EXE          # flatten any leading directory
-            tar.extract(member, tmp)
+            safe = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+            tar.extract(member, tmp, **safe)
         shutil.move(str(tmp / CURL_EXE), str(into / CURL_EXE))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

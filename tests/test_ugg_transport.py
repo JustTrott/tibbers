@@ -147,7 +147,30 @@ class CurlFirst(TransportCase):
                 self.assertEqual(ugg._curl_argv(),
                                  ["C:/t/curl.exe", "--impersonate", "chrome131"])
             with mock.patch.object(ugg.system, "browser_curl", lambda: None):
-                self.assertEqual(ugg._curl_argv(), ["curl"])
+                self.assertEqual(ugg._curl_argv(), ["curl", "--http1.1"])
+
+    def test_the_browser_curl_is_not_forced_onto_http1(self):
+        # A browser speaks HTTP/2. Pinning HTTP/1.1 on an impersonated
+        # handshake makes the fingerprint inconsistent and the CDN refuses
+        # it every time; the pin is the system curl's alone.
+        ran = []
+
+        def run(cmd, **kw):
+            ran.append(cmd)
+            return mock.Mock(returncode=0, stdout=b'{}\n"e"\n200', stderr=b"")
+
+        with mock.patch.dict(ugg.os.environ, {}, clear=False):
+            ugg.os.environ.pop("TIBBERS_CURL", None)
+            with mock.patch.object(ugg.subprocess, "run", run):
+                with mock.patch.object(ugg.system, "browser_curl",
+                                       lambda: ["C:/t/curl.exe", "--impersonate", "chrome131"]):
+                    self.assertEqual(ugg._curl(FILE), (200, b"{}", '"e"'))
+                with mock.patch.object(ugg.system, "browser_curl", lambda: None):
+                    ugg._curl(FILE)
+        self.assertEqual(ran[0][:3], ["C:/t/curl.exe", "--impersonate", "chrome131"])
+        self.assertNotIn("--http1.1", ran[0])
+        self.assertIn("--http1.1", ran[1])
+        self.assertEqual(ran[1][-1], FILE)
 
 
 class FallbackAndCache(TransportCase):

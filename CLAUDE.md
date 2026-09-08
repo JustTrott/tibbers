@@ -74,7 +74,7 @@ needs no venv and no running app.
 
 | source | how |
 |--------|-----|
-| u.gg (`ugg.py`) | static JSON CDN, over curl (retried; `HEADER_SETS` via urllib as a last resort). The CDN scores the TLS handshake, so urllib is refused and the system curl passes only on a home connection; where it does not (notably Windows) `system.browser_curl` supplies a browser-handshake curl. `TIBBERS_CURL` overrides it; `TIBBERS_UGG_CACHE_HOURS` sets the cache window (default 8) |
+| u.gg (`ugg.py`) | static JSON CDN, over curl (retried; `HEADER_SETS` via urllib as a last resort). The CDN scores the TLS handshake, so urllib is refused and the system curl passes only on a home connection over HTTP/1.1; on Windows the system curl is refused or absent, so `system.browser_curl` supplies a fetched curl-impersonate, run without the HTTP/1.1 pin (a browser speaks HTTP/2; pinning it gets a 403 every time). `TIBBERS_CURL` overrides it; `TIBBERS_UGG_CACHE_HOURS` sets the cache window (default 8) |
 | op.gg (`opgg.py`) | Arena only. `robots.txt` permits everything, so the user-agent is honest — keep it that way |
 | metasrc | **off limits.** `robots.txt` names ClaudeBot `Disallow: /`, its terms forbid extraction, and reaching it needs a spoofed browser fingerprint |
 | skin mods | **no network at all.** Built from the install by `skinsmith.py`. There is no download path and no skin repository is contacted; a skin that cannot be built simply has no mod |

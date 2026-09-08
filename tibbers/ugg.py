@@ -16,10 +16,13 @@ Three things about the transport are load-bearing:
 * The CDN sits behind bot protection that scores the TLS handshake, not just
   the headers. Measured in September 2026, `urllib` is refused every time; a
   curl on a home connection passes on the handshake alone, and where the
-  system curl's handshake scores badly (notably Windows) the app supplies
-  one that presents a browser's, via `system.browser_curl`. curl goes first,
-  the header sets are a last resort, and because the challenge is not
-  deterministic a challenged curl is retried a few times before giving up.
+  system curl's handshake scores badly, or there is no system curl at all
+  (Windows, on both counts), the app supplies one that presents a browser's,
+  via `system.browser_curl`, run with the flags it came with -- a browser
+  speaks HTTP/2, and pinning HTTP/1.1 on it undoes the disguise. curl goes
+  first, the header sets are a last resort, and because the challenge is
+  not deterministic a challenged curl is retried a few times before giving
+  up.
 * A 403 from u.gg is ambiguous. A missing file and a bot block both return
   it, and they are told apart by the body: XML `AccessDenied` means the
   patch, champion or version is wrong; an HTML challenge means refused.
@@ -120,14 +123,19 @@ class Unavailable(Exception):
 
 
 def _curl_argv() -> List[str]:
-    """The curl to run, as an argv prefix.
+    """The curl to run, as an argv prefix, transport flags included.
 
     A machine on a home connection clears the CDN on the TLS handshake alone,
-    and the system curl does on macOS. Where it does not -- notably Windows,
-    whose handshake the CDN scores worst -- the app supplies a curl that
-    presents a browser's handshake (see `system.browser_curl`), and that is
-    preferred when present. `TIBBERS_CURL` overrides both, for measuring one
-    client against another.
+    and the system curl does on macOS -- over HTTP/1.1, pinned because that
+    is what was measured to pass. Where the system handshake is refused
+    (Windows, whose handshake the CDN scores worst, and where most machines
+    have no system curl at all) the app supplies a curl that presents a
+    browser's handshake (see `system.browser_curl`), preferred when present
+    and run exactly as the platform hands it over: a browser speaks HTTP/2,
+    and forcing HTTP/1.1 onto an impersonated handshake makes the fingerprint
+    inconsistent, which the CDN refuses every time (Windows, September 2026:
+    0 of 5 with ``--http1.1``, 10 of 10 without). `TIBBERS_CURL` overrides
+    both, as given, for measuring one client against another.
     """
     override = os.environ.get("TIBBERS_CURL")
     if override:
@@ -135,7 +143,7 @@ def _curl_argv() -> List[str]:
     supplied = system.browser_curl()
     if supplied is not None:
         return list(supplied)
-    return ["curl"]
+    return ["curl", "--http1.1"]
 
 
 def _curl(url: str,
@@ -150,8 +158,8 @@ def _curl(url: str,
     request. With *etag*, the request is conditional and a 304 comes back with
     an empty body.
     """
-    cmd = _curl_argv() + ["-sS", "--http1.1", "--compressed", "-A", UA,
-                          "--max-time", "20", "-w", "\n%header{etag}\n%{http_code}"]
+    cmd = _curl_argv() + ["-sS", "--compressed", "-A", UA, "--max-time", "20",
+                          "-w", "\n%header{etag}\n%{http_code}"]
     if etag:
         cmd += ["-H", f"If-None-Match: {etag}"]
     cmd.append(url)

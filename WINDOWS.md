@@ -81,6 +81,13 @@ is signed by its own publisher, so neither is ours to redistribute. Instead:
 - failing that, the app fetches them itself on first run (`tibbers/wintools.py`),
   into `%LOCALAPPDATA%\tibbers\tools` (writable, unlike Program Files).
 
+The same first-run fetch also brings in `curl-impersonate.exe` (lexiforest's
+statically linked build), which is how the build and counters pages read
+u.gg on Windows: the CDN refuses the system curl's TLS handshake, and most
+machines have no system curl anyway. It is fetched after the injection tools
+with no setup bar, retried a few times if GitHub is rate-limiting, and a miss
+only leaves the build pages empty until the next launch.
+
 The installer installs per-user into `%LOCALAPPDATA%\Programs\Tibbers`, adds a
 Start Menu entry, and offers a run-at-login tray launch. The skin library and
 preferences live in the data dir and survive an uninstall.

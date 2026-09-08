@@ -329,10 +329,17 @@ def main() -> int:
                 progress=lambda m, p=None: print(
                     m + (f"  {p}%" if p is not None else "")))
             print(f"injection tools installed in {where}")
-            return 0
         except Exception as exc:  # noqa: BLE001
             print(f"could not fetch injection tools: {exc}")
             return 1
+        # The build-data fetcher too, so the first launch has its build
+        # pages; a miss is not an install failure, the app retries at start.
+        try:
+            if wintools.ensure_browser_curl():
+                print("build-data fetcher installed")
+        except Exception as exc:  # noqa: BLE001
+            print(f"could not fetch the build-data fetcher: {exc}")
+        return 0
 
     if args.check_update:
         from tibbers import update
@@ -1391,13 +1398,22 @@ def main() -> int:
                                    "message": "could not download injection tools"}
                 state.say(f"could not download injection tools: {exc}")
 
-        # The build-data fetcher is separate and non-fatal: a miss just means
-        # the guide falls back to the system curl, which u.gg refuses on some
-        # machines. Fetched quietly after the injection tools, no setup bar.
-        try:
-            wintools.ensure_browser_curl(tools_dir)
-        except Exception as exc:  # noqa: BLE001
-            log.info("could not fetch the build-data fetcher: %s", exc)
+        # The build-data fetcher. On Windows it is the u.gg transport, not a
+        # spare: the CDN refuses the system curl's handshake, and most
+        # machines have no system curl at all, so without it the build and
+        # counters pages are empty. Still not injection-critical -- fetched
+        # after the injection tools, no setup bar, a failure costs only the
+        # guide -- but a failure is retried, since GitHub's API rate-limits
+        # by address and a shared connection can be over it for a while.
+        for wait in (0, 90, 600):
+            if wait:
+                time.sleep(wait)
+            try:
+                if wintools.ensure_browser_curl(tools_dir):
+                    break
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not fetch the build-data fetcher (%s); "
+                            "the build pages need it on Windows", exc)
 
     threading.Thread(target=provision_tools, daemon=True).start()
 

@@ -106,10 +106,12 @@ nothing tibbers computes or claims as its own:
 - **u.gg** (`ugg.py`) — Rift and ARAM builds, runes, and counters, from their
   static JSON CDN, over `curl`. The CDN's bot protection scores the TLS
   handshake, so `urllib` is refused outright and the system curl only passes
-  on a home connection; where its handshake scores badly (notably Windows)
-  the app runs a curl that presents a browser's (`system.browser_curl`). The
-  challenge is not deterministic, so a refused curl is retried before the
-  header sets are tried as a last resort.
+  on a home connection; where its handshake scores badly, or there is no
+  system curl at all (Windows, on both counts), the app fetches and runs a
+  curl that presents a browser's (`system.browser_curl`), with the flags it
+  came with: a browser speaks HTTP/2, and the HTTP/1.1 pin the system curl
+  needs undoes the disguise. The challenge is not deterministic, so a refused
+  curl is retried before the header sets are tried as a last resort.
 - **op.gg** (`opgg.py`) — Arena augments, items, and the champion tier list,
   from their public champion API.
 
