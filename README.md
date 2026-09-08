@@ -102,6 +102,11 @@ protected your PC" — click **More info → Run anyway**. tibbers installs for 
 user (no admin), lands in the system tray, and downloads its injection tools on
 first launch. Unlike macOS, applying a skin needs no password.
 
+Prefer no installer at all? Grab **[Tibbers-windows-portable.zip](https://github.com/JustTrott/tibbers/releases/latest/download/Tibbers-windows-portable.zip)**,
+unzip it anywhere (a USB stick works) and run `Tibbers.exe`. Everything it
+needs lives in a `Data` folder beside it, and nothing touches `%LOCALAPPDATA%`.
+A portable copy does not update itself: download a new zip when one is out.
+
 <details>
 <summary><b>Or build it from source</b></summary>
 
