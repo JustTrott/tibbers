@@ -244,6 +244,11 @@ def main() -> int:
     ap.add_argument("--allow-inject", action="store_true",
                     help="permit injection even with TIBBERS_HOME set, which "
                          "otherwise disables it")
+    ap.add_argument("--portable", action="store_true",
+                    help="keep the library, settings and tools in a Data "
+                         "folder beside the program, not in %LOCALAPPDATA% -- "
+                         "so an unzipped copy is fully portable (Windows). A "
+                         "`portable.txt` file next to the exe does the same.")
     ap.add_argument("--keep-patcher", action="store_true",
                     help="always leave the patcher running on exit, not only "
                          "when a game is in progress")
@@ -265,6 +270,23 @@ def main() -> int:
                     help="seed the UI with a real champion's skins so the "
                          "interface can be worked on outside champ select")
     args = ap.parse_args()
+
+    # Portable mode (Windows): everything beside the program, nothing in
+    # %LOCALAPPDATA%, no installer, no admin. It works by pointing
+    # TIBBERS_HOME at a Data folder next to the exe -- which also disables
+    # injection as a dev safety, so allow_inject is forced back on, and the
+    # updater's installer path is turned off (see update.installed_app). An
+    # explicit --home always wins. Triggered by --portable or a portable.txt
+    # marker beside the exe, the convention portable Windows apps use.
+    portable = False
+    if IS_WINDOWS and not args.home:
+        base = (Path(sys.executable) if getattr(sys, "frozen", False)
+                else Path(__file__)).resolve().parent
+        if args.portable or (base / "portable.txt").exists():
+            os.environ["TIBBERS_HOME"] = str(base / "Data")
+            os.environ["TIBBERS_PORTABLE"] = "1"
+            args.allow_inject = True
+            portable = True
 
     if args.home:
         # Before anything reads it: every path in the app derives from here.
@@ -288,6 +310,10 @@ def main() -> int:
         datefmt="%H:%M:%S",
         handlers=handlers,
     )
+
+    if portable:
+        log.info("portable mode -- data beside the app in %s",
+                 os.environ["TIBBERS_HOME"])
 
     if not (IS_MACOS or IS_WINDOWS):
         print("tibbers runs on macOS and Windows.")
