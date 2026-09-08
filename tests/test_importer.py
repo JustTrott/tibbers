@@ -364,38 +364,33 @@ class Writes(unittest.TestCase):
                                           ("PUT", "/lol-perks/v1/currentpage")])
         self.assertEqual(client.sent[1][2], 99)
 
-    def test_a_full_account_asks_before_it_deletes(self):
+    def test_a_full_account_takes_over_the_page_in_use(self):
+        """Written in place, under our name, so there is never a moment with
+        one page fewer -- and the next import finds it as ours."""
         client = FakeClient()
         out = self.importer_for(client).import_runes(a_build(), "Tristana")
-        self.assertFalse(out["ok"])
-        self.assertTrue(out["needsSlot"])
-        self.assertEqual([p["name"] for p in out["pages"]],
-                         ["Shyvana - Conqueror", "the best caitlyn runes",
-                          "Team Advisor"])
-        self.assertTrue(out["pages"][0]["current"])
-        self.assertEqual(client.sent, [], "nothing may be written unasked")
-
-    def test_a_named_page_is_deleted_only_once_confirmed(self):
-        client = FakeClient()
-        out = self.importer_for(client).import_runes(a_build(), "Tristana", 3)
+        self.assertTrue(out["ok"])
         self.assertEqual(out["how"], "replaced")
-        self.assertEqual(client.calls(), [("DELETE", "/lol-perks/v1/pages/3"),
-                                          ("POST", "/lol-perks/v1/pages"),
-                                          ("PUT", "/lol-perks/v1/currentpage")])
+        current = next(p for p in client.pages if p.get("current"))
+        self.assertEqual(client.calls(),
+                         [("PUT", f"/lol-perks/v1/pages/{current['id']}"),
+                          ("PUT", "/lol-perks/v1/currentpage")])
+        self.assertEqual(client.sent[0][2]["name"], "Tibbers: Tristana")
+        self.assertEqual(client.sent[1][2], current["id"])
 
-    def test_an_undeletable_page_is_refused(self):
+    def test_with_nothing_in_use_the_first_editable_page_is_taken(self):
         client = FakeClient(pages=[
             {"id": 1, "name": "a", "isDeletable": False},
             {"id": 2, "name": "b", "isDeletable": True},
             {"id": 3, "name": "c", "isDeletable": True}])
-        out = self.importer_for(client).import_runes(a_build(), "Tristana", 1)
-        self.assertFalse(out["ok"])
-        self.assertEqual(client.sent, [])
+        out = self.importer_for(client).import_runes(a_build(), "Tristana")
+        self.assertEqual(out["how"], "replaced")
+        self.assertEqual(client.calls()[0], ("PUT", "/lol-perks/v1/pages/2"))
 
-    def test_a_page_that_vanished_is_refused(self):
-        client = FakeClient()
-        out = self.importer_for(client).import_runes(a_build(), "Tristana", 404)
-        self.assertEqual(out["error"], "that rune page is gone")
+    def test_an_account_with_no_editable_page_is_refused(self):
+        client = FakeClient(pages=[{"id": 1, "name": "a", "isDeletable": False}])
+        out = self.importer_for(client).import_runes(a_build(), "Tristana")
+        self.assertFalse(out["ok"])
         self.assertEqual(client.sent, [])
 
     def test_spells_are_patched_onto_the_keys_already_in_use(self):

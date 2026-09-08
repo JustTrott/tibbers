@@ -16,11 +16,10 @@ other page and every other set is left alone -- the item set list is written
 back whole, with the other sets carried across unchanged, because the endpoint
 takes the whole list and a partial write would delete them.
 
-An account with all three rune slots full cannot be given a fourth, and the
-only way to make room is to delete one of the player's own pages. That is
-never done on our own initiative: the caller is told ``needsSlot`` and has to
-come back naming the page to replace. Auto-import stops there and never asks
-again, because a prompt nobody is looking at is not consent.
+An account with all three rune slots full cannot be given a fourth. Then the
+page in use is taken over -- written in place under Tibbers' name -- rather
+than the import stopping to ask which page to lose. It used to ask; nobody
+wanted the question, and a rune page is a minute's work to make again.
 
 The payload builders are plain functions over the resolved guide -- the same
 dict the picker renders -- so what gets sent can be tested without a client.
@@ -377,8 +376,7 @@ class Importer:
 
     # -- runes -------------------------------------------------------------
 
-    def import_runes(self, build: dict, champion_name: str,
-                     replace_page_id: Optional[int] = None) -> dict:
+    def import_runes(self, build: dict, champion_name: str) -> dict:
         client = self.get_lcu()
         if client is None:
             return {"ok": False, "error": "the League client is not running"}
@@ -409,27 +407,23 @@ class Importer:
             return self._make_current(client, int(mine["id"]), page["name"], "updated")
 
         inventory = client.get("/lol-perks/v1/inventory") or {}
-        if replace_page_id is None and not inventory.get("canAddCustomPage"):
-            # Every slot is the player's. Which one to lose is their call and
-            # nobody else's, so the answer is a question, not a deletion.
-            return {"ok": False, "needsSlot": True,
-                    "error": "all three rune pages are in use",
-                    "pages": [describe_page(p) for p in pages if p.get("isDeletable")]}
-
-        how = "created"
-        if replace_page_id is not None:
-            target = next((p for p in pages
-                           if int(p.get("id", 0)) == int(replace_page_id)), None)
-            if target is None:
-                return {"ok": False, "error": "that rune page is gone"}
-            if not target.get("isDeletable"):
-                return {"ok": False, "error": f"{target.get('name')} cannot be deleted"}
-            status, body = self._send(
-                client, "DELETE", f"/lol-perks/v1/pages/{int(replace_page_id)}")
+        if not inventory.get("canAddCustomPage"):
+            # Every slot is the player's: take over one of them. The page in
+            # use is the pick -- it is what the other importers overwrite,
+            # and the one least likely to be kept for another champion --
+            # and it is written in place rather than deleted and remade, so
+            # there is never a moment with one page fewer.
+            editable = [p for p in pages if p.get("isDeletable")]
+            if not editable:
+                return {"ok": False, "error": "no rune page can be replaced"}
+            target = next((p for p in editable if p.get("current")), editable[0])
+            status, body = self._send(client, "PUT",
+                                      f"/lol-perks/v1/pages/{int(target['id'])}", page)
             if not _ok(status):
                 return {"ok": False, "error": _why(status, body)}
-            self.say(f"replaced rune page {target.get('name')!r}")
-            how = "replaced"
+            self.say(f"took over rune page {target.get('name')!r}")
+            return self._make_current(client, int(target["id"]), page["name"],
+                                      "replaced")
 
         status, body = self._send(client, "POST", "/lol-perks/v1/pages", page)
         if not _ok(status):
@@ -441,7 +435,7 @@ class Importer:
             # its name -- which is the one thing about it we chose.
             made = client.get("/lol-perks/v1/pages") or []
             new_id = next((p.get("id") for p in made if owns_page(p)), None)
-        return self._make_current(client, new_id, page["name"], how)
+        return self._make_current(client, new_id, page["name"], "created")
 
     def _make_current(self, client, page_id, name: str, how: str) -> dict:
         result = {"ok": True, "name": name, "how": how, "id": page_id}
@@ -526,8 +520,7 @@ class Importer:
     def run(self, build: dict, champion_id: int, champion_name: str,
             what: str = "all", kind: Optional[str] = None,
             map_id: Optional[int] = None, arena: bool = False,
-            spells: bool = True,
-            replace_page_id: Optional[int] = None) -> dict:
+            spells: bool = True) -> dict:
         """Import the build, and say in one result what reached the client."""
         wants = {"runes": what in ("all", "runes"),
                  "spells": what in ("all", "spells") and spells and not arena,
@@ -541,14 +534,11 @@ class Importer:
         failed: List[str] = []
 
         if wants["runes"]:
-            out["runes"] = self.import_runes(build, champion_name, replace_page_id)
+            out["runes"] = self.import_runes(build, champion_name)
             if out["runes"].get("ok"):
                 out["done"].append(out["runes"]["name"])
             else:
                 failed.append("runes")
-                if out["runes"].get("needsSlot"):
-                    out["needsSlot"] = True
-                    out["pages"] = out["runes"]["pages"]
 
         if wants["spells"]:
             out["spells"] = self.import_spells(build)
@@ -577,15 +567,6 @@ class Importer:
         self.say(("would import " if self.dry_run else "imported ") + summary
                  + (f" -- {out['error']}" if out.get("error") else ""))
         return out
-
-
-def describe_page(page: dict) -> dict:
-    """One rune page, as little of it as the chooser needs to be read."""
-    keystone = page.get("pageKeystone") or {}
-    return {"id": page.get("id"), "name": page.get("name") or "",
-            "current": bool(page.get("current")),
-            "keystone": keystone.get("name") or "",
-            "championId": page.get("recommendationChampionId") or None}
 
 
 def _summarise(body: Any) -> str:
