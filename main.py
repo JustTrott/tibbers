@@ -292,7 +292,7 @@ def main() -> int:
                          "otherwise disables it")
     ap.add_argument("--portable", action="store_true",
                     help="keep the library, settings and tools in a Data "
-                         "folder beside the program, not in %LOCALAPPDATA% -- "
+                         "folder beside the program, not in %%LOCALAPPDATA%% -- "
                          "so an unzipped copy is fully portable (Windows). A "
                          "`portable.txt` file next to the exe does the same.")
     ap.add_argument("--keep-patcher", action="store_true",
