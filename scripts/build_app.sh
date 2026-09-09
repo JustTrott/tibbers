@@ -305,6 +305,14 @@ BG
         # by mistake.
         MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen "$RW_DMG" \
                  | awk -F'\t' '/\/Volumes\//{print $NF}')"
+        # hdiutil returns before Finder has registered the volume; scripting
+        # it in that gap fails with "Can't get disk". Wait until Finder sees it.
+        for _ in $(seq 1 40); do
+            if [[ "$(osascript -e "tell application \"Finder\" to exists disk \"$(basename "$MOUNT")\"")" == "true" ]]; then
+                break
+            fi
+            sleep 0.25
+        done
         # Finder lays the window out and writes .DS_Store on close.
         osascript - "$(basename "$MOUNT")" >/dev/null <<'AS'
 on run argv
