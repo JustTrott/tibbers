@@ -241,14 +241,24 @@ if [[ $PACKAGE -eq 1 ]]; then
     DIST="${REPO_ROOT}/dist"
     echo "==> Packaging"
     rm -f "${DIST}/Tibbers.zip" "${DIST}/Tibbers.dmg"
-    ditto -c -k --keepParent "$APP" "${DIST}/Tibbers.zip"
-    echo "    ${DIST}/Tibbers.zip"
 
+    # The shebang is an absolute path, and the copy in dist/ names dist/'s
+    # own interpreter. Shipped like that, the app fails to launch on any
+    # other machine ("bad interpreter"), and on this one it runs dist/'s
+    # python under /Applications' identity, which is exactly the mismatch
+    # that costs the menu bar item. The packaged copy names the interpreter
+    # where the disk image tells people to put it and where the updater
+    # keeps it: /Applications/Tibbers.app.
     STAGE="$(mktemp -d)"
     RW_DMG="${STAGE}.rw.dmg"
     MOUNT=""
     trap '[[ -n "$MOUNT" ]] && hdiutil detach -quiet "$MOUNT" 2>/dev/null; rm -rf "$STAGE" "$RW_DMG"' EXIT
     cp -R "$APP" "${STAGE}/"
+    write_launcher "${STAGE}/Tibbers.app" "/Applications/Tibbers.app/Contents/MacOS/python"
+    codesign --force --deep --sign - "${STAGE}/Tibbers.app" >/dev/null 2>&1 || true
+
+    ditto -c -k --keepParent "${STAGE}/Tibbers.app" "${DIST}/Tibbers.zip"
+    echo "    ${DIST}/Tibbers.zip"
     ln -s /Applications "${STAGE}/Applications"
 
     # The window people see when they open the image: the app on the left,
