@@ -206,7 +206,7 @@ tibbers/shell.py        menu bar item, settings window, picker window
 tibbers/prefs.py        settings, remembered picks, window geometry
 tibbers/mock.py         a scriptable stand-in for the League client
 tibbers/static/         the picker UI, the settings page, the mock client
-scripts/                dev, phase, deploy, build, fetch_modtools
+scripts/                dev, phase, deploy, build, fetch_modtools, fetch_python
 tests/                  payload builders  (python -m unittest discover tests)
 ```
 

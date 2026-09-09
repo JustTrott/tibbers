@@ -74,56 +74,42 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# The framework's GUI interpreter, copied INTO the bundle.
+# The interpreter, INSIDE the bundle.
 #
-# This is what makes the bundle mean anything. A venv's `python` re-execs
-# itself through Python.app to get GUI access, so the running executable ends
-# up outside this bundle and NSBundle.mainBundle() resolves to Python.app --
-# at which point CFBundleName, the icon and LSUIElement here are all read from
-# Python's plist instead of ours, and the app is called "Python" with a rocket
-# for an icon. Running an interpreter that already lives in Contents/MacOS is
-# what makes macOS treat this as the app it says it is.
+# Two things have to hold. The executable that runs must live in this
+# bundle, or NSBundle.mainBundle() resolves to whatever bundle it does live
+# in and CFBundleName, the icon and LSUIElement above are read from that
+# plist instead of ours. And nothing it loads may live outside the bundle,
+# or the app runs on the building machine and nowhere else -- which is what
+# happened while Contents/MacOS/python was Homebrew's framework stub, a
+# 50 KB binary linking /opt/homebrew/.../Python.framework by absolute path.
 #
-# The finder is a function rather than a heredoc inside $( ). Bash 3.2 -- which
-# is what /bin/bash still is on macOS -- does not understand heredocs inside a
-# command substitution: it scans the region for the closing paren as plain
-# text, and an apostrophe in a later comment then ends the file in the middle
-# of a quote it never opened. The script parsed under Homebrew's bash 5 and
-# failed with "unexpected EOF" for anyone who ran it by its shebang.
-find_gui_python() {
-    "${REPO_ROOT}/.venv/bin/python" - <<'FIND'
-import os, sys
-# Walk up from the real interpreter looking for the framework's GUI stub at
-# .../Versions/3.x/Resources/Python.app/Contents/MacOS/Python. Searching beats
-# counting directories, which differs between framework and non-framework
-# builds.
-tail = os.path.join("Resources", "Python.app", "Contents", "MacOS", "Python")
-here = os.path.realpath(sys.executable)
-found = ""
-while True:
-    parent = os.path.dirname(here)
-    if parent == here:
-        break
-    here = parent
-    candidate = os.path.join(here, tail)
-    if os.path.exists(candidate):
-        found = candidate
-        break
-print(found)
-FIND
-}
-GUI_PYTHON="$(find_gui_python)"
+# So the runtime is python-build-standalone's relocatable CPython, fetched by
+# scripts/fetch_python.sh into runtime/python: one statically linked
+# executable and its standard library, copied whole into
+# Contents/Resources/python. Contents/MacOS/python is a symlink to that
+# executable. The kernel execs it through the symlink, so the process's
+# executable path stays inside Contents/MacOS and the bundle identity holds,
+# while Python resolves its own prefix from the real path and finds the
+# standard library beside it.
+RUNTIME="${REPO_ROOT}/runtime/python"
+if [[ ! -x "${RUNTIME}/bin/python3.14" ]]; then
+    echo "No bundled runtime at runtime/python -- run scripts/fetch_python.sh first." >&2
+    exit 1
+fi
+RUNTIME_MINOR="$("${RUNTIME}/bin/python3.14" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+VENV_MINOR="$("${REPO_ROOT}/.venv/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+if [[ "$RUNTIME_MINOR" != "$VENV_MINOR" ]]; then
+    echo "runtime/python is ${RUNTIME_MINOR} but .venv is ${VENV_MINOR}; the venv's compiled" >&2
+    echo "packages are built for its own minor version. Recreate one to match the other." >&2
+    exit 1
+fi
 
 SITE_PACKAGES="$("${REPO_ROOT}/.venv/bin/python" -c 'import site; print(site.getsitepackages()[0])')"
 
-if [[ -n "$GUI_PYTHON" ]]; then
-    cp "$GUI_PYTHON" "${APP}/Contents/MacOS/python"
-    PY_CMD='"${HERE}/python"'
-else
-    echo "    note: no framework GUI interpreter found; falling back to the venv" >&2
-    echo "          (the app will report itself as Python)" >&2
-    PY_CMD="\"${REPO_ROOT}/.venv/bin/python\""
-fi
+echo "==> Copying the Python runtime into the bundle"
+rsync -a --exclude '__pycache__' "${RUNTIME}/" "${APP}/Contents/Resources/python/"
+ln -s "../Resources/python/bin/python3.14" "${APP}/Contents/MacOS/python"
 
 # The application payload, copied in.
 #
@@ -184,11 +170,7 @@ LAUNCHER
     chmod +x "${app}/Contents/MacOS/Tibbers"
 }
 
-if [[ -n "$GUI_PYTHON" ]]; then
-    write_launcher "$APP" "${APP}/Contents/MacOS/python"
-else
-    write_launcher "$APP" "${REPO_ROOT}/.venv/bin/python"
-fi
+write_launcher "$APP" "${APP}/Contents/MacOS/python"
 
 # The Tibbers icon, upscaled into an iconset. Riot only ships it at 64x64, so
 # the large Dock sizes are resampled; the menu bar uses the original.
@@ -228,6 +210,10 @@ with tempfile.TemporaryDirectory() as tmp:
 ICON
 
 # Ad-hoc signature: unsigned bundles are refused outright on Apple Silicon.
+# --deep does not descend into Resources, so the runtime's executable and
+# extension modules are signed by name first.
+codesign --force --sign - "${APP}/Contents/Resources/python/bin/python3.14" >/dev/null 2>&1 || true
+find "${APP}/Contents/Resources/python/lib" -name '*.so' -exec codesign --force --sign - {} \; >/dev/null 2>&1 || true
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 
 echo "    built: ${APP}"

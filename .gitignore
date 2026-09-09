@@ -10,6 +10,8 @@ tools/mod-tools.exe
 tools/cslol-dll.dll
 tools/ltk_patcher_host.exe
 tools/ltk_patcher_dll.dll
+# Fetched by scripts/fetch_python.sh: the CPython that ships inside Tibbers.app
+runtime/
 
 # Built app bundles: macOS scripts/build_app.sh, Windows scripts/build_windows.ps1
 dist/
