@@ -707,17 +707,25 @@
      one, measured the short way round, so the base skin sits in the middle
      with the newest skins to its left and the oldest to its right -- the
      way the client's own carousel reads -- and stepping off either end
-     comes round the other side. Each tile keeps its element; only `left`
-     moves, so nothing is re-decoded on a step. */
-  .track { position: relative; height: calc(var(--tile-w) * 560 / 308 + 2px); }
+     comes round the other side. Each tile keeps its element; only its slot
+     on the ring moves, so nothing is re-decoded on a step.
+
+     The step itself is one transform on the track. Nothing about a tile is
+     animated by the step: the tiles stand still on the ring and the ring
+     turns under them, so the rail can only ever move as one piece, at one
+     speed, however many tiles it carries. Giving each tile its own `left`
+     transition instead made the rail fan out of its own centre the moment
+     it was drawn -- every tile travelling a different distance in the same
+     340ms -- and left the one wrapping tile as the only thing on screen
+     out of step with the rest. */
+  .track { position: relative; height: calc(var(--tile-w) * 560 / 308 + 2px);
+           will-change: transform; transition: transform 340ms var(--inout); }
 
   .tile { position: absolute; top: 0; left: 50%; width: var(--tile-w); padding: 0;
           margin-left: calc(var(--tile-w) / -2);
           border: 1px solid transparent; background: var(--raised); cursor: pointer;
           overflow: hidden;
-          transition: left 340ms var(--inout), border-color 160ms ease,
-                      transform 160ms ease; }
-  .tile.wrap { transition: border-color 160ms ease, transform 160ms ease; }
+          transition: border-color 160ms ease, transform 160ms ease; }
   /* The rise is a one-shot for a freshly built rail. A CSS animation restarts
      every time its element comes back from display:none, so it must not live
      on the tile itself or every return to this tab replays the whole
@@ -1642,7 +1650,8 @@ function renderRail() {
   const sig = list.map(k => k.id).join(',');
 
   const ok = k => k.available || isBase(k);
-  if (sig !== RAIL_SIG) {
+  const fresh = sig !== RAIL_SIG;
+  if (fresh) {
     /* A new set of tiles: drawn once, in this order, for the rest of this
        champion's time on screen. */
     RAIL_SIG = sig;
@@ -1668,14 +1677,31 @@ function renderRail() {
       el.disabled = !ok(k);
     }
   }
-  mark();
+  /* A rail drawn from scratch has no ring to turn yet: it is placed, not
+     stepped, or its tiles would fan out of the middle on their way to their
+     slots -- the one motion the rail must never make. */
+  mark(fresh);
 }
 
 /* Place every tile by its signed distance from the chosen one, the short way
-   round the ring. Exactly one tile crosses from one end to the other on a
-   step; it is moved without a transition, so it does not fly across the
-   viewport behind the others. */
-function mark() {
+   round the ring -- and then turn the ring, rather than move the tiles.
+
+   Each tile sits at a slot on a line of slots that runs on for as long as
+   the ring is turned, and the track is slid so that the chosen tile's slot
+   is in the middle. A step of one changes the middle by one slot, which
+   leaves every tile exactly where it was and moves the whole track by one
+   stride: one transition, on one element, so the rail cannot come apart --
+   every tile travels the same distance, in the same time, on the same
+   curve, whatever the step and however many tiles there are.
+
+   Exactly one tile is left behind by a step, and it comes round: its slot
+   moves by a whole ring, a jump made through `left`, which nothing
+   transitions. It happens half a ring from the middle -- past the end of
+   the viewport for any champion whose skins outnumber the tiles on screen,
+   so the eye never catches it. */
+let SPIN = null, STRIDE = 0;
+
+function mark(place) {
   const track = $('track');
   const tiles = [...track.querySelectorAll('.tile')];
   const n = tiles.length;
@@ -1686,16 +1712,32 @@ function mark() {
   const stride = w + gap;
   let at = tiles.findIndex(el => parseInt(el.dataset.skin, 10) === SEL);
   if (at < 0) at = 0;
+  /* A rail that has just been drawn, or one whose tiles have changed size
+     under a breakpoint, is put where it belongs instead of sliding there
+     from wherever the last one stood. */
+  const settle = place === true || SPIN === null || stride !== STRIDE;
+  STRIDE = stride;
+  /* SPIN is the chosen tile's slot: `at` with the turns of the ring counted
+     in, moved the short way round, so a step is one stride even when it was
+     the step that came round the end. */
+  if (settle) SPIN = at;
+  else {
+    const turn = (((at - SPIN) % n) + n) % n;
+    SPIN += turn > n / 2 ? turn - n : turn;
+  }
   tiles.forEach((el, i) => {
     el.setAttribute('aria-current', String(i === at));
     let d = i - at;
     if (d > n / 2) d -= n;
     if (d <= -n / 2) d += n;
-    const was = el.dataset.d === undefined ? d : parseInt(el.dataset.d, 10);
-    el.dataset.d = d;
-    el.classList.toggle('wrap', Math.abs(d - was) > n / 2);
-    el.style.left = `calc(50% + ${d * stride}px)`;
+    el.style.left = `calc(50% + ${(SPIN + d) * stride}px)`;
   });
+  if (settle) track.style.transition = 'none';
+  track.style.transform = `translateX(${-SPIN * stride}px)`;
+  /* Read the layout back, so the placement above is the track's settled
+     position and the next step is a step away from it and not a slide in
+     from wherever the tiles were drawn. */
+  if (settle) { void track.offsetWidth; track.style.transition = ''; }
   const few = usable().length < 2;
   $('prev').disabled = few;
   $('next').disabled = few;
@@ -1817,8 +1859,9 @@ function showView(name) {
   }
   placeRail();
   // The rail measures nothing while display:none, so the selected tile is
-  // centred again once it is back on screen.
-  if (changed && name === 'skin') requestAnimationFrame(mark);
+  // put back in the middle once it is on screen again -- put, not slid: a
+  // tab is not a step.
+  if (changed && name === 'skin') requestAnimationFrame(() => mark(true));
   if (changed) {
     // Replay the incoming view's entrance, which is otherwise a one-shot on
     // load. Only the incoming one: restarting the outgoing view's animation
