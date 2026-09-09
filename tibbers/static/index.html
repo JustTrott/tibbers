@@ -1699,7 +1699,7 @@ function renderRail() {
    transitions. It happens half a ring from the middle -- past the end of
    the viewport for any champion whose skins outnumber the tiles on screen,
    so the eye never catches it. */
-let SPIN = null, STRIDE = 0;
+let SPIN = null, STRIDE = 0, FITS = null;
 
 function mark(place) {
   const track = $('track');
@@ -1715,12 +1715,17 @@ function mark(place) {
   /* A rail that has just been drawn, or one whose tiles have changed size
      under a breakpoint, is put where it belongs instead of sliding there
      from wherever the last one stood. */
-  const settle = place === true || SPIN === null || stride !== STRIDE;
-  STRIDE = stride;
+  /* When every tile is on screen at once there is nothing to scroll to:
+     the strip stands still, centred, and only the highlight moves. A ring
+     that turns to bring a tile the eye already has to the middle reads as
+     motion for its own sake, and on a short ring the wrap is in view. */
+  const fits = n * stride - gap <= $('viewport').clientWidth;
+  const settle = place === true || SPIN === null || stride !== STRIDE || fits !== FITS;
+  STRIDE = stride; FITS = fits;
   /* SPIN is the chosen tile's slot: `at` with the turns of the ring counted
      in, moved the short way round, so a step is one stride even when it was
      the step that came round the end. */
-  if (settle) SPIN = at;
+  if (fits || settle) SPIN = fits ? 0 : at;
   else {
     const turn = (((at - SPIN) % n) + n) % n;
     SPIN += turn > n / 2 ? turn - n : turn;
@@ -1730,10 +1735,11 @@ function mark(place) {
     let d = i - at;
     if (d > n / 2) d -= n;
     if (d <= -n / 2) d += n;
-    el.style.left = `calc(50% + ${(SPIN + d) * stride}px)`;
+    el.style.left = fits ? `calc(50% + ${(i - (n - 1) / 2) * stride}px)`
+                         : `calc(50% + ${(SPIN + d) * stride}px)`;
   });
   if (settle) track.style.transition = 'none';
-  track.style.transform = `translateX(${-SPIN * stride}px)`;
+  track.style.transform = fits ? 'none' : `translateX(${-SPIN * stride}px)`;
   /* Read the layout back, so the placement above is the track's settled
      position and the next step is a step away from it and not a slide in
      from wherever the tiles were drawn. */
