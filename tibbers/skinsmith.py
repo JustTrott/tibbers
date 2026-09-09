@@ -24,7 +24,11 @@ seeded with before any of it was built here:
 5. Replace the linked-file list with the mod signature plus
    `DATA/Characters/<C>/Skins/Skin<N>.bin`, which is what makes the two-entry
    file delegate to the real skin instead of describing it.
-6. Emit that as `data/characters/<c>/skins/skin0.bin` inside a WAD, and zip
+6. For a skin that has stages -- one carrying `skinUpgradeData` -- link its
+   view controller as well. That file lives in the client's `UI.wad.client`
+   and nothing in the champion's archive names it, so the overlay is the only
+   place it can be asked for; see `view_controller`.
+7. Emit that as `data/characters/<c>/skins/skin0.bin` inside a WAD, and zip
    the WAD up as `<skinId>.fantome`.
 
 Some champions are several characters. Shyvana's dragon, Fizz's shark, the ten
@@ -89,7 +93,9 @@ class Unsupported(SkinsmithError):
 #: 3: the skin0 overlay names the base skin (`championSkinName`) rather than
 #:    the numbered skin it delegates to, so a patcher that verifies the base
 #:    slot accepts it. Bytes differ from a v2 mod, so v2 mods are rebuilt.
-GENERATOR = 3
+#: 4: a staged skin's overlay links its view controller, without which the
+#:    UI that switches between the stages is never loaded.
+GENERATOR = 4
 
 #: Written beside each generated mod. Names the archive it came out of, so a
 #: patch that rewrites that archive is detectable, and marks the mod as ours
@@ -99,10 +105,20 @@ SIDECAR = ".source.json"
 CHAMPIONS = "DATA/FINAL/Champions"
 WAD_SUFFIX = ".wad.client"
 
+#: Where the client keeps per-skin interface files, the view controllers among
+#: them. It sits beside `Champions`, not inside it, and holds every champion's,
+#: so it is opened once and kept.
+UI_ARCHIVE = "DATA/FINAL/UI.wad.client"
+
 SKIN_CLASS = 0x9B67E9F6      # SkinCharacterDataProperties
 RESOLVER_CLASS = 0xEF3A0F33  # ResourceResolver
 SKIN_CLASSIFICATION = fnv1a32("skinClassification")     # 0x87225880
 CLASSIFICATION_CHROMA, CLASSIFICATION_SKIN = 2, 1
+
+#: Carried only by a skin that has stages to move between -- the Exalted
+#: skins and their kin. It is what tells a view controller apart from the
+#: handful of ordinary skins that also happen to have one.
+SKIN_UPGRADE_DATA = fnv1a32("skinUpgradeData")          # 0x68F2B69C
 
 #: The three fields the second convention rewrites. `objectPath` repeats the
 #: entry's own name as a hash, `mResourceResolver` is the link from the skin to
@@ -125,6 +141,12 @@ CHAMPION_SKIN_NAME = fnv1a32("championSkinName")        # 0x2D78C328
 #: 1,546-mod library it matches one mod and breaks the other 1,525, so it must
 #: never be applied on a hunch. `tests/test_skinsmith.py` asserts the identity
 #: for every id named here.
+#:
+#: Re-checked on 2026-09-09 against every reference mod at patch 16.17: the one
+#: this convention was measured against has since been replaced by a hand-made
+#: one, so nothing reproduces these bytes any more. Left as it stands because
+#: both spellings serve the same broken staged skin and there is no evidence
+#: either way; it is a list with a dead reference behind it, not a rule.
 SECOND_CONVENTION = frozenset({
     103085,     # Risen Legend Ahri
 })
@@ -237,6 +259,61 @@ def champion_wad(key: str) -> Path:
 def skin_number(skin_id: int) -> int:
     """The skin's number within its champion. Ids are champion * 1000 + n."""
     return int(skin_id) % 1000
+
+
+_UI_LOCK = threading.Lock()
+_UI_ENTRIES: Optional[frozenset] = None
+_UI_FOR: Optional[Path] = None
+
+
+def ui_archive() -> Optional[Path]:
+    game, _client = system.find_install()
+    if game is None:
+        return None
+    path = game / UI_ARCHIVE
+    return path if path.is_file() else None
+
+
+def _ui_entries() -> frozenset:
+    """Every path hash in the UI archive, read once and kept.
+
+    Only the table of contents is read, so this costs no more than opening the
+    file. An unreadable archive answers with nothing, which reads as "no skin
+    has a view controller" -- the same mod as before this rule existed.
+    """
+    global _UI_ENTRIES, _UI_FOR
+    path = ui_archive()
+    if path is None:
+        return frozenset()
+    with _UI_LOCK:
+        if _UI_FOR == path and _UI_ENTRIES is not None:
+            return _UI_ENTRIES
+    try:
+        with Wad(path) as archive:
+            found = frozenset(archive.entries)
+    except (WadError, OSError) as exc:
+        log.debug("cannot read %s: %s", path, exc)
+        found = frozenset()
+    with _UI_LOCK:
+        _UI_ENTRIES, _UI_FOR = found, path
+    return found
+
+
+def view_controller(character: str, number: int) -> Optional[str]:
+    """The line linking this skin's view controller, or None if it has none.
+
+    A skin with stages carries the panel that switches between them in the
+    client's UI archive, under a name derived from the character and the skin
+    number. The champion's own archive never mentions it -- not in the skin's
+    linked list, and not anywhere the linked list reaches -- so a skin0 overlay
+    that does not name it is the reason it would go unloaded.
+
+    Thirteen skins in the install have one. `rewrite` links it only for those
+    that also carry `skinUpgradeData`, which is the nine it was meant for; the
+    other four are ordinary skins whose mods are right as they are.
+    """
+    line = f"gameplay.{character}skin{number}viewcontroller.bin"
+    return line if xxh64_path(line) in _ui_entries() else None
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +491,8 @@ class Bin:
 def rewrite(source: Bin, character: str, number: int, spelled: str,
             signature: Sequence[str] = SIGNATURE,
             second: bool = False,
-            base_name: Optional[str] = None) -> Optional[bytes]:
+            base_name: Optional[str] = None,
+            view_controller: Optional[str] = None) -> Optional[bytes]:
     """One character's `skin<N>.bin`, rewritten as its `skin0.bin`.
 
     *second* selects the second convention -- see `SECOND_CONVENTION`, and
@@ -429,6 +507,12 @@ def rewrite(source: Bin, character: str, number: int, spelled: str,
     (None) reproduces the repository bytes exactly. Ignored under *second*,
     which sets the name itself.
 
+    *view_controller*, when given, is the line `view_controller()` found for
+    this character and skin. It is linked only if the skin turns out to have
+    stages to switch between -- a `skinUpgradeData` on the kept skin entry --
+    because the four ordinary skins that also own a view controller are served
+    correctly without it and their mods should not change.
+
     None when this character has nothing to say about the skin, which is the
     ordinary answer for a sub-character that only exists in some skins.
     """
@@ -439,8 +523,10 @@ def rewrite(source: Bin, character: str, number: int, spelled: str,
     into_resources = fnv1a32(f"characters/{character}/skins/skin0/resources")
 
     kept: List[Tuple[int, bytes]] = []
+    staged = False
     for entry in source.entries:
         if entry.hash == want_root and entry.cls == SKIN_CLASS:
+            staged = any(f.name == SKIN_UPGRADE_DATA for f in entry.fields)
             body = bytearray(source.body(entry))
             struct.pack_into("<I", body, 4, into_root)
             # Both of these leave every offset where it was, so the second
@@ -475,6 +561,8 @@ def rewrite(source: Bin, character: str, number: int, spelled: str,
     else:
         linked = list(signature) + [
             f"DATA/Characters/{spelled}/Skins/Skin{number}.bin"]
+    if staged and view_controller:
+        linked.append(view_controller)
     out = bytearray(b"PROP" + struct.pack("<I", source.version))
     out += struct.pack("<I", len(linked))
     for line in linked:
@@ -816,7 +904,8 @@ def generate(champion_key: str, skin_id: int, dest_path) -> GenerateResult:
             # is read from the install rather than guessed.
             base_name = _base_skin_name(archive, character)
             built = rewrite(parsed, character, number, spelled,
-                            second=second, base_name=base_name)
+                            second=second, base_name=base_name,
+                            view_controller=view_controller(character, number))
             if built is not None:
                 pieces.append((
                     xxh64_path(f"data/characters/{character}/skins/skin0.bin"),
