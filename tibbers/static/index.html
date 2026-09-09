@@ -363,6 +363,12 @@
   .tn.dim { color: var(--ink-mid); font-weight: 400; }
   .tn.rank { width: 26px; text-align: right; color: var(--ink-low);
              font-size: 10.5px; }
+  /* Mayhem trades Arena's two rate columns for one that says whose ranking
+     the letter is. Words, not a figure, so it is set in the reading face and
+     given room rather than squeezed into a number column. The heading keeps
+     the column style every other heading has. */
+  .tn.wide { width: 96px; text-align: left; }
+  .trow .tn.wide { font: 10.5px/1.35 "Beaufort", Georgia, serif; }
   /* the champion being hovered, found at its own rank in the tier list */
   .trow.me { box-shadow: inset 0 0 0 1px var(--gold-d); }
   .trow.me .tnm { color: var(--gold-b); }
@@ -405,6 +411,9 @@
   /* runes, drawn as the tree they belong to */
   .split { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px;
            align-items: start; }
+  /* A mode with no rune selection leaves one block behind, and the runes'
+     column would otherwise hold its width empty. */
+  .split.solo { grid-template-columns: minmax(0, 1fr); }
   .split .block + .block { margin-top: 0; }
   .trees { display: flex; gap: 10px; align-items: flex-start; }
   .tree { display: flex; flex-direction: column; gap: 5px; }
@@ -1019,8 +1028,11 @@ const T = {
     'tab.tiers': 'Tier list', 'tab.augments': 'Augments', 'tab.items': 'Items',
     'stamp.borrowed': 'borrowed',
     'stamp.title': '{label} has no data of its own; these are {src} numbers.',
+    'stamp.title.build': 'The build for {label} is read from {src}.'
+      + ' Its augments are its own.',
     'src.aram': 'ARAM', 'src.rift': "Summoner's Rift",
     'credit': 'numbers from {name}',
+    'credit.ranking': 'ranking from {name}',
     'credit.title': 'Open the {name} page these numbers come from',
     'reading': 'Reading {what}…',
     'subj.build': 'the build', 'subj.tiers': 'the tier list', 'subj.augments': 'the augments',
@@ -1053,6 +1065,15 @@ const T = {
     'aug.title': '{name} — {rarity}, {games}, finishes {fin} against a {rarity} average of {base}',
     'aug.fewgames': 'too few games to rate', 'aug.own': 'its own rarity',
     'aug.none': 'No augment data', 'aug.none.text': 'op.gg had nothing for this champion.',
+    'th.rankedfor': 'Ranked for',
+    'maug.mine': 'this champion', 'maug.pool': 'all champions',
+    'maug.mine.long': 'ranked for this champion',
+    'maug.pool.long': 'ranked across all champions, not for this one',
+    'maug.title': '{name} — {rarity}, {scope}',
+    'maug.none.text': 'u.gg had nothing for this champion.',
+    'maug.note': 'Tier is u.gg’s ranking on patch {patch}. It ranks'
+      + ' <b>{mine}</b> augments for this champion; the other <b>{n}</b> carry'
+      + ' the whole mode’s ranking instead, and say so.',
     'aug.note': 'Tier is average finish against the same rarity for this champion, so it'
       + ' means <b>best among {pool}</b>, not best in the game. Under <b>50</b> games the'
       + ' count is shown instead of a letter.',
@@ -1114,8 +1135,11 @@ const T = {
     'tab.tiers': 'Тир-лист', 'tab.augments': 'Аугменты', 'tab.items': 'Предметы',
     'stamp.borrowed': 'заимствовано',
     'stamp.title': 'У режима {label} нет собственных данных; это цифры {src}.',
+    'stamp.title.build': 'Сборка для режима {label} взята из {src}.'
+      + ' Аугменты — собственные.',
     'src.aram': 'ARAM', 'src.rift': 'Ущелья призывателей',
     'credit': 'цифры с {name}',
+    'credit.ranking': 'рейтинг с {name}',
     'credit.title': 'Открыть страницу {name}, откуда взяты эти цифры',
     'reading': 'Загружаем {what}…',
     'subj.build': 'сборку', 'subj.tiers': 'тир-лист', 'subj.augments': 'аугменты',
@@ -1151,6 +1175,16 @@ const T = {
     'aug.title': '{name} — {rarity}, {games}, среднее место {fin}, у {among} в среднем {base}',
     'aug.fewgames': 'слишком мало игр для оценки', 'aug.own': 'аугментов своей редкости',
     'aug.none': 'Нет данных об аугментах', 'aug.none.text': 'На op.gg ничего нет для этого чемпиона.',
+    'th.rankedfor': 'Рейтинг для',
+    'maug.mine': 'этого чемпиона',
+    'maug.pool': 'всех чемпионов',
+    'maug.mine.long': 'рейтинг для этого чемпиона',
+    'maug.pool.long': 'рейтинг по всем чемпионам, а не для этого',
+    'maug.title': '{name} — {rarity}, {scope}',
+    'maug.none.text': 'На u.gg ничего нет для этого чемпиона.',
+    'maug.note': 'Тир — рейтинг u.gg на патче {patch}. Для этого чемпиона'
+      + ' оценено <b>{mine}</b> аугментов; у остальных <b>{n}</b> показан'
+      + ' рейтинг по всему режиму — это указано в строке.',
     'aug.note': 'Тир — это среднее место относительно аугментов той же редкости у этого'
       + ' чемпиона, то есть <b>лучший среди {pool}</b>, а не лучший в игре. При менее чем'
       + ' <b>50</b> играх вместо буквы показано число игр.',
@@ -1249,10 +1283,10 @@ function applyLanguage(code) {
 /* The credit line under a page of numbers: who published them, as a link to
    the exact page they came from. The payload carries the URL, so what is
    opened is what was fetched, never a reconstruction. */
-const srcline = src => !src || !src.url ? '' :
+const srcline = (src, key = 'credit') => !src || !src.url ? '' :
   `<a class="srca" href="${esc(src.url)}"
       title="${t('credit.title', { name: esc(src.name) })}">${
-      t('credit', { name: esc(src.name) })}&#8202;&#8599;</a>`;
+      t(key, { name: esc(src.name) })}&#8202;&#8599;</a>`;
 /* The picker window is not a browser, so the click is handed to the server
    to open in the real one; cmd-click and middle-click keep the plain href. */
 document.addEventListener('click', e => {
@@ -1286,10 +1320,12 @@ async function loadSettings() {
   paintPatch(PATCH_NOW);
   paintToggles();
 }
+/* u.gg writes a patch as 16_17 and everything the reader sees says 16.17. */
+const dot = v => (v || '').replace('_', '.');
+
 function paintPatch(now) {
   PATCH_NOW = now || '';
   const sel = $('patch');
-  const dot = v => (v || '').replace('_', '.');
   const want = [''].concat(PATCHES.filter(v => v !== ''));
   const have = Array.from(sel.options).map(o => o.value);
   if (want.join(',') !== have.join(',')) {
@@ -1456,7 +1492,7 @@ function render(s) {
   }
   renderGuide(s);
   renderCounters(s);
-  renderArenaViews(s);
+  renderModeViews(s);
   renderImport(s);
 
   const has = s.connected && s.championId && s.skins.length;
@@ -1745,9 +1781,9 @@ function paintTabs(list) {
 
    Champ select starts on Skin because picking one is what the window is
    for and the timer is running. When the game starts the skin is already
-   applied and the decision has moved on: in Arena that means augments,
-   which are chosen three times a match. Only ever moved on a real
-   transition, so it never fights a tab the user just pressed. */
+   applied and the decision has moved on: in Arena and Mayhem that means
+   augments, which are chosen several times a match. Only ever moved on a
+   real transition, so it never fights a tab the user just pressed. */
 let PHASE_WAS = null;
 function followPhase(s) {
   const now = s.phase || null;
@@ -1920,9 +1956,11 @@ function renderGuide(s) {
   const stamp = [q.label && q.kind !== 'rift' ? q.label : '',
                  q.borrowed ? t('stamp.borrowed') : ''];
   $('stamp').textContent = stamp.filter(Boolean).join(' · ');
+  // Mayhem borrows its build and nothing else, so it says which half.
   $('stamp').title = q.borrowed
-    ? t('stamp.title', { label: q.label,
-                         src: t(q.kind === 'mayhem' ? 'src.aram' : 'src.rift') }) : '';
+    ? t(q.augments ? 'stamp.title.build' : 'stamp.title',
+        { label: q.label,
+          src: t(q.kind === 'mayhem' ? 'src.aram' : 'src.rift') }) : '';
   paintPatch(g.patch);
 
   if (!s.championId) {
@@ -2012,18 +2050,23 @@ function renderGuide(s) {
       <span class="n">${num(o.matches)}<i>${esc(pluralForm(o.matches, 'games'))}</i></span></span>`).join('') + `</div>`;
 
   const wide = q.roles === false;
+  /* Some modes hand runes out rather than letting you pick them -- Mayhem
+     gives augments in their place. Drawing the tree there would be a page
+     inviting a choice the game does not offer, so the block goes and the
+     rest of the sheet takes the width back. */
+  const picksRunes = q.runes !== false;
 
   freshen(box);
   box.innerHTML = toggle + `
-    <div class="split">
-      <section class="block">
+    <div class="split${picksRunes ? '' : ' solo'}">
+      ${picksRunes ? `<section class="block">
         ${bandHTML(esc(t('runes')), runes)}
         <div class="trees">
           ${runes.primary ? treeHTML(runes.primary) : ''}
           ${runes.secondary ? treeHTML(runes.secondary) : ''}
         </div>
         <div class="shards">${shards}</div>
-      </section>
+      </section>` : ''}
       <section class="block">
         ${bandHTML(esc(t('skills')), sk)}
         <div class="duo">
@@ -2104,12 +2147,18 @@ const tierClass = n => n == 1 ? 'hi' : n == 2 ? 's' : n == 3 ? 'mid' : 'lo';
 const bandClass = band => band === 'S+' ? 'hi' : band === 'S' ? 's'
   : band === 'A' ? 'mid' : 'lo';
 
-function renderArenaViews(s) {
-  const g = s.guide || {};
-  if ((s.queue || {}).source !== 'opgg') return;
-  renderTiers(s, g);
-  renderAugments(s, g);
-  renderArenaItems(s, g);
+/* Arena's three pages, and Mayhem's one. Mayhem borrows the augment table
+   and nothing else: its build is an ordinary build sheet, and it has no
+   roster page because ARAM does not let you pick. */
+function renderModeViews(s) {
+  const g = s.guide || {}, q = s.queue || {};
+  if (q.source === 'opgg') {
+    renderTiers(s, g);
+    renderAugments(s, g);
+    renderArenaItems(s, g);
+  } else if (q.augments) {
+    renderAugments(s, g);
+  }
 }
 
 /* The roster, as op.gg ranks it. Sorted by rank, with the champion being
@@ -2161,12 +2210,20 @@ function renderTiers(s, g) {
   if (row) row.scrollIntoView({ block: 'center' });
 }
 
-/* All 45, in one ranked table. The rarity rides a hairline on the icon
+/* All of them, in one ranked table. The rarity rides a hairline on the icon
    rather than a section heading, which is what lets them share a ranking;
-   the chips narrow it to the pool you are actually choosing from. */
+   the chips narrow it to the pool you are actually choosing from.
+
+   Two modes feed this, and they know different things. Arena's letters are
+   derived here from placement, so the table can show the figures they came
+   from. Mayhem's arrive as letters -- u.gg publishes the bands and keeps the
+   rates -- so those columns would be blank, and the space goes instead to
+   the one thing Mayhem's rows do differ on: whether the letter is this
+   champion's or the whole mode's. No column is ever drawn empty. */
 function renderAugments(s, g) {
   const all = g.augments || [];
-  const sig = sigOf(g.state, AUG_FILTER, all);
+  const rated = (s.queue || {}).source === 'opgg';
+  const sig = sigOf(g.state, AUG_FILTER, rated, all);
   if (sig === AUG_SIG) return;
   AUG_SIG = sig;
 
@@ -2181,14 +2238,15 @@ function renderAugments(s, g) {
   for (const b of $('achips').querySelectorAll('.chip'))
     b.onclick = () => { AUG_FILTER = b.dataset.rarity; AUG_SIG = ''; render(LAST); };
 
-  $('ahead').innerHTML = all.length ? `
+  $('ahead').innerHTML = !all.length ? '' : `
     <span class="tic"></span><span class="tnm">${esc(t('th.augment'))}</span>
-    <span class="tier">${esc(t('th.tier'))}</span>
-    <span class="tn">${esc(t('th.first'))}</span><span class="tn">${esc(t('th.picked'))}</span>` : '';
+    <span class="tier">${esc(t('th.tier'))}</span>` + (rated ? `
+    <span class="tn">${esc(t('th.first'))}</span><span class="tn">${esc(t('th.picked'))}</span>`
+    : `<span class="tn wide">${esc(t('th.rankedfor'))}</span>`);
 
   if (!all.length) {
     noteEmpty('arows', g.state === 'loading', 'subj.augments',
-              esc(t('aug.none')), esc(t('aug.none.text')));
+              esc(t('aug.none')), esc(t(rated ? 'aug.none.text' : 'maug.none.text')));
     $('anote').textContent = '';
     return;
   }
@@ -2196,23 +2254,38 @@ function renderAugments(s, g) {
   const rows = AUG_FILTER === 'all' ? all : all.filter(a => a.rarity === AUG_FILTER);
   freshen($('arows'));
   $('arows').innerHTML = rows.map(a => `
-    <div class="trow" title="${t('aug.title', {
+    <div class="trow" title="${rated ? t('aug.title', {
         name: esc(a.name), rarity: esc(t('rarity.' + a.rarity)),
         among: esc(t('rarity.' + a.rarity + '.among')),
-        games: plural(a.matches, 'games'), fin: a.avgFinish, base: a.baseline })}">
+        games: plural(a.matches, 'games'), fin: a.avgFinish, base: a.baseline })
+      : t('maug.title', { name: esc(a.name), rarity: esc(t('rarity.' + a.rarity)),
+        scope: esc(t(a.forChampion ? 'maug.mine.long' : 'maug.pool.long')) })}">
       <span class="tic r-${esc(a.rarity)}"><img src="${esc(art(a.icon))}" alt=""></span>
       <span class="tnm">${esc(a.name)}</span>
       ${a.tier ? `<span class="tier ${bandClass(a.tier)}">${a.tier}</span>`
         : `<span class="tier none" title="${esc(t('aug.fewgames'))}">${num(a.matches)}</span>`}
-      <span class="tn">${fig(a.firstRate)}</span>
-      <span class="tn dim">${fig(a.pickRate)}</span>
+      ${rated ? `<span class="tn">${fig(a.firstRate)}</span>
+      <span class="tn dim">${fig(a.pickRate)}</span>`
+        : `<span class="tn wide ${a.forChampion ? '' : 'dim'}">${esc(
+             t(a.forChampion ? 'maug.mine' : 'maug.pool'))}</span>`}
     </div>`).join('');
 
   // The letter is a claim about a pool, and the page has to say which pool.
-  $('anote').innerHTML = t('aug.note', { pool: esc(t(AUG_FILTER === 'all'
-      ? 'aug.own' : 'rarity.' + AUG_FILTER + '.among')) })
-    + (g.source ? ' &middot; ' + srcline(g.source) : '');
+  $('anote').innerHTML = (rated
+    ? t('aug.note', { pool: esc(t(AUG_FILTER === 'all'
+        ? 'aug.own' : 'rarity.' + AUG_FILTER + '.among')) })
+    : t('maug.note', { mine: all.filter(a => a.forChampion).length,
+                       n: all.filter(a => !a.forChampion).length,
+                       patch: esc(dot(g.augmentPatch)) }))
+    + (srcOf(g, rated) ? ' &middot; '
+       + srcline(srcOf(g, rated), rated ? 'credit' : 'credit.ranking') : '');
 }
+
+/* Arena's whole page is one source; Mayhem's augments are a different file
+   from its build, so the credit under the table is the augments' own -- and
+   it credits a ranking rather than numbers, because u.gg publishes the
+   letters and keeps the figures they were cut from. */
+const srcOf = (g, rated) => rated ? g.source : g.augmentSource;
 
 function renderArenaItems(s, g) {
   const items = g.arenaItems || {}, sk = g.arenaSkills || {};

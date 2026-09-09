@@ -30,6 +30,11 @@ log = logging.getLogger("tibbers.guide")
 #: ``nunu``, ``renata``), where slugs derived from display names 404.
 UGG_PAGE = "https://u.gg/lol/champions"
 OPGG_ARENA_PAGE = "https://op.gg/lol/modes/arena"
+UGG_MAYHEM_AUGMENT_PAGE = "https://u.gg/lol/aram-mayhem-augment-tier-list"
+
+#: u.gg's Mayhem bands, best first. Its files are a dictionary, so this is
+#: also the order the table is built in -- JSON key order is not a ranking.
+MAYHEM_BANDS = ("S+", "S", "A", "B", "C", "D")
 
 #: u.gg spells roles differently from the LCU; unmapped roles are left off
 #: the URL and the page falls back to the champion's recommended role.
@@ -363,6 +368,102 @@ class Guide:
         return {"patch": listing.get("patch"), "champions": rows,
                 "hovering": hovering, "total": len(rows),
                 "source": {"name": "op.gg", "url": OPGG_ARENA_PAGE}}
+
+    def mayhem_augments(self, champion_id: int,
+                        patch: Optional[str] = None) -> dict:
+        """The ARAM Mayhem augment page: u.gg's ranking, in the client's words.
+
+        The same table as Arena's and read the same way, but the letters
+        arrive rather than being derived. u.gg publishes bands and keeps the
+        rates behind them to itself, so there is nothing here to compute and
+        nothing to invent: no rate is printed that was not given.
+
+        The champion's own file ranks only what it has games for -- about two
+        thirds of the pool -- so the rest is filled from the whole-mode
+        ranking and marked as such. An augment that was just offered and
+        cannot be found is the one failure this page exists to prevent, and a
+        row that says "all champions" answers it where an absent row does not.
+        """
+        ranked = self.ugg.mayhem_augments(champion_id, patch)
+
+        # The pool is what turns a partial ranking into a complete table. It
+        # is the smaller half of the answer, so it never holds the page.
+        pool: dict = {}
+        pool_patch = None
+        try:
+            whole = self.ugg.mayhem_augment_pool(patch)
+        except Unavailable as exc:
+            log.debug("no Mayhem augment pool: %s", exc)
+        else:
+            pool_patch = whole["patch"]
+            for rarity, group in (whole.get("rarities") or {}).items():
+                for band, ids in ((group or {}).get("tiers") or {}).items():
+                    for augment_id in ids or []:
+                        pool[int(augment_id)] = (band, rarity)
+
+        seen = set()
+        rows = []
+
+        def add(augment_id: int, band: str, mine: bool,
+                rarity: Optional[str] = None) -> None:
+            augment_id = int(augment_id)
+            if augment_id in seen:
+                return
+            seen.add(augment_id)
+            entry = self.gamedata.augment(augment_id) or {}
+            rows.append({
+                "id": augment_id,
+                "name": entry.get("name") or "",
+                "icon": entry.get("icon") or "",
+                # The client's own rarity, because it is the ring drawn on
+                # the icon in the game. u.gg's grouping agrees with it on
+                # every augment measured, and stands in only for one the
+                # client has no row for.
+                "rarity": entry.get("rarity")
+                          or str(rarity or "").removeprefix("k").lower()
+                          or "other",
+                "tier": band,
+                # False means the letter is the whole mode's, not this
+                # champion's. Shown rather than blended in: they are answers
+                # to two different questions.
+                "forChampion": mine,
+            })
+
+        tiers = ranked.get("tiers") or {}
+        for band in MAYHEM_BANDS:
+            for augment_id in tiers.get(band) or []:
+                add(augment_id, band, True)
+        # Anything u.gg bands outside the letters it publishes would silently
+        # vanish, so it is kept, under its own name.
+        for band, ids in tiers.items():
+            if band not in MAYHEM_BANDS:
+                for augment_id in ids or []:
+                    add(augment_id, band, True)
+        for band in MAYHEM_BANDS:
+            for augment_id, (their_band, rarity) in pool.items():
+                if their_band == band:
+                    add(augment_id, band, False, rarity)
+
+        # Band first, then the champion's own rows ahead of the mode's within
+        # it, then u.gg's published order -- which is the only ordering the
+        # file carries inside a band.
+        rank = {band: i for i, band in enumerate(MAYHEM_BANDS)}
+        order = {row["id"]: i for i, row in enumerate(rows)}
+        rows.sort(key=lambda r: (rank.get(r["tier"], len(MAYHEM_BANDS)),
+                                 not r["forChampion"], order[r["id"]]))
+
+        slug = self._slug(champion_id)
+        return {
+            "augments": rows,
+            "augmentPatch": ranked["patch"],
+            "augmentPoolPatch": pool_patch,
+            "augmentUpdated": ranked.get("lastUpdated"),
+            "augmentSource": {
+                "name": "u.gg",
+                "url": f"{UGG_PAGE}/aram-mayhem/{slug}-aram-mayhem" if slug
+                       else UGG_MAYHEM_AUGMENT_PAGE,
+            },
+        }
 
     def counter_table(self, subject_id: int, role: Optional[str],
                       mine: Optional[int] = None,

@@ -277,6 +277,25 @@ class Dispatch(unittest.TestCase):
         self.assertNotIn("spells", out)
         self.assertIn("items", out)
 
+    def test_mayhem_skips_runes_but_keeps_spells(self):
+        """Mayhem hands runes out and still lets you choose spells.
+
+        The difference from Arena, and the reason `runes` is its own switch
+        rather than another thing the `arena` flag means.
+        """
+        out = self.NoClient().run(a_build(), 18, "Tristana", kind="mayhem",
+                                  map_id=12, runes=False)
+        self.assertNotIn("runes", out)
+        self.assertIn("spells", out)
+        self.assertIn("items", out)
+
+    def test_asking_for_runes_where_there_are_none_is_not_a_failure(self):
+        out = self.NoClient().run(a_build(), 18, "Tristana", what="runes",
+                                  kind="mayhem", map_id=12, runes=False)
+        self.assertNotIn("runes", out)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["done"], [])
+
     def test_the_spells_switch_is_obeyed(self):
         out = self.NoClient().run(a_build(), 18, "Tristana", spells=False)
         self.assertNotIn("spells", out)

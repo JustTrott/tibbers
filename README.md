@@ -55,8 +55,9 @@ skins, builds and counters in one place while you're deciding.
 - It remembers the skin you like on each champion and the chroma on each skin,
   and puts them back when you lock in.
 - It reads the champion's runes, items, skill order and matchups from
-  [u.gg](https://u.gg), and Arena augments, items and a tier list from
-  [op.gg](https://op.gg). One click imports the build straight into the client.
+  [u.gg](https://u.gg), Arena augments, items and a tier list from
+  [op.gg](https://op.gg), and ARAM Mayhem's augments from u.gg alongside the
+  build. One click imports the build straight into the client.
 - An optional one-time setup lets it apply skins without asking for your
   password every game.
 - Close the window and it drops into the menu bar, still watching champ select.
@@ -179,7 +180,8 @@ tibbers is mostly glue. The hard parts are other people's work:
 - **[cslol-manager](https://github.com/LeagueToolkit/cslol-manager)** and the
   [League Toolkit](https://github.com/LeagueToolkit) — the `mod-tools` overlay
   builder and patcher tibbers is built around, and the WAD-format groundwork.
-- **[u.gg](https://u.gg)** — the build, rune and counter statistics.
+- **[u.gg](https://u.gg)** — the build, rune and counter statistics, and the
+  ARAM Mayhem augment rankings.
 - **[op.gg](https://op.gg)** — the Arena augment, item and tier-list statistics.
 - **Riot Games** — the League client, whose local API supplies every champion,
   skin, item, rune and icon in the app.
