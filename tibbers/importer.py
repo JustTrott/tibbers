@@ -520,14 +520,17 @@ class Importer:
     def run(self, build: dict, champion_id: int, champion_name: str,
             what: str = "all", kind: Optional[str] = None,
             map_id: Optional[int] = None, arena: bool = False,
-            spells: bool = True) -> dict:
-        """Import the build, and say in one result what reached the client."""
-        wants = {"runes": what in ("all", "runes"),
+            spells: bool = True, runes: bool = True) -> dict:
+        """Import the build, and say in one result what reached the client.
+
+        `runes` is the mode's, not the user's: Arena and ARAM Mayhem hand
+        runes out rather than letting you pick them, so there is no page to
+        write and asking for one is not a failure -- it is skipped, and the
+        item set and spells still go in.
+        """
+        wants = {"runes": what in ("all", "runes") and runes and not arena,
                  "spells": what in ("all", "spells") and spells and not arena,
                  "items": what in ("all", "items")}
-        # Arena pages carry no runes at all, so asking is not a failure there.
-        if arena:
-            wants["runes"] = False
 
         out: Dict[str, Any] = {"ok": True, "dryRun": self.dry_run, "done": [],
                                "champion": champion_name, "mode": kind}

@@ -30,9 +30,9 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from tibbers import (downloader, i18n, importer, injector, lcu, library,
-                       modes, prefs as prefs_mod, server, shell, skinsmith,
-                       system)  # noqa: E402
+from tibbers import (autostart, downloader, i18n, importer, injector, lcu,
+                       library, modes, prefs as prefs_mod, server, shell,
+                       skinsmith, system)  # noqa: E402
 
 log = logging.getLogger("tibbers")
 
@@ -292,7 +292,7 @@ def main() -> int:
                          "otherwise disables it")
     ap.add_argument("--portable", action="store_true",
                     help="keep the library, settings and tools in a Data "
-                         "folder beside the program, not in %LOCALAPPDATA% -- "
+                         "folder beside the program, not in %%LOCALAPPDATA%% -- "
                          "so an unzipped copy is fully portable (Windows). A "
                          "`portable.txt` file next to the exe does the same.")
     ap.add_argument("--keep-patcher", action="store_true",
@@ -591,6 +591,7 @@ def main() -> int:
                 else (guide.get("general") or {})
         return {"build": build, "championId": champion_id,
                 "championName": champion_name, "arena": arena,
+                "runes": queue.get("runes", True),
                 "kind": queue.get("kind"), "mapId": queue.get("mapId")}
 
     def import_build(payload: dict) -> dict:
@@ -607,7 +608,8 @@ def main() -> int:
             result = imports.run(
                 context["build"], context["championId"], context["championName"],
                 what=what, kind=context["kind"], map_id=context["mapId"],
-                arena=context["arena"], spells=prefs.get("import_spells"))
+                arena=context["arena"], runes=context["runes"],
+                spells=prefs.get("import_spells"))
         result["at"] = time.time()
         with state.lock:
             state.last_import = result
@@ -649,10 +651,32 @@ def main() -> int:
         def stale() -> bool:
             return session.guide_generation != generation
 
+        def add_mayhem_augments(patch) -> None:
+            """Mayhem's augments, which are not its build and do not need it.
+
+            Its build is ARAM's, from the CDN that puts a challenge up; its
+            augments are static files on a host that does not. So they are
+            fetched whether or not the build arrived: in this mode they are
+            the half that decides the game, and dropping them alongside the
+            items would lose the more useful page to the less reliable fetch.
+            """
+            try:
+                augments = guides.mayhem_augments(champion_id, patch)
+            except Unavailable as exc:
+                log.debug("no Mayhem augments: %s", exc)
+                return
+            if stale():
+                return
+            with state.lock:
+                state.guide = {**state.guide, **augments}
+
+        # Set when the build fetch leaves the page with nothing on it, which
+        # is the one case where the augments still have to be asked for.
+        no_build = False
+        with state.lock:
+            queue = dict(state.queue)
         try:
             patch = prefs.get("patch")
-            with state.lock:
-                queue = dict(state.queue)
             if queue.get("source") == "opgg":
                 arena = guides.arena(champion_id)
                 if stale():
@@ -700,6 +724,12 @@ def main() -> int:
                                "against": state.guide.get("against") or [],
                                "counterTables":
                                    state.guide.get("counterTables") or {}}
+
+            # After the build, not before: the build is what the tab the page
+            # opens on is showing, so it is never held behind another fetch.
+            if queue.get("augments"):
+                add_mayhem_augments(patch)
+
             # Counters are a lane idea. ARAM and Arena publish no matchup
             # file at all, and asking for one throws away a build that was
             # already fetched and is the more useful half anyway.
@@ -763,7 +793,10 @@ def main() -> int:
                     state.guide = {**state.guide, "countersError": str(exc)}
                 else:
                     state.guide = {"state": "unavailable", "error": str(exc)}
+                    no_build = True
             state.say(f"no build data: {exc}")
+            if no_build and queue.get("augments"):
+                add_mayhem_augments(prefs.get("patch"))
         except Exception as exc:  # noqa: BLE001
             log.exception("guide failed")
             if not stale():
@@ -1531,6 +1564,11 @@ def main() -> int:
             # the raw choice is in settings.language for the selector.
             "language": i18n.resolve(prefs.get("language")),
             "languages": list(i18n.SUPPORTED),
+            # Read from the machine, not from a preference: the installer's
+            # own task writes it, so a stored flag would disagree with
+            # reality from the very first launch.
+            "autostart": autostart.enabled(),
+            "autostartSupported": autostart.supported(),
             "memory": prefs.stats(),
             "library": library.stats(),
             "helper": priv.available(),
@@ -1582,6 +1620,13 @@ def main() -> int:
             return {"ok": True, "updating": True}
 
         name, value = payload.get("name"), payload.get("value")
+        if name == "autostart":
+            # Not a preference: it lives in the Run key or the LaunchAgent,
+            # so it is written there and read straight back.
+            now = autostart.set_enabled(bool(value))
+            state.say("starts when you sign in" if now
+                      else "no longer starts when you sign in")
+            return {"ok": now == bool(value), "autostart": now}
         # Not every setting is a switch: the patch is a string, and coercing
         # it to a bool would quietly store True.
         if name == "patch":

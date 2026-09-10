@@ -230,6 +230,10 @@ for _ in $(seq 1 200); do kill -0 "$PID" 2>/dev/null || break; sleep 0.2; done
 rm -rf {shlex.quote(str(target))}
 /usr/bin/ditto {shlex.quote(str(new_app))} {shlex.quote(str(target))}
 rm -rf {shlex.quote(str(new_app.parent))}
+# The launcher's shebang is an absolute path to the bundle's own interpreter,
+# written for /Applications. Point it at wherever this copy actually lives.
+/usr/bin/sed -i '' "1s|.*|#!{target}/Contents/MacOS/python|" {shlex.quote(str(target / "Contents/MacOS/Tibbers"))}
+/usr/bin/codesign --force --deep --sign - {shlex.quote(str(target))} >/dev/null 2>&1 || true
 # -g: reopen in the background, without stealing focus from a game.
 /usr/bin/open -g {shlex.quote(str(target))}
 """

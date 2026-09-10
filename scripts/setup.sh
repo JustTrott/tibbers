@@ -25,6 +25,9 @@ fi
 echo "==> mod-tools (from cslol-manager)"
 scripts/fetch_modtools.sh
 
+echo "==> Python runtime for the bundle (python-build-standalone)"
+scripts/fetch_python.sh
+
 if [[ $INSTALL -eq 1 ]]; then
     echo "==> Build and install to /Applications"
     scripts/build_app.sh --install

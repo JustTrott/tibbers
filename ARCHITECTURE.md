@@ -104,7 +104,11 @@ The build and counters pages render statistics fetched from public sources —
 nothing tibbers computes or claims as its own:
 
 - **u.gg** (`ugg.py`) — Rift and ARAM builds, runes, and counters, from their
-  static JSON CDN, over `curl`. The CDN's bot protection scores the TLS
+  static JSON CDN, over `curl`, plus ARAM Mayhem's augment rankings, which sit
+  on a separate host that serves them without a challenge (`MAYHEM_BASE`).
+  Mayhem has no build file of its own, so its items are ARAM's and are stamped
+  as borrowed; its augments are its own and are fetched whether or not the
+  build arrived. The CDN's bot protection scores the TLS
   handshake, so `urllib` is refused outright and the system curl only passes
   on a home connection; where its handshake scores badly, or there is no
   system curl at all (Windows, on both counts), the app fetches and runs a
@@ -202,7 +206,7 @@ tibbers/shell.py        menu bar item, settings window, picker window
 tibbers/prefs.py        settings, remembered picks, window geometry
 tibbers/mock.py         a scriptable stand-in for the League client
 tibbers/static/         the picker UI, the settings page, the mock client
-scripts/                dev, phase, deploy, build, fetch_modtools
+scripts/                dev, phase, deploy, build, fetch_modtools, fetch_python
 tests/                  payload builders  (python -m unittest discover tests)
 ```
 

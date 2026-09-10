@@ -15,7 +15,7 @@ import unittest
 from tibbers import modes
 from tibbers.guide import FINISH_SD, TIER_BANDS, TIER_GATE, Guide
 from tibbers.opgg import OPGG
-from tibbers.ugg import UGG
+from tibbers.ugg import UGG, Unavailable
 
 
 class MatchupOrientation(unittest.TestCase):
@@ -252,6 +252,111 @@ class AugmentTier(unittest.TestCase):
         self.assertEqual(out[0]["rarity"], "gold")
 
 
+class MayhemAugments(unittest.TestCase):
+    """u.gg's Mayhem ranking, joined to the client's own augment table.
+
+    Shapes taken from the real files for patch 16_17: the champion file and
+    the by-rarity file are both ``{tiers: {band: [id, ...]}}`` dictionaries,
+    so band order is this module's and not JSON's, and both are keyed by the
+    same augment ids the client publishes in `cherry-augments.json` -- which
+    is the join the whole page rests on.
+    """
+
+    #: Ahri's file, cut down. Order within a band is u.gg's ranking.
+    MINE = {"tiers": {"A": [1113, 1129], "S+": [2132, 1030], "S": [1238]},
+            "lastUpdated": "2026-09-06T18:40:24+00:00"}
+    #: The whole mode, which ranks augments this champion has too few games
+    #: for. 1030 is in both, at different bands, and 1099 is in neither.
+    POOL = {"rarities": {
+        "kPrismatic": {"tiers": {"S+": [1030], "B": [9001]}},
+        "kGold": {"tiers": {"S+": [2132], "D": [9002]}},
+    }}
+
+    NAMES = {2132: ("Warlock Juicebox", "gold"), 1030: ("Eureka", "prismatic"),
+             1238: ("Blade Waltz", "prismatic"), 1113: ("Mercy", "silver"),
+             1129: ("Scavenger", "gold"), 9001: ("Wildfire", "prismatic")}
+
+    class FakeGameData:
+        def __init__(self, names):
+            self.names = names
+
+        def augment(self, augment_id):
+            row = self.names.get(int(augment_id))
+            if not row:
+                return None
+            return {"id": augment_id, "name": row[0],
+                    "icon": f"/icons/{augment_id}.png", "rarity": row[1]}
+
+        def champion_alias(self, champion_id):
+            return "Ahri"
+
+    def guide(self, pool=POOL):
+        ugg = UGG()
+        ugg.mayhem_augments = lambda cid, patch=None: {
+            "patch": "16_17", **self.MINE}
+
+        def whole(patch=None):
+            if pool is None:
+                raise Unavailable("no pool")
+            return {"patch": "16_17", **pool}
+
+        ugg.mayhem_augment_pool = whole
+        return Guide(self.FakeGameData(self.NAMES), ugg)
+
+    def rows(self, **kw):
+        return self.guide(**kw).mayhem_augments(103)["augments"]
+
+    def test_bands_are_ordered_best_first_not_as_the_file_lists_them(self):
+        """The file is a dictionary. Trusting its key order puts A above S+."""
+        self.assertEqual([r["tier"] for r in self.rows()][:5],
+                         ["S+", "S+", "S", "A", "A"])
+
+    def test_the_champion_s_own_ranking_wins_over_the_mode_s(self):
+        """1030 is S+ for this champion and S+ for everyone; 1113 is A here.
+
+        The champion's row is the answer to the question actually being
+        asked, so a pool entry never overwrites or duplicates one.
+        """
+        rows = {r["id"]: r for r in self.rows()}
+        self.assertEqual(len(self.rows()), len({r["id"] for r in self.rows()}))
+        self.assertTrue(rows[1030]["forChampion"])
+        self.assertTrue(rows[2132]["forChampion"])
+
+    def test_the_pool_fills_in_what_the_champion_file_omits(self):
+        rows = {r["id"]: r for r in self.rows()}
+        self.assertIn(9001, rows)
+        self.assertEqual(rows[9001]["tier"], "B")
+        self.assertFalse(rows[9001]["forChampion"])
+
+    def test_a_pool_row_sorts_under_the_champion_s_within_its_band(self):
+        """Same letter, different question, and the page says which is which
+        by putting this champion's rows first rather than blending them."""
+        top = [(r["id"], r["forChampion"]) for r in self.rows()
+               if r["tier"] == "S+"]
+        self.assertEqual([mine for _, mine in top], sorted(
+            [mine for _, mine in top], reverse=True))
+
+    def test_names_and_icons_come_from_the_client(self):
+        rows = {r["id"]: r for r in self.rows()}
+        self.assertEqual(rows[2132]["name"], "Warlock Juicebox")
+        self.assertEqual(rows[2132]["icon"], "/icons/2132.png")
+        self.assertEqual(rows[2132]["rarity"], "gold")
+
+    def test_an_augment_the_client_does_not_know_keeps_u_gg_s_rarity(self):
+        """A new augment reaches u.gg before a stale cached client file has
+        it, and a row with no rarity has no ring to draw."""
+        rows = {r["id"]: r for r in self.rows()}
+        self.assertEqual(rows[9002]["rarity"], "gold")
+        self.assertEqual(rows[9002]["name"], "")
+
+    def test_the_page_survives_the_pool_being_unavailable(self):
+        """The pool is the smaller half of the answer, so it never takes the
+        champion's own ranking down with it."""
+        rows = self.rows(pool=None)
+        self.assertEqual(len(rows), 5)
+        self.assertTrue(all(r["forChampion"] for r in rows))
+
+
 class TabDerivation(unittest.TestCase):
     """Which tabs a mode earns, derived from what it actually has.
 
@@ -275,8 +380,40 @@ class TabDerivation(unittest.TestCase):
     def test_aram_has_no_counters(self):
         self.assertEqual(self.tabs("ARAM", 12, 450), ["skin", "build"])
 
-    def test_mayhem_is_aram(self):
-        self.assertEqual(self.tabs("KIWI", 12, 3270), ["skin", "build"])
+    def test_mayhem_is_aram_plus_its_augments(self):
+        """Mayhem borrows ARAM's build and adds the page ARAM has no use for.
+
+        The augment tab is beside the build, not instead of it, because the
+        items are still worth reading -- which is the difference between this
+        mode and Arena, where the build sheet has nothing to draw.
+        """
+        self.assertEqual(self.tabs("KIWI", 12, 3270),
+                         ["skin", "build", "augments"])
+
+    def test_mayhem_picks_no_runes(self):
+        """The one thing a borrowed ARAM build must not carry through.
+
+        ARAM's u.gg build has a rune page; Mayhem does not let you choose
+        one. Drawing it, or importing it, would offer a choice the game does
+        not have.
+        """
+        mayhem = modes.resolve("KIWI", 12, 3270)
+        self.assertFalse(mayhem.runes)
+        self.assertTrue(mayhem.augments)
+        self.assertTrue(mayhem.borrowed)
+        self.assertEqual(mayhem.queue, modes.UGG_ARAM)
+        block = modes.payload(mayhem, 3270, "KIWI", 12, "ARAM: Mayhem")
+        self.assertFalse(block["runes"])
+        self.assertTrue(block["augments"])
+
+    def test_every_other_mode_still_picks_runes(self):
+        for game_mode, map_id, queue_id in (("CLASSIC", 11, 420),
+                                            ("ARAM", 12, 450),
+                                            ("SWIFTPLAY", 11, 480),
+                                            ("URF", 11, 1900)):
+            mode = modes.resolve(game_mode, map_id, queue_id)
+            self.assertTrue(mode.runes, mode.key)
+            self.assertFalse(mode.augments, mode.key)
 
     def test_arena_splits_its_pages(self):
         self.assertEqual(self.tabs("CHERRY", 30, 1750),

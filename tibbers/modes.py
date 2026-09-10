@@ -75,6 +75,13 @@ class Mode:
     #: True when the numbers are borrowed from another queue because this one
     #: has none. Shown rather than hidden.
     borrowed: bool = False
+    #: Whether the mode lets you choose runes at all. ARAM Mayhem hands them
+    #: out with the augments, so a rune page is neither shown nor imported.
+    runes: bool = True
+    #: Whether the mode picks augments during the game, and so earns the
+    #: augment page. Arena's arrive with its op.gg source; Mayhem's are a
+    #: file of their own and have to be asked for separately.
+    augments: bool = False
 
     @property
     def tabs(self) -> list:
@@ -88,6 +95,9 @@ class Mode:
         * **Build** needs a source. Arena spends its source differently --
           augments are picked three times a match and decide more than items
           do, so they get their own page rather than sharing one.
+        * **Augments** needs a mode that offers them. Mayhem does and still
+          has a build worth reading, so it earns the page *beside* the build
+          rather than instead of it.
         * **Counters** needs lanes *and* u.gg. Arena puts all eighteen
           players in ``myTeam``, so there is nobody to counter.
         """
@@ -98,6 +108,8 @@ class Mode:
             keys += ["tiers", "augments", "items"]
         elif self.source:
             keys.append("build")
+            if self.augments:
+                keys.append("augments")
             if self.roles:
                 keys.append("counters")
         return [{"key": k, "label": TAB_LABELS[k]} for k in keys]
@@ -126,10 +138,12 @@ def resolve(game_mode: Optional[str], map_id: Optional[int],
         return Mode("aram", "ARAM", source="ugg", queue=UGG_ARAM)
 
     if mode == "KIWI":
-        # Mayhem is ARAM with modifiers and has no data of its own, so it
-        # borrows ARAM's -- the champions and the map are the same.
+        # Mayhem's items are ARAM's -- same champions, same map, and u.gg
+        # publishes no build file of its own for it, so the build is borrowed
+        # and said to be. What is not borrowed is the half that decides the
+        # game: augments are picked here and runes are not picked at all.
         return Mode("mayhem", "ARAM: Mayhem", source="ugg", queue=UGG_ARAM,
-                    borrowed=True)
+                    borrowed=True, runes=False, augments=True)
 
     if mode == "NEXUSBLITZ" or map_id == 21:
         return Mode("nexusblitz", "Nexus Blitz")
@@ -170,5 +184,7 @@ def payload(mode: Mode, queue_id=None, game_mode: str = "",
         "source": mode.source,
         "uggQueue": mode.queue,
         "borrowed": mode.borrowed,
+        "runes": mode.runes,
+        "augments": mode.augments,
         "tabs": mode.tabs,
     }

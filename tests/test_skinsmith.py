@@ -27,6 +27,7 @@ import unittest
 
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -190,13 +191,18 @@ def prop(entries, version=3, linked=("original.bin",)):
     return bytes(out)
 
 
-def a_skin(number=3, character="testy", classification=1):
+def a_skin(number=3, character="testy", classification=1, staged=False):
     """A minimal skin bin: the two entries a mod keeps, plus one it drops.
 
     The skin entry carries the three fields the second convention rewrites --
     `objectPath`, `mResourceResolver`, `championSkinName` -- in among the ones
     it must not touch, so a test can tell a rewrite from a stampede.
+
+    *staged* adds `skinUpgradeData`, which is what marks a skin as having
+    stages to switch between and so as wanting its view controller linked.
     """
+    upgrade = ([(skinsmith.SKIN_UPGRADE_DATA, STRING, _string("stages"))]
+               if staged else [])
     return prop([
         (skinsmith.SKIN_CLASS,
          fnv1a32(f"characters/{character}/skins/skin{number}"),
@@ -210,7 +216,8 @@ def a_skin(number=3, character="testy", classification=1):
           (skinsmith.RESOURCE_RESOLVER, LINK,
            struct.pack("<I", fnv1a32(
                f"characters/{character}/skins/skin{number}/resources"))),
-          (fnv1a32("skinAudioProperties"), STRING, _string("kept!!"))]),
+          (fnv1a32("skinAudioProperties"), STRING, _string("kept!!"))]
+         + upgrade),
         (skinsmith.RESOLVER_CLASS,
          fnv1a32(f"characters/{character}/skins/skin{number}/resources"),
          [(fnv1a32("resourceMap"), HASH, struct.pack("<I", 0xDEADBEEF))]),
@@ -392,6 +399,63 @@ class SecondConvention(unittest.TestCase):
         # A rule with no derivable trigger is a list, and the list is only
         # allowed to grow when a real mod has been diffed against it.
         self.assertEqual(skinsmith.SECOND_CONVENTION, frozenset({103085}))
+
+
+class ViewControllers(unittest.TestCase):
+    """The link a staged skin needs, and the four skins that must not get it."""
+
+    LINE = "gameplay.testyskin3viewcontroller.bin"
+
+    def built(self, staged, line):
+        source = skinsmith.Bin(a_skin(staged=staged))
+        out = skinsmith.rewrite(source, "testy", 3, "Testy",
+                                view_controller=line)
+        self.assertIsNotNone(out)
+        return skinsmith.Bin(out)
+
+    def test_a_staged_skin_links_its_view_controller_last(self):
+        # Last, because the delegation line has to keep the place the game
+        # reads it from.
+        self.assertEqual(self.built(True, self.LINE).linked[-2:],
+                         ["DATA/Characters/Testy/Skins/Skin3.bin", self.LINE])
+
+    def test_an_ordinary_skin_does_not(self):
+        # Four skins in the install own a view controller without having any
+        # stages. Their mods are right as they are and must not move.
+        self.assertEqual(self.built(False, self.LINE).linked,
+                         self.built(False, None).linked)
+
+    def test_a_staged_skin_with_no_view_controller_is_unchanged(self):
+        self.assertEqual(self.built(True, None).linked,
+                         self.built(False, None).linked)
+
+    def test_the_name_is_looked_up_in_the_ui_archive(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        archive = Path(tmp.name) / "UI.wad.client"
+        wad.write_wad(archive, [(wad.xxh64_path(self.LINE), b"PROP\x03\x00")])
+
+        saved = (skinsmith._UI_ENTRIES, skinsmith._UI_FOR)
+
+        def restore():
+            skinsmith._UI_ENTRIES, skinsmith._UI_FOR = saved
+        self.addCleanup(restore)
+        skinsmith._UI_ENTRIES, skinsmith._UI_FOR = None, None
+
+        with mock.patch.object(skinsmith, "ui_archive", return_value=archive):
+            self.assertEqual(skinsmith.view_controller("testy", 3), self.LINE)
+            self.assertIsNone(skinsmith.view_controller("testy", 4))
+            self.assertIsNone(skinsmith.view_controller("other", 3))
+
+    def test_no_ui_archive_means_no_link(self):
+        saved = (skinsmith._UI_ENTRIES, skinsmith._UI_FOR)
+
+        def restore():
+            skinsmith._UI_ENTRIES, skinsmith._UI_FOR = saved
+        self.addCleanup(restore)
+        skinsmith._UI_ENTRIES, skinsmith._UI_FOR = None, None
+        with mock.patch.object(skinsmith, "ui_archive", return_value=None):
+            self.assertIsNone(skinsmith.view_controller("testy", 3))
 
 
 # ---------------------------------------------------------------------------

@@ -47,6 +47,7 @@ needs no venv and no running app.
 | `scripts/deploy.sh` | build + install + quiet restart. **The user runs this**, or an agent only when asked |
 | `scripts/deploy.sh --static` | UI-only change: syncs `tibbers/static` into the bundle and reloads open windows. No restart, so it is safe in champ select |
 | `scripts/build_app.sh` | build to `dist/` to check the bundle still builds. `--install` writes to `/Applications` — the user's call |
+| `scripts/fetch_python.sh` | the CPython that ships inside the bundle (python-build-standalone, pinned), into `runtime/python`. Run once; `build_app.sh` refuses without it |
 
 `dev.sh --mock` prints its own controls; drive them with
 `curl -s 127.0.0.1:7778/api/mock -d '{"action":"hover","value":202}'`.
@@ -74,7 +75,7 @@ needs no venv and no running app.
 
 | source | how |
 |--------|-----|
-| u.gg (`ugg.py`) | static JSON CDN, over curl (retried; `HEADER_SETS` via urllib as a last resort). The CDN scores the TLS handshake, so urllib is refused and the system curl passes only on a home connection over HTTP/1.1; on Windows the system curl is refused or absent, so `system.browser_curl` supplies a fetched curl-impersonate, run without the HTTP/1.1 pin (a browser speaks HTTP/2; pinning it gets a 403 every time). `TIBBERS_CURL` overrides it; `TIBBERS_UGG_CACHE_HOURS` sets the cache window (default 8) |
+| u.gg (`ugg.py`) | static JSON CDN, over curl (retried; `HEADER_SETS` via urllib as a last resort). The CDN scores the TLS handshake, so urllib is refused and the system curl passes only on a home connection over HTTP/1.1; on Windows the system curl is refused or absent, so `system.browser_curl` supplies a fetched curl-impersonate, run without the HTTP/1.1 pin (a browser speaks HTTP/2; pinning it gets a 403 every time). `TIBBERS_CURL` overrides it; `TIBBERS_UGG_CACHE_HOURS` sets the cache window (default 8). ARAM Mayhem's augment rankings are u.gg's too but live on `static.bigbrain.gg/custom-aram-mayhem`, which has no challenge; Mayhem has no build file at all, so its items stay ARAM's |
 | op.gg (`opgg.py`) | Arena only. `robots.txt` permits everything, so the user-agent is honest — keep it that way |
 | metasrc | **off limits.** `robots.txt` names ClaudeBot `Disallow: /`, its terms forbid extraction, and reaching it needs a spoofed browser fingerprint |
 | skin mods | **no network at all.** Built from the install by `skinsmith.py`. There is no download path and no skin repository is contacted; a skin that cannot be built simply has no mod |
@@ -90,6 +91,25 @@ scripts/build_app.sh                 # to dist/ only
 
 One commit per finished piece. See `README.md` for the architecture and
 `DESIGN.md` for why it is shaped this way.
+
+## Versions and branches
+
+Every version is a branch named for it -- `1.1.1`, `1.2.0` -- on GitHub. The
+branches on GitHub are the record of which versions have work in progress. A
+version without a branch has nothing in it, and "we'll add this in 1.2.0" is
+only decided once it is written under that version in `CHANGELOG.md` on the
+`1.2.0` branch and pushed.
+
+- A version branch starts from the tip of the version before it. Work on a
+  version happens on its branch; `main` is what has shipped.
+- `CHANGELOG.md` has one section per version, newest first. A version in
+  progress lists what has landed and, under *Planned*, what it still will;
+  a change that lands on the branch adds its line in the same commit. The
+  section is the release notes when the version ships.
+- Shipping: fast-forward `main` to the branch, build, publish the GitHub
+  release `vX.Y.Z` from that commit with the section as its notes. A number
+  that has been published is never reused, even if the release was pulled:
+  a fix after publishing is the next patch version, on its own branch.
 
 ## The website
 
