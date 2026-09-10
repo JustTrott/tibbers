@@ -7,8 +7,9 @@ in `CLAUDE.md`.
 
 ## 1.1.1 — in progress
 
-A new picker, English and Russian, and the build pages working on Windows.
-Everything here is new since 1.0.2; 1.1.0 (below) never reached anyone.
+A new picker, English and Russian, the build pages working on Windows, and
+skins working again after League's 16.18 patch. Everything here is new since
+1.0.2; 1.1.0 (below) never reached anyone.
 
 **The picker**
 - The skin rail is a ring, like the client's own carousel: the base skin sits in the middle and is the default, the newest skins one step to its left, the oldest one step to its right, and stepping off either end comes round the other side. The whole strip slides as one piece; tiles keep their order while mods build.
@@ -36,6 +37,9 @@ Everything here is new since 1.0.2; 1.1.0 (below) never reached anyone.
 
 **macOS: a build that runs on other Macs**
 - Earlier builds linked the Python on the machine that built them, and named the build folder in their launcher, so a downloaded copy could not start anywhere else. The app now carries its own Python inside the bundle (20 MB download, was 9).
+
+**macOS: the game opens again after League 16.18**
+- League's 16.18 patch, on 10 September, made every game started with a skin armed close the instant it opened -- no window, no error, just the client offering Reconnect. The game was reacting to how it had been hooked: the patcher allocated a page inside it, and the game's anti-cheat kills it for that. tibbers now carries its own build of the patcher, which puts what it needs inside a function it already replaces and allocates nothing at all. Nothing else about the hook changed.
 
 **Both platforms**
 - Build data is trusted for eight hours before it is checked again (u.gg regenerates it roughly daily), so the pages meet the CDN's bot check far less often. A refused request is retried a few times, and when every attempt is refused the copy you already have is shown rather than nothing.

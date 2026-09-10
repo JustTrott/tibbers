@@ -86,7 +86,8 @@ skins, builds and counters in one place while you're deciding.
 - **League of Legends**, started however you normally start it.
 
 That's it — the app bundles its own Python. (Building from source additionally
-needs Python 3.)
+needs Python 3, and on macOS CMake and the Xcode command line tools, since the
+patcher is compiled here rather than downloaded.)
 
 ## Install
 

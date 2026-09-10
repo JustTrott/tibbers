@@ -25,14 +25,18 @@ League client ──(LCU REST)──> tibbers ──> web UI  :7777   you hover 
 ```
 
 Both stages come from [cslol](https://github.com/LeagueToolkit/cslol-manager)'s
-`mod-tools`:
+`mod-tools`, built from a pinned commit with our own copy of its macOS
+patcher -- see `tools/patcher/README.md` for what that copy changes and why
+League 16.18 made it necessary:
 
 - **`mkoverlay`** — pure local file work. Reads the game's WADs, merges your
   chosen mod, writes a replacement WAD into tibbers' own directory. Touches
   nothing in the League install, needs no privileges.
 - **`runoverlay`** — attaches to the *running game process* and hooks `fopen`
   so reads of `.wad.client` are redirected into that overlay. Needs root
-  (`task_for_pid`), and is the only elevated step.
+  (`task_for_pid`), and is the only elevated step. It writes the hook into a
+  function of the game's it overwrites anyway, and allocates nothing: the
+  game's anti-cheat kills it when an external process allocates memory in it.
 
 ## The game is never suspended
 

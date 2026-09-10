@@ -22,7 +22,7 @@ fi
 .venv/bin/pip install --quiet --upgrade pip
 .venv/bin/pip install --quiet psutil xxhash zstandard
 
-echo "==> mod-tools (from cslol-manager)"
+echo "==> mod-tools (cslol, built here with our patcher)"
 scripts/fetch_modtools.sh
 
 echo "==> Python runtime for the bundle (python-build-standalone)"
