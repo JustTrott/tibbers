@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import system
+from . import patchcheck, system
 
 log = logging.getLogger("tibbers.inject")
 
@@ -260,6 +260,19 @@ class Injector:
                 False, "injection is disabled for this instance")
         if self.is_running():
             return InjectionResult(True, "patcher already running")
+
+        # The patcher overwrites one function in the game, found by a scan
+        # for Riot's own code. When a League patch moves that ground the
+        # patch still "succeeds" and the game dies at launch with nothing in
+        # its log -- so the ground is checked here, where the answer is a
+        # message instead of a game that will not open.
+        if system.INJECTION_NEEDS_ROOT:
+            patchable, detail = patchcheck.check(self.game_dir)
+            if not patchable:
+                log.warning("not starting the patcher: %s", detail)
+                return InjectionResult(
+                    False, f"this League build cannot be patched -- {detail}")
+            log.info("patch target: %s", detail)
 
         config = self.overlay_dir / "cslol-config.json"
         modtools = system.select_modtools(self.tools_dir)

@@ -38,6 +38,12 @@ League 16.18 made it necessary:
   function of the game's it overwrites anyway, and allocates nothing: the
   game's anti-cheat kills it when an external process allocates memory in it.
 
+The function it overwrites is Riot's, found by scanning for Riot's code, so a
+League patch can move it. `patchcheck.py` reads the installed binary and
+confirms both — one match, and a function with room for the payload — before
+any patcher is started, so a build that has moved on turns skins off with a
+reason instead of leaving a game that will not open.
+
 ## The game is never suspended
 
 `runoverlay` has its own loop — it polls for the game every 10 ms, then scans
@@ -199,6 +205,7 @@ tibbers/downloader.py   on-demand per-champion mods, built on hover
 tibbers/skinsmith.py    builds a mod out of the installed game
 tibbers/wad.py          Riot's archive format, read and written
 tibbers/injector.py     mkoverlay + runoverlay + the patcher's lifetime
+tibbers/patchcheck.py   whether this League build can still be patched
 tibbers/privileged.py   the root-owned helper and its sudoers rule
 tibbers/modes.py        which mode this is, and which tabs it earns
 tibbers/ugg.py          build statistics from u.gg
