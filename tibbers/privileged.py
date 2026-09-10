@@ -277,24 +277,61 @@ def verify() -> Tuple[bool, str]:
     return True, "ok"
 
 
-def available(arch: Optional[str] = None) -> bool:
+def _digest(path: Path) -> Optional[str]:
+    import hashlib
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def carries(modtools: Path) -> bool:
+    """Whether the root-owned copy is the same build as *modtools*.
+
+    The helper keeps its own copy of mod-tools, because a rule pointing at a
+    file the user can rewrite is a rule that hands over root. That copy is
+    what actually runs, so an app shipping a new patcher does not ship it to
+    the patcher: until the helper is reinstalled, the passwordless path is
+    still running the old one. Which was fine while a stale patcher only
+    meant a stale bug, and stopped being fine when a stale patcher started
+    killing the game at launch.
+    """
+    theirs = MODTOOLS_X86 if str(modtools).endswith("-x86_64") else MODTOOLS_ARM
+    ours = _digest(Path(modtools))
+    return ours is not None and ours == _digest(theirs)
+
+
+def available(arch: Optional[str] = None,
+              modtools: Optional[Path] = None) -> bool:
     """Whether passwordless injection can be used right now.
 
     *arch* is the mod-tools build the caller is about to ask for; without it
-    the check is the conservative one. Answering False here is not a failure
-    -- it is what makes the caller fall back to prompting.
+    the check is the conservative one. *modtools* is the build it would run
+    itself if it prompted instead: when the helper's copy is not that build,
+    prompting is the better answer, since it runs the patcher this app came
+    with rather than the one installed months ago. Answering False here is
+    not a failure -- it is what makes the caller fall back.
     """
     if not installed(arch):
         return False
     if not wrapper_is_current():
         return False
+    if modtools is not None and not carries(Path(modtools)):
+        return False
     ok, _ = verify()
     return ok
 
 
-def stale() -> bool:
+def stale(tools_dir: Optional[Path] = None) -> bool:
     """Installed, but from an older build."""
-    return installed() and not wrapper_is_current()
+    if not installed():
+        return False
+    if not wrapper_is_current():
+        return True
+    if tools_dir is None:
+        return False
+    arm = Path(tools_dir) / "mod-tools"
+    return arm.exists() and not carries(arm)
 
 
 # ---------------------------------------------------------------------------

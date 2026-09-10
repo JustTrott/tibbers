@@ -404,7 +404,7 @@ def spawn_runoverlay_detached(modtools: Path, overlay: Path, config: Path,
     # that will refuse. Nothing about the command changes either way.
     from . import privileged
     arch = modtools_arch(modtools)
-    if privileged.available(arch):
+    if privileged.available(arch, modtools):
         return privileged.start_runoverlay(
             arch, overlay, config, game_dir, log_path, detached=detached)
 

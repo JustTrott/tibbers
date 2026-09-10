@@ -517,11 +517,11 @@ def main() -> int:
     state.say(f"game: {game_dir}")
     if privileged is None:
         state.say("elevation: none needed on Windows")
-    elif privileged.available():
-        state.say("elevation: passwordless helper installed")
-    elif privileged.stale():
+    elif privileged.stale(Path(__file__).parent / "tools"):
         state.say("elevation: helper is from an older build -- "
                   "re-run with --install-helper (will prompt until then)")
+    elif privileged.available():
+        state.say("elevation: passwordless helper installed")
     else:
         state.say("elevation: will prompt once per skin "
                   "(install the helper with --install-helper to stop that)")

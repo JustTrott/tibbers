@@ -41,6 +41,7 @@ skins working again after League's 16.18 patch. Everything here is new since
 **macOS: the game opens again after League 16.18**
 - League's 16.18 patch, on 10 September, made every game started with a skin armed close the instant it opened -- no window, no error, just the client offering Reconnect. The game was reacting to how it had been hooked: the patcher allocated a page inside it, and the game's anti-cheat kills it for that. tibbers now carries its own build of the patcher, which puts what it needs inside a function it already replaces and allocates nothing at all. Nothing else about the hook changed.
 - When a future patch moves the ground under the patcher, skins now turn themselves off and say why, instead of the game silently refusing to open. The game is checked before the patcher is ever started.
+- Installing a new version updates the copy of the patcher that runs as root, rather than leaving the one installed with an older version in place. Tibbers says so at start when they differ, and asks for a password once per skin until you re-run it with `--install-helper`.
 
 **Both platforms**
 - Build data is trusted for eight hours before it is checked again (u.gg regenerates it roughly daily), so the pages meet the CDN's bot check far less often. A refused request is retried a few times, and when every attempt is refused the copy you already have is shown rather than nothing.
