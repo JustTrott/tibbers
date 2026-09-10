@@ -5,6 +5,11 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
+## 1.2.0 — in progress
+
+*Planned*
+- Party skin sharing: people who queue together, each running tibbers, see each other's chosen skins in game. Only a row of ids travels; every install already holds every skin. `LOBBY.md` is the plan.
+
 ## 1.1.1 — in progress
 
 A new picker, English and Russian, and the build pages working on Windows.
