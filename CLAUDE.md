@@ -92,6 +92,25 @@ scripts/build_app.sh                 # to dist/ only
 One commit per finished piece. See `README.md` for the architecture and
 `DESIGN.md` for why it is shaped this way.
 
+## Versions and branches
+
+Every version is a branch named for it -- `1.1.1`, `1.2.0` -- on GitHub. The
+branches on GitHub are the record of which versions have work in progress. A
+version without a branch has nothing in it, and "we'll add this in 1.2.0" is
+only decided once it is written under that version in `CHANGELOG.md` on the
+`1.2.0` branch and pushed.
+
+- A version branch starts from the tip of the version before it. Work on a
+  version happens on its branch; `main` is what has shipped.
+- `CHANGELOG.md` has one section per version, newest first. A version in
+  progress lists what has landed and, under *Planned*, what it still will;
+  a change that lands on the branch adds its line in the same commit. The
+  section is the release notes when the version ships.
+- Shipping: fast-forward `main` to the branch, build, publish the GitHub
+  release `vX.Y.Z` from that commit with the section as its notes. A number
+  that has been published is never reused, even if the release was pulled:
+  a fix after publishing is the next patch version, on its own branch.
+
 ## The website
 
 `tibbers.lol` lives on the `site` branch (one `index.html`), not on `main`, and
