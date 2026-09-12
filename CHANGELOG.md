@@ -9,6 +9,7 @@ in `CLAUDE.md`.
 
 *Planned*
 - Party skin sharing: people who queue together, each running tibbers, see each other's chosen skins in game. Only a row of ids travels; every install already holds every skin. `LOBBY.md` is the plan.
+- A **Check for updates** button in Settings, asking on demand rather than waiting for the six-hourly check. On Windows the same button also checks the injection tools: the LTK patcher is fetched once into the data directory and nothing has ever refreshed it, so an install keeps whatever LTK release it first downloaded for good -- and a League patch that LTK has already fixed still breaks it. The button follows LTK's latest release and re-fetches when the recorded tag differs.
 
 ## 1.1.1 — in progress
 
