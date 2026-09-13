@@ -11,10 +11,27 @@ in `CLAUDE.md`.
 - Party skin sharing: people who queue together, each running tibbers, see each other's chosen skins in game. Only a row of ids travels; every install already holds every skin. `LOBBY.md` is the plan.
 - A **Check for updates** button in Settings, asking on demand rather than waiting for the six-hourly check. On Windows the same button also checks the injection tools: the LTK patcher is fetched once into the data directory and nothing has ever refreshed it, so an install keeps whatever LTK release it first downloaded for good -- and a League patch that LTK has already fixed still breaks it. The button follows LTK's latest release and re-fetches when the recorded tag differs.
 
-## 1.1.1 — in progress
+## 1.1.2 — 2026-09-13
 
-A new picker, English and Russian, and the build pages working on Windows.
-Everything here is new since 1.0.2; 1.1.0 (below) never reached anyone.
+Skins work again on Windows, and the build pages stop depending on a CDN that
+refuses us.
+
+**Windows: the patcher had quietly expired**
+- LTK's patcher carries an expiry date. Past it the patcher still attaches to the game and then does nothing at all -- the game opens, and the skin is simply not there. Nothing in tibbers had ever replaced the patcher it downloaded the first time it ran, so every install was carrying one release for good and all of them reached that date together. tibbers now checks the patcher at every launch, reads its own log for the line the expired one writes, and fetches the current release when it is behind. Nothing to reinstall, and nothing to delete by hand.
+
+**Build and counters pages that are not refused**
+- The build and counters pages now read op.gg instead of u.gg. u.gg's build CDN scores the TLS handshake and refuses roughly one request in five, which is why tibbers downloaded a 4 MB curl that impersonated Chrome just to be spoken to -- and why, when a request did get through the cracks, the page said "u.gg refused the request (403)". op.gg serves the same figures as plain JSON, permits automated access in its `robots.txt`, and answers for a champion and lane in one request instead of three. That download, the spoofed user-agent and the alternative header sets are all gone.
+- The pages also stop going blank at a new patch. The old cache was keyed by patch, so the day League updated there was nothing to fall back on and every refusal became a blank page; before that, a failing fetch was quietly papered over with the previous patch's numbers.
+- A build now appears while you are still hovering, before champ select has assigned a lane. op.gg has no pooled row and refuses a build without one, so tibbers reads the lane the champion is actually played in most and says which lane it settled on.
+- What goes with it: the build shown against a named lane opponent, and gold at fifteen. op.gg publishes neither. Counters stay, and the lane opponent is still nominated and still has its win rate.
+- The 4 MB curl that used to be downloaded to every Windows machine to get past u.gg's CDN is deleted from installs that already have it. Nothing reads it any more, and the data directory it sits in survives every update, so it would otherwise have stayed there for good.
+- Items are now boots and late items rather than a fourth, fifth and sixth. op.gg publishes one pooled list of everything bought after the core, so those are shown as what they are rather than cut into three slots. The shop import gains a boots tab, which never filled before.
+
+## 1.1.1 — 2026-09-12
+
+A new picker, English and Russian, the build pages working on Windows, and
+skins working again after League's 16.18 patch. Everything here is new since
+1.0.2; 1.1.0 (below) never reached anyone.
 
 **The picker**
 - The skin rail is a ring, like the client's own carousel: the base skin sits in the middle and is the default, the newest skins one step to its left, the oldest one step to its right, and stepping off either end comes round the other side. The whole strip slides as one piece; tiles keep their order while mods build.
@@ -42,6 +59,11 @@ Everything here is new since 1.0.2; 1.1.0 (below) never reached anyone.
 
 **macOS: a build that runs on other Macs**
 - Earlier builds linked the Python on the machine that built them, and named the build folder in their launcher, so a downloaded copy could not start anywhere else. The app now carries its own Python inside the bundle (20 MB download, was 9).
+
+**macOS: the game opens again after League 16.18**
+- League's 16.18 patch, on 10 September, made every game started with a skin armed close the instant it opened -- no window, no error, just the client offering Reconnect. The game was reacting to how it had been hooked: the patcher allocated a page inside it, and the game's anti-cheat kills it for that. tibbers now carries its own build of the patcher, which puts what it needs inside a function it already replaces and allocates nothing at all. Nothing else about the hook changed.
+- When a future patch moves the ground under the patcher, skins now turn themselves off and say why, instead of the game silently refusing to open. The game is checked before the patcher is ever started.
+- Installing a new version updates the copy of the patcher that runs as root, rather than leaving the one installed with an older version in place. Tibbers says so at start when they differ, and asks for a password once per skin until you re-run it with `--install-helper`.
 
 **Both platforms**
 - Build data is trusted for eight hours before it is checked again (u.gg regenerates it roughly daily), so the pages meet the CDN's bot check far less often. A refused request is retried a few times, and when every attempt is refused the copy you already have is shown rather than nothing.

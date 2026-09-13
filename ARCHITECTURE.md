@@ -25,14 +25,24 @@ League client ──(LCU REST)──> tibbers ──> web UI  :7777   you hover 
 ```
 
 Both stages come from [cslol](https://github.com/LeagueToolkit/cslol-manager)'s
-`mod-tools`:
+`mod-tools`, built from a pinned commit with our own copy of its macOS
+patcher -- see `tools/patcher/README.md` for what that copy changes and why
+League 16.18 made it necessary:
 
 - **`mkoverlay`** — pure local file work. Reads the game's WADs, merges your
   chosen mod, writes a replacement WAD into tibbers' own directory. Touches
   nothing in the League install, needs no privileges.
 - **`runoverlay`** — attaches to the *running game process* and hooks `fopen`
   so reads of `.wad.client` are redirected into that overlay. Needs root
-  (`task_for_pid`), and is the only elevated step.
+  (`task_for_pid`), and is the only elevated step. It writes the hook into a
+  function of the game's it overwrites anyway, and allocates nothing: the
+  game's anti-cheat kills it when an external process allocates memory in it.
+
+The function it overwrites is Riot's, found by scanning for Riot's code, so a
+League patch can move it. `patchcheck.py` reads the installed binary and
+confirms both — one match, and a function with room for the payload — before
+any patcher is started, so a build that has moved on turns skins off with a
+reason instead of leaving a game that will not open.
 
 ## The game is never suspended
 
@@ -103,25 +113,27 @@ lot in one pass.
 The build and counters pages render statistics fetched from public sources —
 nothing tibbers computes or claims as its own:
 
-- **u.gg** (`ugg.py`) — Rift and ARAM builds, runes, and counters, from their
-  static JSON CDN, over `curl`, plus ARAM Mayhem's augment rankings, which sit
-  on a separate host that serves them without a challenge (`MAYHEM_BASE`).
-  Mayhem has no build file of its own, so its items are ARAM's and are stamped
-  as borrowed; its augments are its own and are fetched whether or not the
-  build arrived. The CDN's bot protection scores the TLS
-  handshake, so `urllib` is refused outright and the system curl only passes
-  on a home connection; where its handshake scores badly, or there is no
-  system curl at all (Windows, on both counts), the app fetches and runs a
-  curl that presents a browser's (`system.browser_curl`), with the flags it
-  came with: a browser speaks HTTP/2, and the HTTP/1.1 pin the system curl
-  needs undoes the disguise. The challenge is not deterministic, so a refused
-  curl is retried before the header sets are tried as a last resort.
-- **op.gg** (`opgg.py`) — Arena augments, items, and the champion tier list,
-  from their public champion API.
+- **op.gg** (`opgg.py`) — everything: builds, runes, skills, summoners and
+  counters for every mode, plus Arena's augments, items and tier list. One
+  request per champion and lane carries the build and the counters together,
+  over plain `urllib` with an honest user-agent — the API host's `robots.txt`
+  is `Disallow:`, permitting all of it. The payload names its own patch, so
+  there is no manifest to resolve. What it does not publish is a build against
+  a named lane opponent, or gold at fifteen; counters carry each matchup's win
+  rate, and that is what the pages show.
+- **u.gg** (`ugg.py`) — ARAM Mayhem's augment rankings, and nothing else.
+  They sit on a static host (`MAYHEM_BASE`) that serves them without a
+  challenge, so this too is plain `urllib`. Mayhem has no build file of its
+  own, so its items are ARAM's and are stamped as borrowed; its augments are
+  its own and are fetched whether or not the build arrived. u.gg's *build* CDN
+  is no longer used: it scores the TLS handshake and refuses roughly one
+  request in five, which is what the spoofed user-agent, the alternative
+  header sets and a downloaded browser-impersonating curl all existed to get
+  past. All of that is gone.
 
 Names and icons for everything on those pages come from the League client's own
 data (`gamedata.py`), never from the stats sites. Every page in the app links
-back to the exact u.gg or op.gg page its numbers came from, and importing a
+back to the exact op.gg page its numbers came from, and importing a
 build writes it back into the client as a rune page, spell pair, and item set
 (`importer.py`).
 
@@ -195,10 +207,11 @@ tibbers/downloader.py   on-demand per-champion mods, built on hover
 tibbers/skinsmith.py    builds a mod out of the installed game
 tibbers/wad.py          Riot's archive format, read and written
 tibbers/injector.py     mkoverlay + runoverlay + the patcher's lifetime
+tibbers/patchcheck.py   whether this League build can still be patched
 tibbers/privileged.py   the root-owned helper and its sudoers rule
 tibbers/modes.py        which mode this is, and which tabs it earns
-tibbers/ugg.py          build statistics from u.gg
-tibbers/opgg.py         Arena statistics from op.gg
+tibbers/ugg.py          ARAM Mayhem augment rankings from u.gg
+tibbers/opgg.py         builds, counters and Arena statistics from op.gg
 tibbers/guide.py        those numbers, wearing the client's names and icons
 tibbers/importer.py     writes the build back: rune page, spells, item set
 tibbers/server.py       local HTTP API, art proxy, reload channel

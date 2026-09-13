@@ -657,19 +657,3 @@ def data_dir() -> Path:
     with _DATA_LOCK:
         _DATA_DIRS[override] = d
     return d
-
-
-def browser_curl() -> Optional[List[str]]:
-    """An argv prefix for a curl that presents a browser's TLS handshake.
-
-    u.gg's CDN scores the Windows system curl's handshake worst, so the app
-    fetches a curl that impersonates a browser (`wintools.ensure_browser_curl`)
-    and runs that instead. Returns its argv when the binary is present, else
-    None to fall back to whatever ``curl`` is on PATH. The impersonation target
-    matches the app's advertised Chrome version, so the handshake and the
-    User-Agent agree.
-    """
-    exe = data_dir() / "tools" / "curl-impersonate.exe"
-    if exe.exists():
-        return [str(exe), "--impersonate", "chrome131"]
-    return None

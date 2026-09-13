@@ -54,10 +54,10 @@ skins, builds and counters in one place while you're deciding.
   building quietly in the background so they're ready if you take the pick.
 - It remembers the skin you like on each champion and the chroma on each skin,
   and puts them back when you lock in.
-- It reads the champion's runes, items, skill order and matchups from
-  [u.gg](https://u.gg), Arena augments, items and a tier list from
-  [op.gg](https://op.gg), and ARAM Mayhem's augments from u.gg alongside the
-  build. One click imports the build straight into the client.
+- It reads the champion's runes, items, skill order and counters from
+  [op.gg](https://op.gg) — every mode, Arena's augments and tier list
+  included — and ARAM Mayhem's augment rankings from [u.gg](https://u.gg)
+  alongside the build. One click imports the build straight into the client.
 - An optional one-time setup lets it apply skins without asking for your
   password every game.
 - Close the window and it drops into the menu bar, still watching champ select.
@@ -65,11 +65,11 @@ skins, builds and counters in one place while you're deciding.
 - English and Russian, following your system language; switch in Settings.
 
 <p align="center">
-  <img src="docs/build-guide.jpg" width="720" alt="The build page: runes, skills and items from u.gg">
+  <img src="docs/build-guide.jpg" width="720" alt="The build page: runes, skills and items from op.gg">
 </p>
 
 <p align="center">
-  <em>The build page — runes, skill order and items, with a link back to u.gg.</em>
+  <em>The build page — runes, skill order and items, with a link back to op.gg.</em>
 </p>
 
 <p align="center">
@@ -86,7 +86,8 @@ skins, builds and counters in one place while you're deciding.
 - **League of Legends**, started however you normally start it.
 
 That's it — the app bundles its own Python. (Building from source additionally
-needs Python 3.)
+needs Python 3, and on macOS CMake and the Xcode command line tools, since the
+patcher is compiled here rather than downloaded.)
 
 ## Install
 
@@ -180,9 +181,9 @@ tibbers is mostly glue. The hard parts are other people's work:
 - **[cslol-manager](https://github.com/LeagueToolkit/cslol-manager)** and the
   [League Toolkit](https://github.com/LeagueToolkit) — the `mod-tools` overlay
   builder and patcher tibbers is built around, and the WAD-format groundwork.
-- **[u.gg](https://u.gg)** — the build, rune and counter statistics, and the
-  ARAM Mayhem augment rankings.
-- **[op.gg](https://op.gg)** — the Arena augment, item and tier-list statistics.
+- **[op.gg](https://op.gg)** — the build, rune, skill and counter statistics
+  for every mode, and the Arena augment, item and tier-list statistics.
+- **[u.gg](https://u.gg)** — the ARAM Mayhem augment rankings.
 - **Riot Games** — the League client, whose local API supplies every champion,
   skin, item, rune and icon in the app.
 
@@ -190,8 +191,8 @@ And a nod to **[Rose](https://github.com/Alban1911/Rose)**, the skin changer on
 Windows that inspired this one. tibbers takes a different route to fit macOS,
 but the idea started there.
 
-Every build and counters page links back to the u.gg or op.gg page its numbers
-came from.
+Every build and counters page links back to the op.gg page its numbers came
+from.
 
 ## Is it bannable?
 

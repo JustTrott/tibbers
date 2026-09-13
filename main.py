@@ -378,13 +378,6 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"could not fetch injection tools: {exc}")
             return 1
-        # The build-data fetcher too, so the first launch has its build
-        # pages; a miss is not an install failure, the app retries at start.
-        try:
-            if wintools.ensure_browser_curl():
-                print("build-data fetcher installed")
-        except Exception as exc:  # noqa: BLE001
-            print(f"could not fetch the build-data fetcher: {exc}")
         return 0
 
     if args.check_update:
@@ -517,11 +510,11 @@ def main() -> int:
     state.say(f"game: {game_dir}")
     if privileged is None:
         state.say("elevation: none needed on Windows")
-    elif privileged.available():
-        state.say("elevation: passwordless helper installed")
-    elif privileged.stale():
+    elif privileged.stale(Path(__file__).parent / "tools"):
         state.say("elevation: helper is from an older build -- "
                   "re-run with --install-helper (will prompt until then)")
+    elif privileged.available():
+        state.say("elevation: passwordless helper installed")
     else:
         state.say("elevation: will prompt once per skin "
                   "(install the helper with --install-helper to stop that)")
@@ -677,7 +670,7 @@ def main() -> int:
             queue = dict(state.queue)
         try:
             patch = prefs.get("patch")
-            if queue.get("source") == "opgg":
+            if queue.get("kind") == "arena":
                 arena = guides.arena(champion_id)
                 if stale():
                     return
@@ -697,8 +690,8 @@ def main() -> int:
                     state.guide = {**state.guide, "tierList": tiers}
                 return
 
-            ugg_queue = queue.get("uggQueue")
-            if queue.get("source") != "ugg" or not ugg_queue:
+            data_mode = queue.get("dataMode")
+            if not data_mode:
                 # Better to say nothing than to dress Summoner's Rift numbers
                 # up as Arena. Falling back to the ranked queue here would
                 # have produced a confident, entirely wrong page.
@@ -710,12 +703,12 @@ def main() -> int:
             # cell rather than the pooled one every game lands in.
             if not queue.get("roles", True):
                 role = None
-            memo_key = (champion_id, role, opponent, patch, ugg_queue)
+            memo_key = (champion_id, role, opponent, data_mode)
             pair = session.guide_memo.get(memo_key)
             if pair is None:
                 pair = memoise(session.guide_memo, memo_key,
                                guides.pair(champion_id, role, opponent,
-                                           queue=ugg_queue, patch=patch),
+                                           mode=data_mode),
                                GUIDE_MEMO_MAX)
             if stale():
                 return
@@ -744,7 +737,7 @@ def main() -> int:
             # about them, and the first run of a champ select happens on
             # hover, when nobody has locked yet -- keying without them pinned
             # that empty answer for the rest of the game.
-            shared_key = (champion_id, role, opponent, patch, ugg_queue,
+            shared_key = (champion_id, role, opponent, data_mode,
                           tuple(locked))
             shared = session.shared_memo.get(shared_key)
             if shared is not None:
@@ -758,15 +751,14 @@ def main() -> int:
             # the same table with the subject swapped, so they are built the
             # same way and the page only picks one.
             tables = {}
-            you = guides.counter_table(champion_id, role, queue=ugg_queue,
-                                       patch=patch)
+            you = guides.counter_table(champion_id, role, mode=data_mode)
             if stale():
                 return
             if you:
                 tables["you"] = you
             if opponent:
                 them = guides.counter_table(opponent, role, mine=champion_id,
-                                            queue=ugg_queue, patch=patch)
+                                            mode=data_mode)
                 if stale():
                     return
                 if them:
@@ -775,7 +767,7 @@ def main() -> int:
                 state.guide = {**state.guide, "counterTables": tables}
 
             against = guides.against(champion_id, role, locked,
-                                     queue=ugg_queue, patch=patch)
+                                     mode=data_mode)
             if stale():
                 return
             with state.lock:
@@ -1068,11 +1060,10 @@ def main() -> int:
             # it, the nomination came off ranked solo whatever the mode was,
             # so a Swiftplay lobby was handed the enemy who meets this
             # champion most often in a queue nobody in it is playing.
-            ugg_queue = queue_block.get("uggQueue") or modes.UGG_RANKED
+            data_mode = queue_block.get("dataMode") or modes.DATA_RIFT
         if locked_enemies and champion and has_lanes and not picked_by_hand:
             suggestion = guides.suggest_opponent(champion, role, locked_enemies,
-                                                 queue=ugg_queue,
-                                                 patch=prefs.get("patch"))
+                                                 mode=data_mode)
             if suggestion and suggestion != chosen:
                 with state.lock:
                     state.opponent_id = suggestion
@@ -1517,22 +1508,58 @@ def main() -> int:
                                    "message": "could not download injection tools"}
                 state.say(f"could not download injection tools: {exc}")
 
-        # The build-data fetcher. On Windows it is the u.gg transport, not a
-        # spare: the CDN refuses the system curl's handshake, and most
-        # machines have no system curl at all, so without it the build and
-        # counters pages are empty. Still not injection-critical -- fetched
-        # after the injection tools, no setup bar, a failure costs only the
-        # guide -- but a failure is retried, since GitHub's API rate-limits
-        # by address and a shared connection can be over it for a while.
-        for wait in (0, 90, 600):
-            if wait:
-                time.sleep(wait)
-            try:
-                if wintools.ensure_browser_curl(tools_dir):
-                    break
-            except Exception as exc:  # noqa: BLE001
-                log.warning("could not fetch the build-data fetcher (%s); "
-                            "the build pages need it on Windows", exc)
+        # A patcher that is present is not therefore a patcher that works.
+        # LTK's DLL carries an expiry, and until 1.1.2 nothing ever replaced
+        # what the first launch fetched: an install kept the release it
+        # happened to download for as long as it lived, and when that release
+        # expired every game opened with no skin and no way back short of
+        # deleting the directory by hand. So the pair is checked on every
+        # launch and replaced when it is behind.
+        #
+        # The expiry is read from the patcher's own log first because it needs
+        # no network and is the symptom itself; the tag comparison catches the
+        # rest. Neither can run under a live game -- both files are load-time
+        # images Windows will not let us overwrite while they are in use -- so
+        # the patcher is stopped first and the whole thing is skipped while a
+        # game is up, to be done at the next quiet launch.
+        try:
+            if wintools.expired(inject.patcher_log):
+                stale = "the patcher reported it had reached its end of life"
+            elif wintools.ltk_outdated(tools_dir):
+                stale = "a newer patcher has been released"
+            else:
+                stale = ""
+            if stale and system.game_pid() is None:
+                log.info("refreshing the injection patcher: %s", stale)
+                report("updating the injection patcher")
+                inject.stop_patcher()
+                wintools.refresh_ltk(tools_dir, progress=report)
+                # The expiry was read out of the patcher's log, and the log
+                # outlives the patcher that wrote it -- the injector clears it
+                # when it next starts one, which may be days away. Left alone
+                # it would report the same expiry at every launch until then,
+                # and each one would fetch the patcher again.
+                try:
+                    inject.patcher_log.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                with state.lock:
+                    state.setup = {"active": False, "percent": 100,
+                                   "message": "injection patcher updated"}
+                state.say("the injection patcher was out of date and has "
+                          "been updated -- skins work again")
+            elif stale:
+                log.info("patcher is out of date (%s) but a game is running; "
+                         "leaving it until the next launch", stale)
+        except Exception as exc:  # noqa: BLE001
+            # Never fatal: a failure here leaves whatever is installed in
+            # place, which is exactly where it already was.
+            log.warning("could not refresh the injection patcher: %s", exc)
+
+        # An upgrade replaces the install, never the data directory, so a tool
+        # an older version fetched would otherwise sit there for good.
+        for name in wintools.remove_orphans(tools_dir):
+            log.info("removed %s -- no longer used", name)
 
     threading.Thread(target=provision_tools, daemon=True).start()
 

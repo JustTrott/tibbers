@@ -59,8 +59,11 @@ class EverySpawnIsWindowless(unittest.TestCase):
         seen = {p.name for p in SOURCES
                 if p.name not in MACOS_ONLY
                 and any(True for _ in calls(p.read_text(encoding="utf-8")))}
+        # ugg.py used to be here: it shelled out to curl to get past the
+        # build CDN's fingerprinting. It reaches a static host over urllib
+        # now and spawns nothing at all.
         for name in ("injector.py", "update.py", "_system_windows.py",
-                     "wintools.py", "ugg.py"):
+                     "wintools.py"):
             self.assertIn(name, seen)
 
 

@@ -483,10 +483,10 @@
   .pick.thin { opacity: .62; }
   .pick.thin .n { color: var(--warn); opacity: 1; }
 
-  /* ARAM spends the room the lane row and the matchup switch used to take
-     on names for the fourth, fifth and sixth options. An unnamed item is
-     the same failure as an unnamed augment; Rift cannot afford the space
-     and its six-item core is common knowledge, ARAM's is not. */
+  /* ARAM spends the room the lane row used to take on names for the boots
+     and late-item options. An unnamed item is the same failure as an
+     unnamed augment; Rift cannot afford the space and its six-item core is
+     common knowledge, ARAM's is not. */
   .aopts { margin-top: 9px; display: flex; flex-direction: column; }
   .aoptrow { display: flex; align-items: center; gap: 10px; padding: 3px 0;
              border-bottom: 1px solid var(--hair); }
@@ -1053,8 +1053,8 @@ const T = {
     'games': 'game|games', 'champs': 'champion|champions',
     'unit.gold': 'g',
     'runes': 'Runes', 'skills': 'Skills', 'items': 'Items',
-    'opt.4': '4th', 'opt.5': '5th', 'opt.6': '6th',
-    'opt.fourth': 'Fourth', 'opt.fifth': 'Fifth', 'opt.sixth': 'Sixth',
+    'opt.bootsShort': 'Boots', 'opt.lateShort': 'Late',
+    'opt.boots': 'Boots', 'opt.late': 'Late items',
     'lane.lbl': 'lane opponent', 'lane.none': 'no enemy has locked in yet',
     'lane.assumed': 'assumed · champ select hides roles',
     'lane.over': '{wr} over {games}', 'lane.gold': '{g}g {dir}',
@@ -1161,8 +1161,8 @@ const T = {
     'games': 'игра|игры|игр', 'champs': 'чемпион|чемпиона|чемпионов',
     'unit.gold': '\u00a0зол.',   /* a word, not a symbol: it needs the gap */
     'runes': 'Руны', 'skills': 'Порядок прокачки', 'items': 'Предметы',
-    'opt.4': '4-й', 'opt.5': '5-й', 'opt.6': '6-й',
-    'opt.fourth': '4-й', 'opt.fifth': '5-й', 'opt.sixth': '6-й',
+    'opt.bootsShort': 'Обувь', 'opt.lateShort': 'Поздние',
+    'opt.boots': 'Обувь', 'opt.late': 'Поздние предметы',
     'lane.lbl': 'соперник', 'lane.none': 'соперники ещё не подтвердили выбор',
     'lane.assumed': 'предположительно · роли скрыты',
     'lane.over': '{wr} · {games}', 'lane.gold': '{g} зол. {dir}',
@@ -2086,10 +2086,9 @@ function renderGuide(s) {
       <span class="wr">${fig(o.winRate, 2)}</span>
       <span class="n">${num(o.matches)}</span></span>`).join('') + `</div></div>`;
 
-  /* ARAM: the same options with their names, paid for by the lane row and
-     the matchup switch this mode does not draw. An unnamed item is the same
-     failure as an unnamed augment, and ARAM item choices are the less
-     rehearsed of the two. */
+  /* ARAM: the same options with their names, paid for by the lane row this
+     mode does not draw. An unnamed item is the same failure as an unnamed
+     augment, and ARAM item choices are the less rehearsed of the two. */
   const namedOpts = (cap, rows) => !rows || !rows.length ? '' : `
     <div class="aoptrow"><span class="cap">${cap}</span>` +
     rows.slice(0, 2).map(o => `<span class="aopt ${o.matches < THIN ? 'thin' : ''}">
@@ -2132,14 +2131,13 @@ function renderGuide(s) {
       <div class="items">${itemRow(b.start, 'small')}
         <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
       <div class="aopts">
-        ${namedOpts(esc(t('opt.fourth')), b.fourth)}${namedOpts(esc(t('opt.fifth')), b.fifth)}
-        ${namedOpts(esc(t('opt.sixth')), b.sixth)}
+        ${namedOpts(esc(t('opt.boots')), b.boots)}${namedOpts(esc(t('opt.late')), b.late)}
       </div>` : `
       <div class="igrid">
         <div class="items">${itemRow(b.start, 'small')}
           <span class="arrowto sep">|</span>${itemRow(b.core, '')}</div>
         <div class="opts">
-          ${optBlock(esc(t('opt.4')), b.fourth)}${optBlock(esc(t('opt.5')), b.fifth)}${optBlock(esc(t('opt.6')), b.sixth)}
+          ${optBlock(esc(t('opt.bootsShort')), b.boots)}${optBlock(esc(t('opt.lateShort')), b.late)}
         </div>
       </div>`}
     </section>

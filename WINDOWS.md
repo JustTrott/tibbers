@@ -1,6 +1,6 @@
 # tibbers on Windows
 
-The whole picker, the u.gg / op.gg guide, on-hover skin building and the WAD
+The whole picker, the op.gg guide, on-hover skin building and the WAD
 reading/writing are pure Python and already cross-platform. Windows differs in
 a few places, all behind `tibbers/system.py` and `tibbers/shell.py`.
 
@@ -86,12 +86,21 @@ is signed by its own publisher, so neither is ours to redistribute. Instead:
 - failing that, the app fetches whatever is missing itself on first run
   (`tibbers/wintools.py`), with a progress bar in the picker.
 
-The third download is `curl-impersonate.exe` (lexiforest's statically linked
-build), which is how the build and counters pages read u.gg on Windows: the
-CDN refuses the system curl's TLS handshake, and most machines have no system
-curl anyway. When the app has to fetch it itself, it does so after the
-injection tools, retried a few times if GitHub is rate-limiting; a miss only
-leaves the build pages empty until the next launch.
+There used to be a third download, `curl-impersonate.exe`, because u.gg's
+build CDN refused every ordinary client's TLS handshake. The build and
+counters pages read op.gg now, which answers plain `urllib` with an honest
+user-agent, so that download is gone.
+
+**The patcher expires.** LTK's DLL carries an end-of-life date; past it it
+attaches to the game and redirects nothing, so the game opens with no skin.
+Nothing used to replace it — `ensure` filled in only missing files and Setup
+skipped its download page once the files existed — so every install kept one
+release for good and they all expired together. The app now checks at each
+launch (`wintools.expired` reads the patcher's own log, `wintools.ltk_outdated`
+compares the recorded release tag) and re-fetches, stopping the patcher first
+and skipping while a game is up, since both files are load-time images Windows
+will not let us overwrite in use. Following LTK's latest release is deliberate:
+a pinned version would expire on a fixed date and brick every install again.
 
 The installer installs per-user into `%LOCALAPPDATA%\Programs\Tibbers`, adds a
 Start Menu entry, and offers a run-at-sign-in tray launch. It speaks English

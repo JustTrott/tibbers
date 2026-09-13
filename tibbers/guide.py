@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-The build guide: u.gg's numbers, wearing the client's own names and icons.
+The build guide: op.gg's numbers, wearing the client's own names and icons.
 
 Everything is resolved here rather than in the browser. The picker would
 otherwise need the item, rune and champion dictionaries to render a single
 build -- 700KB of JSON to put six icons on screen -- and would have to repeat
 the same joins on every poll.
 
-Runes come back as a flat list of six perk ids with no indication of where
-they sit, so the tree is rebuilt around them: a rune's meaning is partly its
-row, and a page that lists them without their tree is a page that cannot be
-read at a glance.
+Runes come back as bare perk ids with no indication of where they sit, so the
+tree is rebuilt around them: a rune's meaning is partly its row, and a page
+that lists them without their tree is a page that cannot be read at a glance.
+
+Builds and counters are op.gg's; only ARAM Mayhem's augment tiers are still
+u.gg's, and those come from a static host that puts up no challenge.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ log = logging.getLogger("tibbers.guide")
 #: alias, lowercased -- both sites accept exactly that form (``monkeyking``,
 #: ``nunu``, ``renata``), where slugs derived from display names 404.
 UGG_PAGE = "https://u.gg/lol/champions"
+OPGG_PAGE = "https://op.gg/lol/champions"
 OPGG_ARENA_PAGE = "https://op.gg/lol/modes/arena"
 UGG_MAYHEM_AUGMENT_PAGE = "https://u.gg/lol/aram-mayhem-augment-tier-list"
 
@@ -40,6 +43,16 @@ MAYHEM_BANDS = ("S+", "S", "A", "B", "C", "D")
 #: the URL and the page falls back to the champion's recommended role.
 UGG_ROLE = {"top": "top", "jungle": "jungle", "middle": "mid",
             "bottom": "adc", "utility": "support"}
+
+#: Below this many games a counters row is noise. u.gg carried a pick share
+#: and it was what kept the honest top of a list from being a champion played
+#: in that lane a few dozen times; op.gg publishes no share, so the sample
+#: size does that job. The same floor the rest of the app calls noise.
+COUNTER_MIN_MATCHES = 100
+
+#: op.gg spells them the same way in its page URLs as in its API.
+OPGG_LANE = {"top": "top", "jungle": "jungle", "middle": "mid",
+             "bottom": "adc", "utility": "support"}
 
 #: Standard deviation of a uniform finish, used as the spread for one
 #: augment's average finish. op.gg publishes no per-augment variance, so this
@@ -64,14 +77,14 @@ TIER_BANDS = ((2.5, "S+"), (1.25, "S"), (0.0, "A"), (-1.25, "B"))
 
 
 class Guide:
-    """Builds a fully resolved guide for one champion, role and matchup."""
+    """Builds a fully resolved guide for one champion and role."""
 
     def __init__(self, gamedata, ugg: Optional[UGG] = None):
         self.gamedata = gamedata
         self.ugg = ugg or UGG()
         self._trees: Optional[Dict[int, int]] = None
-        #: Built on first use, and only in Arena. Everything else in the app
-        #: reaches u.gg, so a session that never opens Arena never makes one.
+        #: Built on first use. Everything but Mayhem's augment tiers is read
+        #: through it, so in practice the first champ select makes one.
         self._opgg = None
 
     def opgg(self):
@@ -126,21 +139,24 @@ class Guide:
     def _slug(self, champion_id: int) -> str:
         return self.gamedata.champion_alias(champion_id).lower()
 
-    def _ugg_source(self, champion_id: int, page: str, role: Optional[str],
-                    queue: str) -> Optional[dict]:
-        """The u.gg page these numbers are a rendering of."""
+    def _opgg_source(self, champion_id: int, page: str, role: Optional[str],
+                     mode: str) -> Optional[dict]:
+        """The op.gg page these numbers are a rendering of.
+
+        Credited and linked because they are somebody else's work, and because
+        a number nobody can go and check is worth less than one they can.
+        """
         slug = self._slug(champion_id)
         if not slug:
             return None
-        from .modes import UGG_ARAM
-        if queue == UGG_ARAM:
-            url = f"{UGG_PAGE}/aram/{slug}-aram"
-        else:
-            url = f"{UGG_PAGE}/{slug}/{page}"
-            mapped = UGG_ROLE.get(role or "")
-            if mapped:
-                url += f"?role={mapped}"
-        return {"name": "u.gg", "url": url}
+        if mode in ("aram", "urf"):
+            return {"name": "op.gg",
+                    "url": f"{OPGG_PAGE}/{slug}/{'aram' if mode == 'aram' else 'urf'}"}
+        url = f"{OPGG_PAGE}/{slug}/{page}"
+        lane = OPGG_LANE.get((role or "").lower())
+        if lane:
+            url += f"/{lane}"
+        return {"name": "op.gg", "url": url}
 
     def _slot(self, block: Optional[dict], key: str = "items") -> Optional[dict]:
         if not block:
@@ -160,15 +176,12 @@ class Guide:
     # -- public ------------------------------------------------------------
 
     def build(self, champion_id: int, role: Optional[str],
-              opponent_id: Optional[int] = None,
-              queue: str = "ranked_solo_5x5",
-              patch: Optional[str] = None) -> dict:
-        raw = self.ugg.build_with_fallback(champion_id, role, opponent_id,
-                                           queue, self.trees(), patch)
+              mode: str = "rift") -> dict:
+        raw = self.opgg().build(champion_id, role, mode)
         out: dict = {
             "patch": raw.get("patch"),
             "role": role,
-            "opponentId": opponent_id,
+            "opponentId": None,
             "thin": raw.get("thin", False),
             "matches": raw.get("matches", 0),
             "overall": raw.get("overall") or {},
@@ -226,35 +239,32 @@ class Guide:
 
         out["start"] = self._slot(raw.get("start"))
         out["core"] = self._slot(raw.get("core"))
-        for slot in ("fourth", "fifth", "sixth"):
-            out[slot] = self._options(raw.get(slot))
+        # Boots and late items, not a fourth/fifth/sixth. op.gg publishes one
+        # pooled distribution for everything bought after the core rather than
+        # one per slot, so this says so instead of cutting it into three and
+        # implying an order the data does not carry.
+        out["boots"] = self._options(raw.get("boots"))
+        out["late"] = self._options(raw.get("late"))
         return out
 
     def pair(self, champion_id: int, role: Optional[str],
              opponent_id: Optional[int] = None,
-             queue: str = "ranked_solo_5x5",
-             patch: Optional[str] = None) -> dict:
-        """Both builds at once: the general one, and the one for this matchup.
+             mode: str = "rift") -> dict:
+        """The build for this champion and lane.
 
-        Sent together so the picker can switch between them without waiting
-        on anything. They answer different questions -- the general build is
-        what the champion wants, the matchup is what it wants against this
-        opponent -- and which to trust is decided by the sample sizes, which
-        only makes sense with both in front of you.
+        Named `pair` from when there were two of them: the general build and
+        one fetched against the named lane opponent, sent together so the
+        picker could switch without waiting. op.gg publishes no per-matchup
+        build -- its counters carry the win rate for each matchup but no build
+        tailored to it -- so `matchup` is always None and the picker shows the
+        one build. The shape is kept so the page, the importer and the memo
+        key did not all have to change with it.
         """
-        general = self.build(champion_id, role, None, queue, patch)
-        out = {"general": general, "matchup": None,
-               "patch": general.get("patch"), "role": role,
-               "opponentId": opponent_id,
-               "source": self._ugg_source(champion_id, "build", role, queue)}
-        if not opponent_id:
-            return out
-        try:
-            out["matchup"] = self.build(champion_id, role, opponent_id,
-                                        queue, patch)
-        except Unavailable as exc:
-            out["matchupError"] = str(exc)
-        return out
+        general = self.build(champion_id, role, mode)
+        return {"general": general, "matchup": None,
+                "patch": general.get("patch"), "role": role,
+                "opponentId": opponent_id,
+                "source": self._opgg_source(champion_id, "build", role, mode)}
 
     @staticmethod
     def rate_augments(rows: List[dict], rarity: str) -> List[dict]:
@@ -467,8 +477,7 @@ class Guide:
 
     def counter_table(self, subject_id: int, role: Optional[str],
                       mine: Optional[int] = None,
-                      queue: str = "ranked_solo_5x5", limit: int = 60,
-                      patch: Optional[str] = None) -> Optional[dict]:
+                      mode: str = "rift", limit: int = 60) -> Optional[dict]:
         """The champions in YOUR role that beat `subject_id`, best first.
 
         One shape answers both directions the page offers. Asked about the
@@ -492,25 +501,30 @@ class Guide:
         confidence.
         """
         try:
-            table = self.ugg.matchup_table(subject_id, role, queue, patch=patch)
+            table = self.opgg().counters(subject_id, role, mode)
         except Unavailable:
             return None
         if not table:
             return None
 
-        usable = [r for r in table if r["share"] >= 0.005]
+        # u.gg carried a pick share, and it was what kept the honest top of an
+        # ADC's list from being mages played bottom in under two percent of
+        # games. op.gg publishes no share, so the sample size does that job:
+        # a matchup nobody plays does not reach it.
+        usable = [r for r in table if r["matches"] >= COUNTER_MIN_MATCHES]
+        if not usable:
+            return None
 
         def dress(row: dict) -> dict:
             champ = self.gamedata.champion(row["championId"]) or {}
-            out = {"championId": row["championId"],
-                   "name": champ.get("name") or "",
-                   "icon": champ.get("icon") or "",
-                   "winRate": round(100 - row["winRate"], 2),
-                   "matches": row["matches"],
-                   "pickShare": round(row["share"] * 100, 2)}
-            if row.get("goldAt15") is not None:
-                out["goldAt15"] = round(-row["goldAt15"], 1)
-            return out
+            # Every figure is the LISTED champion's, not the subject's. op.gg
+            # stores the subject's, so it is turned around here rather than in
+            # the page.
+            return {"championId": row["championId"],
+                    "name": champ.get("name") or "",
+                    "icon": champ.get("icon") or "",
+                    "winRate": round(100 - row["winRate"], 2),
+                    "matches": row["matches"]}
 
         ranked = sorted(usable, key=lambda r: r["winRate"])
         rows = [dress(r) for r in ranked[:limit]]
@@ -529,11 +543,10 @@ class Guide:
         return {"championId": subject_id, "name": subject.get("name") or "",
                 "icon": subject.get("icon") or "", "role": role,
                 "rows": rows, "mine": me, "total": len(ranked),
-                "source": self._ugg_source(subject_id, "counter", role, queue)}
+                "source": self._opgg_source(subject_id, "counters", role, mode)}
 
     def against(self, champion_id: int, role: Optional[str],
-                enemies: List[int], queue: str = "ranked_solo_5x5",
-                patch: Optional[str] = None) -> List[dict]:
+                enemies: List[int], mode: str = "rift") -> List[dict]:
         """How this champion fares against each enemy actually in the game.
 
         The general counter list answers "what beats me"; this answers "how am
@@ -545,8 +558,8 @@ class Guide:
         if not enemies:
             return []
         try:
-            table = {r["championId"]: r for r in self.ugg.matchup_table(
-                champion_id, role, queue, patch=patch)}
+            table = {r["championId"]: r for r in
+                     self.opgg().counters(champion_id, role, mode)}
         except Unavailable:
             return []
         out = []
@@ -558,23 +571,24 @@ class Guide:
                      "icon": champ.get("icon") or "",
                      "winRate": row["winRate"] if row else None,
                      "matches": row["matches"] if row else 0}
-            # The lane row's headline reads off this: gold at fifteen is the
-            # one number that says how the lane will actually feel, and it is
-            # already in the payload the win rate came from.
-            if row and row.get("goldAt15") is not None:
-                entry["goldAt15"] = row["goldAt15"]
             out.append(entry)
         out.sort(key=lambda r: (r["winRate"] is None, r["winRate"] or 0))
         return out
 
     def suggest_opponent(self, champion_id: int, role: Optional[str],
-                         enemies: List[int], queue: str = "ranked_solo_5x5",
-                         patch: Optional[str] = None) -> Optional[int]:
-        """Which locked enemy most often meets this champion in this role."""
+                         enemies: List[int], mode: str = "rift") -> Optional[int]:
+        """Which locked enemy most often meets this champion in this role.
+
+        Champ select never says who is in your lane, so it is guessed from how
+        often each locked enemy actually turns up there -- the same counters
+        rows the page is drawn from, read for their sample sizes rather than
+        their win rates.
+        """
         if not enemies:
             return None
         try:
-            samples = self.ugg.opponent_samples(champion_id, role, queue, patch)
+            samples = {r["championId"]: r["matches"] for r in
+                       self.opgg().counters(champion_id, role, mode)}
         except Unavailable:
             return None
         ranked = sorted(enemies, key=lambda e: samples.get(e, 0), reverse=True)

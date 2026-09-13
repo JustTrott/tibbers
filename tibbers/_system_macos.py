@@ -404,7 +404,7 @@ def spawn_runoverlay_detached(modtools: Path, overlay: Path, config: Path,
     # that will refuse. Nothing about the command changes either way.
     from . import privileged
     arch = modtools_arch(modtools)
-    if privileged.available(arch):
+    if privileged.available(arch, modtools):
         return privileged.start_runoverlay(
             arch, overlay, config, game_dir, log_path, detached=detached)
 
@@ -547,13 +547,3 @@ def data_dir() -> Path:
     with _DATA_LOCK:
         _DATA_DIRS[override] = d
     return d
-
-
-def browser_curl() -> Optional[List[str]]:
-    """An argv prefix for a curl that presents a browser's TLS handshake.
-
-    None on macOS: the system curl clears u.gg's CDN on a home connection, so
-    nothing extra is shipped or needed. The Windows layer overrides this where
-    the system handshake is refused.
-    """
-    return None

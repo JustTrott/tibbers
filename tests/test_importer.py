@@ -61,9 +61,9 @@ def a_build():
                                              {"id": 2003}]},
         "core": {"winRate": 51.9, "items": [{"id": 6672}, {"id": 3031},
                                             {"id": 3036}]},
-        "fourth": [{"id": 3072}, {"id": 6673}, {"id": 3095}, {"id": 9999}],
-        "fifth": [{"id": 3026}],
-        "sixth": [],
+        "boots": [{"id": 3020}, {"id": 3158}],
+        "late": [{"id": 3072}, {"id": 6673}, {"id": 3095}, {"id": 9999},
+                 {"id": 3026}],
     }
 
 
@@ -181,11 +181,11 @@ class ItemSet(unittest.TestCase):
         self.assertEqual([i["id"] for i in core["items"]],
                          ["6672", "3031", "3036"])
 
-    def test_the_option_slots_are_capped_at_three(self):
-        fourth = next(b for b in self.set["blocks"] if b["type"] == "4th item")
-        self.assertEqual([i["id"] for i in fourth["items"]],
-                         ["3072", "6673", "3095"])
-        self.assertNotIn("6th item", [b["type"] for b in self.set["blocks"]])
+    def test_the_late_item_options_are_capped(self):
+        """One shop tab is not a place for thirty items."""
+        late = next(b for b in self.set["blocks"] if b["type"] == "Late items")
+        self.assertEqual([i["id"] for i in late["items"]],
+                         ["3072", "6673", "3095", "9999"])
 
     def test_an_unknown_map_falls_back_to_the_rift(self):
         other = importer.item_set(a_build(), 18, "Tristana", "nexusblitz", 21)
@@ -194,15 +194,13 @@ class ItemSet(unittest.TestCase):
         self.assertEqual(aram["associatedMaps"], [12])
         self.assertEqual(aram["title"], "Tibbers: Tristana ARAM")
 
-    def test_a_rift_build_has_no_boots_tab(self):
-        """u.gg publishes no boots slot outside Arena, so the block that
-        looked for one never filled -- and a stray key must not revive it."""
-        build = a_build()
-        build["boots"] = {"winRate": 51.0, "items": [{"id": 3020}]}
-        made = importer.item_set(build, 18, "Tristana", "rift", 11)
+    def test_a_rift_build_carries_its_boots(self):
+        """op.gg publishes boots for every mode, so the tab that could never
+        fill under u.gg now does."""
+        made = importer.item_set(a_build(), 18, "Tristana", "rift", 11)
+        boots = next(b for b in made["blocks"] if b["type"] == "Boots")
+        self.assertEqual([i["id"] for i in boots["items"]], ["3020", "3158"])
         types = [b["type"] for b in made["blocks"]]
-        self.assertNotIn("Boots", types)
-        self.assertEqual(types, [t for t in types if "Boots" not in t])
         self.assertEqual(types[1], "Core build · 51.9% win")
 
     def test_a_build_with_no_items_is_refused(self):
@@ -466,120 +464,6 @@ class Writes(unittest.TestCase):
         out = importer.Importer(lambda: None).run(a_build(), 18, "Tristana")
         self.assertFalse(out["ok"])
         self.assertEqual(out["error"], "the League client is not running")
-
-
-class RealBuild(unittest.TestCase):
-    """One cached u.gg build, decoded exactly as the picker decodes it."""
-
-    CACHE = (Path.home() / "Library" / "Application Support" / "tibbers" / "ugg")
-
-    def setUp(self):
-        if not self.CACHE.is_dir():
-            self.skipTest("no u.gg cache on this machine")
-        files = sorted(self.CACHE.glob("overview-*-ranked_solo_5x5.json"))
-        if not files:
-            self.skipTest("no cached overview to read")
-        self.path = files[-1]
-
-    def test_a_cached_build_produces_a_valid_page_and_set(self):
-        from tibbers.ugg import UGG
-
-        payload = json.loads(self.path.read_text())["data"]
-        cell = UGG._cell(payload, None)
-        self.assertIsNotNone(cell, f"{self.path.name} holds no usable cell")
-
-        # The tree map the picker builds from the client's perkstyles. Read
-        # from the same cache if it is there; otherwise derive it from the
-        # decoded runes, which is enough to exercise the ordering.
-        trees = _trees_from_cache()
-        raw = UGG().decode(cell, trees)
-        if not raw.get("runes"):
-            self.skipTest("this cached cell carries no runes")
-
-        build = _resolve(raw, trees)
-        page = importer.rune_page(build, "Shyvana", _stat_rows_from_cache())
-        self.assertEqual(len(page["selectedPerkIds"]), 9)
-        self.assertEqual(len(set(page["selectedPerkIds"][:6])), 6)
-        self.assertEqual(page["primaryStyleId"], raw["runes"]["primaryTree"])
-        self.assertEqual(page["subStyleId"], raw["runes"]["secondaryTree"])
-        self.assertEqual(page["selectedPerkIds"][0], raw["runes"]["keystone"])
-        for perk in page["selectedPerkIds"][:4]:
-            self.assertEqual(trees.get(perk), page["primaryStyleId"])
-        for perk in page["selectedPerkIds"][4:6]:
-            self.assertEqual(trees.get(perk), page["subStyleId"])
-        for shard in page["selectedPerkIds"][6:]:
-            self.assertIn(shard, range(5001, 5014))
-
-        made = importer.item_set(build, 102, "Shyvana", "rift", 11)
-        self.assertTrue(made["blocks"])
-        for block in made["blocks"]:
-            for item in block["items"]:
-                self.assertIsInstance(item["id"], str)
-                self.assertGreaterEqual(item["count"], 1)
-
-
-def _perkstyles() -> dict:
-    root = (Path.home() / "Library" / "Application Support" / "tibbers"
-            / "gamedata")
-    for path in sorted(root.glob("*/perkstyles.json"), reverse=True):
-        try:
-            return json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-    return {}
-
-
-def _trees_from_cache() -> dict:
-    out = {}
-    for style in (_perkstyles().get("styles") or []):
-        for slot in style.get("slots") or []:
-            for perk in slot.get("perks") or []:
-                out[int(perk)] = int(style["id"])
-    return out
-
-
-def _stat_rows_from_cache():
-    for style in (_perkstyles().get("styles") or []):
-        rows = [[int(p) for p in (slot.get("perks") or [])]
-                for slot in style.get("slots") or []
-                if (slot.get("type") or "") == "kStatMod"]
-        if len(rows) == 3:
-            return rows
-    return STAT_ROWS
-
-
-def _resolve(raw: dict, trees: dict) -> dict:
-    """The half of `Guide.build` the importer reads, without a GameData."""
-    styles = {int(s["id"]): s for s in (_perkstyles().get("styles") or [])}
-
-    def rows_for(style_id, chosen):
-        picked = set(chosen)
-        rows = []
-        for slot in (styles.get(int(style_id)) or {}).get("slots") or []:
-            if (slot.get("type") or "") == "kStatMod":
-                continue
-            rows.append([{"id": int(p), "picked": int(p) in picked}
-                         for p in slot.get("perks") or []])
-        return {"id": int(style_id), "rows": rows}
-
-    runes = raw["runes"]
-    primary = [runes["keystone"]] + list(runes.get("primary") or [])
-    out = {
-        "runes": {"primary": rows_for(runes["primaryTree"], primary),
-                  "secondary": rows_for(runes["secondaryTree"],
-                                        runes.get("secondary") or []),
-                  "keystoneId": runes["keystone"]},
-        "shards": [{"id": s} for s in (raw.get("shards") or {}).get("ids") or []],
-        "spells": {"spells": [{"id": s}
-                              for s in (raw.get("spells") or {}).get("ids") or []]},
-    }
-    for name in ("start", "core"):
-        block = raw.get(name) or {}
-        out[name] = {"winRate": block.get("winRate", 0.0),
-                     "items": [{"id": i} for i in block.get("items") or []]}
-    for name in ("fourth", "fifth", "sixth"):
-        out[name] = [{"id": r["itemId"]} for r in raw.get(name) or []]
-    return out
 
 
 if __name__ == "__main__":
