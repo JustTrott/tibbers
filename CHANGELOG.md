@@ -5,7 +5,7 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
-## 1.1.2 — in progress
+## 1.1.2 — 2026-09-13
 
 Skins work again on Windows, and the build pages stop depending on a CDN that
 refuses us.
