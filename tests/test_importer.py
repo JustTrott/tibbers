@@ -61,9 +61,9 @@ def a_build():
                                              {"id": 2003}]},
         "core": {"winRate": 51.9, "items": [{"id": 6672}, {"id": 3031},
                                             {"id": 3036}]},
-        "fourth": [{"id": 3072}, {"id": 6673}, {"id": 3095}, {"id": 9999}],
-        "fifth": [{"id": 3026}],
-        "sixth": [],
+        "boots": [{"id": 3020}, {"id": 3158}],
+        "late": [{"id": 3072}, {"id": 6673}, {"id": 3095}, {"id": 9999},
+                 {"id": 3026}],
     }
 
 
@@ -181,11 +181,11 @@ class ItemSet(unittest.TestCase):
         self.assertEqual([i["id"] for i in core["items"]],
                          ["6672", "3031", "3036"])
 
-    def test_the_option_slots_are_capped_at_three(self):
-        fourth = next(b for b in self.set["blocks"] if b["type"] == "4th item")
-        self.assertEqual([i["id"] for i in fourth["items"]],
-                         ["3072", "6673", "3095"])
-        self.assertNotIn("6th item", [b["type"] for b in self.set["blocks"]])
+    def test_the_late_item_options_are_capped(self):
+        """One shop tab is not a place for thirty items."""
+        late = next(b for b in self.set["blocks"] if b["type"] == "Late items")
+        self.assertEqual([i["id"] for i in late["items"]],
+                         ["3072", "6673", "3095", "9999"])
 
     def test_an_unknown_map_falls_back_to_the_rift(self):
         other = importer.item_set(a_build(), 18, "Tristana", "nexusblitz", 21)
@@ -194,15 +194,13 @@ class ItemSet(unittest.TestCase):
         self.assertEqual(aram["associatedMaps"], [12])
         self.assertEqual(aram["title"], "Tibbers: Tristana ARAM")
 
-    def test_a_rift_build_has_no_boots_tab(self):
-        """u.gg publishes no boots slot outside Arena, so the block that
-        looked for one never filled -- and a stray key must not revive it."""
-        build = a_build()
-        build["boots"] = {"winRate": 51.0, "items": [{"id": 3020}]}
-        made = importer.item_set(build, 18, "Tristana", "rift", 11)
+    def test_a_rift_build_carries_its_boots(self):
+        """op.gg publishes boots for every mode, so the tab that could never
+        fill under u.gg now does."""
+        made = importer.item_set(a_build(), 18, "Tristana", "rift", 11)
+        boots = next(b for b in made["blocks"] if b["type"] == "Boots")
+        self.assertEqual([i["id"] for i in boots["items"]], ["3020", "3158"])
         types = [b["type"] for b in made["blocks"]]
-        self.assertNotIn("Boots", types)
-        self.assertEqual(types, [t for t in types if "Boots" not in t])
         self.assertEqual(types[1], "Core build · 51.9% win")
 
     def test_a_build_with_no_items_is_refused(self):
@@ -577,7 +575,7 @@ def _resolve(raw: dict, trees: dict) -> dict:
         block = raw.get(name) or {}
         out[name] = {"winRate": block.get("winRate", 0.0),
                      "items": [{"id": i} for i in block.get("items") or []]}
-    for name in ("fourth", "fifth", "sixth"):
+    for name in ("boots", "late"):
         out[name] = [{"id": r["itemId"]} for r in raw.get(name) or []]
     return out
 

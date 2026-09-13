@@ -25,22 +25,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-#: u.gg queue paths that actually carry data. Measured, not assumed: of the
-#: queues u.gg publishes, only these two exist beyond ranked Summoner's Rift.
-#: `arena`, `nexus_blitz`, `pick_urf`, `urf` and `quickplay` all 404 on every
-#: patch tried.
-UGG_RANKED = "ranked_solo_5x5"
-UGG_ARAM = "normal_aram"
-UGG_SWIFTPLAY = "swiftplay"
-
-#: Queue ids that have their own u.gg data, where the mode alone is too coarse.
-UGG_BY_QUEUE = {
-    420: "ranked_solo_5x5",
-    440: "ranked_flex_sr",
-    400: "normal_draft_5x5",
-    430: "normal_blind_5x5",
-    480: UGG_SWIFTPLAY,
-}
+#: The op.gg paths that carry build data. Everything laned reads from `rift`;
+#: the two modes with files of their own are here because the mode alone says
+#: which. A mode absent from this set has no data and says so rather than
+#: being served Rift numbers under another name.
+DATA_RIFT = "rift"
+DATA_ARAM = "aram"
+DATA_URF = "urf"
 
 
 #: What each tab is called, in one place. The picker reads the label from the
@@ -70,8 +61,13 @@ class Mode:
     roles: bool = False
     #: Where build data comes from, if anywhere.
     source: Optional[str] = None
-    #: The u.gg queue path, when the source is u.gg.
-    queue: Optional[str] = None
+    #: Which op.gg file the build is read from -- `rift`, `aram` or `urf`.
+    #: Not always this mode's own: see `borrowed`.
+    data_mode: Optional[str] = None
+    #: True when this mode is Arena, whose page is shaped differently enough
+    #: to earn its own tabs: eighteen players in one team, no lane to counter,
+    #: and augments that matter more than items.
+    arena: bool = False
     #: True when the numbers are borrowed from another queue because this one
     #: has none. Shown rather than hidden.
     borrowed: bool = False
@@ -98,11 +94,11 @@ class Mode:
         * **Augments** needs a mode that offers them. Mayhem does and still
           has a build worth reading, so it earns the page *beside* the build
           rather than instead of it.
-        * **Counters** needs lanes *and* u.gg. Arena puts all eighteen
+        * **Counters** needs lanes *and* a source. Arena puts all eighteen
           players in ``myTeam``, so there is nobody to counter.
         """
         keys = ["skin"]
-        if self.source == "opgg":
+        if self.arena:
             # Arena: a champion tier list to pick with, the augment table to
             # play with, and items in their own right rather than as a footer.
             keys += ["tiers", "augments", "items"]
@@ -132,34 +128,38 @@ def resolve(game_mode: Optional[str], map_id: Optional[int],
         # reference return AccessDenied, and no augment endpoint appears in
         # its manifest at all. op.gg serves the same figures as plain JSON
         # and permits automated access.
-        return Mode("arena", "Arena", source="opgg")
+        return Mode("arena", "Arena", source="opgg", arena=True)
 
     if mode == "ARAM":
-        return Mode("aram", "ARAM", source="ugg", queue=UGG_ARAM)
+        return Mode("aram", "ARAM", source="opgg", data_mode=DATA_ARAM)
 
     if mode == "KIWI":
         # Mayhem's items are ARAM's -- same champions, same map, and u.gg
         # publishes no build file of its own for it, so the build is borrowed
         # and said to be. What is not borrowed is the half that decides the
         # game: augments are picked here and runes are not picked at all.
-        return Mode("mayhem", "ARAM: Mayhem", source="ugg", queue=UGG_ARAM,
-                    borrowed=True, runes=False, augments=True)
+        return Mode("mayhem", "ARAM: Mayhem", source="opgg",
+                    data_mode=DATA_ARAM, borrowed=True, runes=False,
+                    augments=True)
 
     if mode == "NEXUSBLITZ" or map_id == 21:
         return Mode("nexusblitz", "Nexus Blitz")
 
     if mode == "SWIFTPLAY":
-        return Mode("swiftplay", "Swiftplay", roles=True, source="ugg",
-                    queue=UGG_SWIFTPLAY)
+        # op.gg publishes no Swiftplay file, so the lanes read from Rift --
+        # borrowed, and said to be.
+        return Mode("swiftplay", "Swiftplay", roles=True, source="opgg",
+                    data_mode=DATA_RIFT, borrowed=True)
 
     if mode == "URF":
-        return Mode("urf", "URF", roles=True, source="ugg", queue=UGG_RANKED,
-                    borrowed=True)
+        return Mode("urf", "URF", roles=True, source="opgg",
+                    data_mode=DATA_URF)
 
     if mode in ("CLASSIC", "PRACTICETOOL", "JADE") or map_id in (11, 453):
-        queue = UGG_BY_QUEUE.get(queue_id or -1)
-        return Mode("rift", "Summoner's Rift", roles=True, source="ugg",
-                    queue=queue or UGG_RANKED, borrowed=queue is None)
+        # op.gg pools every Rift queue into one file, so a normal game and a
+        # ranked one read the same numbers and nothing is borrowed.
+        return Mode("rift", "Summoner's Rift", roles=True, source="opgg",
+                    data_mode=DATA_RIFT)
 
     return UNKNOWN
 
@@ -182,7 +182,7 @@ def payload(mode: Mode, queue_id=None, game_mode: str = "",
         "skins": mode.skins,
         "roles": mode.roles,
         "source": mode.source,
-        "uggQueue": mode.queue,
+        "dataMode": mode.data_mode,
         "borrowed": mode.borrowed,
         "runes": mode.runes,
         "augments": mode.augments,

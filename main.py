@@ -677,7 +677,7 @@ def main() -> int:
             queue = dict(state.queue)
         try:
             patch = prefs.get("patch")
-            if queue.get("source") == "opgg":
+            if queue.get("kind") == "arena":
                 arena = guides.arena(champion_id)
                 if stale():
                     return
@@ -697,8 +697,8 @@ def main() -> int:
                     state.guide = {**state.guide, "tierList": tiers}
                 return
 
-            ugg_queue = queue.get("uggQueue")
-            if queue.get("source") != "ugg" or not ugg_queue:
+            data_mode = queue.get("dataMode")
+            if not data_mode:
                 # Better to say nothing than to dress Summoner's Rift numbers
                 # up as Arena. Falling back to the ranked queue here would
                 # have produced a confident, entirely wrong page.
@@ -710,12 +710,12 @@ def main() -> int:
             # cell rather than the pooled one every game lands in.
             if not queue.get("roles", True):
                 role = None
-            memo_key = (champion_id, role, opponent, patch, ugg_queue)
+            memo_key = (champion_id, role, opponent, data_mode)
             pair = session.guide_memo.get(memo_key)
             if pair is None:
                 pair = memoise(session.guide_memo, memo_key,
                                guides.pair(champion_id, role, opponent,
-                                           queue=ugg_queue, patch=patch),
+                                           mode=data_mode),
                                GUIDE_MEMO_MAX)
             if stale():
                 return
@@ -744,7 +744,7 @@ def main() -> int:
             # about them, and the first run of a champ select happens on
             # hover, when nobody has locked yet -- keying without them pinned
             # that empty answer for the rest of the game.
-            shared_key = (champion_id, role, opponent, patch, ugg_queue,
+            shared_key = (champion_id, role, opponent, data_mode,
                           tuple(locked))
             shared = session.shared_memo.get(shared_key)
             if shared is not None:
@@ -758,15 +758,14 @@ def main() -> int:
             # the same table with the subject swapped, so they are built the
             # same way and the page only picks one.
             tables = {}
-            you = guides.counter_table(champion_id, role, queue=ugg_queue,
-                                       patch=patch)
+            you = guides.counter_table(champion_id, role, mode=data_mode)
             if stale():
                 return
             if you:
                 tables["you"] = you
             if opponent:
                 them = guides.counter_table(opponent, role, mine=champion_id,
-                                            queue=ugg_queue, patch=patch)
+                                            mode=data_mode)
                 if stale():
                     return
                 if them:
@@ -775,7 +774,7 @@ def main() -> int:
                 state.guide = {**state.guide, "counterTables": tables}
 
             against = guides.against(champion_id, role, locked,
-                                     queue=ugg_queue, patch=patch)
+                                     mode=data_mode)
             if stale():
                 return
             with state.lock:
@@ -1068,11 +1067,10 @@ def main() -> int:
             # it, the nomination came off ranked solo whatever the mode was,
             # so a Swiftplay lobby was handed the enemy who meets this
             # champion most often in a queue nobody in it is playing.
-            ugg_queue = queue_block.get("uggQueue") or modes.UGG_RANKED
+            data_mode = queue_block.get("dataMode") or modes.DATA_RIFT
         if locked_enemies and champion and has_lanes and not picked_by_hand:
             suggestion = guides.suggest_opponent(champion, role, locked_enemies,
-                                                 queue=ugg_queue,
-                                                 patch=prefs.get("patch"))
+                                                 mode=data_mode)
             if suggestion and suggestion != chosen:
                 with state.lock:
                     state.opponent_id = suggestion

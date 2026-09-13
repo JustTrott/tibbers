@@ -245,9 +245,9 @@ def _rate(block: Optional[dict]) -> str:
 def build_blocks(build: dict) -> List[dict]:
     """The shop's tabs for a Rift, Swiftplay, URF or ARAM build.
 
-    No boots tab: u.gg publishes no boots slot for these modes, so the block
-    that looked for one could never fill. Boots come back in Arena, where
-    op.gg does publish them, and that goes through `arena_blocks`.
+    Boots and late items rather than a fourth, fifth and sixth item: op.gg
+    publishes boots for every mode and one pooled distribution for everything
+    bought after the core, so there is no per-slot order to hand the shop.
     """
     build = build or {}
     blocks = []
@@ -259,9 +259,11 @@ def build_blocks(build: dict) -> List[dict]:
         if made:
             blocks.append(made)
 
-    for label, key in (("4th item", "fourth"), ("5th item", "fifth"),
-                       ("6th item", "sixth")):
-        made = _block(label, [o["id"] for o in (build.get(key) or [])[:3]])
+    # Boots and late items rather than a fourth, fifth and sixth: op.gg
+    # publishes one pooled distribution for everything bought after the core,
+    # so the page cannot be cut into slots without inventing an order.
+    for label, key in (("Boots", "boots"), ("Late items", "late")):
+        made = _block(label, [o["id"] for o in (build.get(key) or [])[:4]])
         if made:
             blocks.append(made)
     return blocks

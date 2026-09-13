@@ -393,7 +393,7 @@ class TabDerivation(unittest.TestCase):
     def test_mayhem_picks_no_runes(self):
         """The one thing a borrowed ARAM build must not carry through.
 
-        ARAM's u.gg build has a rune page; Mayhem does not let you choose
+        ARAM's build has a rune page; Mayhem does not let you choose
         one. Drawing it, or importing it, would offer a choice the game does
         not have.
         """
@@ -401,7 +401,7 @@ class TabDerivation(unittest.TestCase):
         self.assertFalse(mayhem.runes)
         self.assertTrue(mayhem.augments)
         self.assertTrue(mayhem.borrowed)
-        self.assertEqual(mayhem.queue, modes.UGG_ARAM)
+        self.assertEqual(mayhem.data_mode, modes.DATA_ARAM)
         block = modes.payload(mayhem, 3270, "KIWI", 12, "ARAM: Mayhem")
         self.assertFalse(block["runes"])
         self.assertTrue(block["augments"])
