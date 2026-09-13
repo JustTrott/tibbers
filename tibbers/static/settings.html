@@ -406,6 +406,7 @@ const T = {
     'update.version': 'Version {version}.',
     'update.checked': 'Version {version}. Checked {ago}.',
     'update.updating': 'Updating…', 'update.failed': 'Update failed',
+    'update.check': 'Check now',
     'ago.now': 'just now', 'ago.min': '{n} min ago', 'ago.hours': '{n} {hours} ago',
 
     'failed': 'Failed',
@@ -507,6 +508,7 @@ const T = {
     'update.version': 'Версия {version}.',
     'update.checked': 'Версия {version}. Проверено {ago}.',
     'update.updating': 'Обновление…', 'update.failed': 'Не удалось обновить',
+    'update.check': 'Проверить',
     'ago.now': 'только что', 'ago.min': '{n} {minutes} назад', 'ago.hours': '{n} {hours} назад',
 
     'failed': 'Не удалось',
@@ -685,17 +687,24 @@ function draw(s, cfg) {
     $('update-note').textContent = t('update.installing_note');
     btn.hidden = true;
   } else if (up.available) {
+    btn.dataset.action = 'update';
     $('update-title').textContent = t('update.available', {version: up.version});
     $('update-note').textContent = t(auto ? 'update.available_auto' : 'update.available_note');
     if (!btn.disabled) btn.textContent = t(auto ? 'update.now' : 'update.restart');
     btn.hidden = false;
   } else {
-    $('update-title').textContent = t(up.error ? 'update.title'
-      : up.checked == null ? 'update.checking' : 'update.current');
-    $('update-note').textContent = up.error ? t('update.error_note', v)
-      : up.checked == null ? t('update.version', v)
+    const checking = up.checking || up.checked == null;
+    $('update-title').textContent = t(checking ? 'update.checking'
+      : up.error ? 'update.title' : 'update.current');
+    $('update-note').textContent = checking ? t('update.version', v)
+      : up.error ? t('update.error_note', v)
       : t('update.checked', {...v, ago: ago(up.checked)});
-    btn.hidden = true;
+    // The same button, asking now rather than at the next automatic check.
+    // Hidden while a check is out, which is also what stops a second click.
+    btn.dataset.action = 'check_update';
+    btn.textContent = t('update.check');
+    btn.disabled = false;
+    btn.hidden = checking;
   }
 }
 
@@ -756,6 +765,11 @@ document.addEventListener('click', async e => {
     e.target.disabled = true;
     const r = await api('/api/settings', {action: 'rebuild'});
     if (!r.ok) { e.target.disabled = false; alert(r.message || t('failed')); }
+    nudge(); return;
+  }
+  if (e.target.id === 'update-btn' && e.target.dataset.action === 'check_update') {
+    e.target.disabled = true;
+    await api('/api/settings', {action: 'check_update'});
     nudge(); return;
   }
   if (e.target.id === 'update-btn') {

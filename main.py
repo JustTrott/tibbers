@@ -1790,6 +1790,22 @@ def main() -> int:
             return {"ok": ok, "message": message}
         if action == "rebuild":
             return start_rebuild()
+        if action == "check_update":
+            # The button: a fresh check now, however recently the last one
+            # ran. `checking` is what the page shows meanwhile; the check
+            # replaces the whole block when its answer lands.
+            if update.installed_app() is None:
+                return {"ok": False, "error": "running from a checkout"}
+
+            def check() -> None:
+                update_state["checking"] = True
+                try:
+                    check_for_update()
+                finally:
+                    update_state.pop("checking", None)
+
+            threading.Thread(target=check, daemon=True).start()
+            return {"ok": True, "checking": True}
         if action == "update":
             url, version = update_state.get("url"), update_state.get("version")
             if not update_state.get("available") or not url:

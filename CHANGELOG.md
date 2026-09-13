@@ -7,9 +7,15 @@ in `CLAUDE.md`.
 
 ## 1.2.0 — in progress
 
-*Planned*
-- Party skin sharing: people who queue together, each running tibbers, see each other's chosen skins in game. Only a row of ids travels; every install already holds every skin. `LOBBY.md` is the plan.
-- A **Check for updates** button in Settings, to ask on demand rather than wait for the next automatic check.
+**Share skins with your party**
+- Friends in your League party who also run tibbers now see the skin you picked in game, and you see theirs. It is off until you turn it on, in Settings or on the new Lobby tab. Only the ids of what each of you picked are sent -- never a name -- and each install builds the others' skins out of its own game files, so no skin files move. Nobody outside your party is ever in the room.
+- The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is armed for your game.
+- In a custom game with party members on the other team, your pick is held back until they could see it anyway: until you lock in, in draft, and until the loading screen, in blind pick.
+
+**Updates**
+- Settings has a **Check now** button beside the version, instead of waiting for the next automatic check.
+
+*Before this ships:* `worker/` has to be deployed to `lobby.tibbers.lol`, and the custom-game checks under "To verify on first contact" in `LOBBY.md` run on a live client.
 
 ## 1.1.2 — 2026-09-13
 

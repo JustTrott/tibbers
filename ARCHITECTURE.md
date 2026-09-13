@@ -2,7 +2,7 @@
 
 This is the long version of the README's "How it works" paragraph — the
 overlay mechanism, why the game is never frozen, how a skin mod is built out of
-your own game, the passwordless helper's design, and why the Windows approach
+your own game, the passwordless helper's design, party skin sharing, and why the Windows approach
 cannot work on macOS.
 
 For the operational rules (safe moments to restart, the dev scripts) see
@@ -195,6 +195,35 @@ natively. `mod-tools` still has to match the *game process* architecture, since
 cslol's patcher writes arch-specific shellcode — both builds are installed and
 the right one is chosen at injection time by reading the process's Rosetta flag.
 
+## Party skin sharing
+
+Off until the player turns it on. [`LOBBY.md`](LOBBY.md) is the design and the
+reasoning behind it; this is the shape.
+
+- **The room is the League party.** `/lol-lobby/v1/parties/player` gives every
+  member the same `partyId`, at every phase. The room is
+  `sha256("tibbers-party-1" + partyId)` cut to 32 hex, and a member is
+  `sha256(room + puuid)` cut to 16, so each install works out every other
+  member's id from the roster it already has. Neither raw id leaves the machine.
+- **Only ids travel.** A row is `{c, s, k}`: champion, skin, chroma. Each
+  install builds the others' skins out of its own game with `skinsmith`, as it
+  builds its own, and `mkoverlay` merges them into the one overlay with yours.
+  A pick for your own champion is dropped, because a mod dresses everyone
+  playing that champion.
+- **The relay** is `worker/`: a Cloudflare Worker with a Durable Object per
+  room, holding a hibernating WebSocket per member. It checks every row (a skin
+  id must name its own champion), stores nothing, and a room ends with its last
+  socket. `scripts/lobby_smoke.sh` runs it, and the Python client against it,
+  on `wrangler dev`.
+- **When a row goes out** is `tibbers/lobby.py`'s decision: on every change in
+  matchmade queues, where the whole party is on your team; in a custom game with
+  party members opposite, once locked in a draft and only after champ select in
+  a blind pick.
+- **Nothing waits on it.** The lobby keeps a snapshot that arming reads, and a
+  relay that cannot be reached leaves your own skin exactly as it would be
+  without the feature. The socket closes once the patcher has hooked the game,
+  since nothing reaches the game after that.
+
 ## The code
 
 ```
@@ -217,9 +246,12 @@ tibbers/importer.py     writes the build back: rune page, spells, item set
 tibbers/server.py       local HTTP API, art proxy, reload channel
 tibbers/shell.py        menu bar item, settings window, picker window
 tibbers/prefs.py        settings, remembered picks, window geometry
+tibbers/lobby.py        party skin sharing: the room, the relay client, when to send
 tibbers/mock.py         a scriptable stand-in for the League client
 tibbers/static/         the picker UI, the settings page, the mock client
-scripts/                dev, phase, deploy, build, fetch_modtools, fetch_python
+worker/                 the party relay: a Cloudflare Worker, one room per party
+scripts/                dev, phase, deploy, build, fetch_modtools, fetch_python,
+                        lobby_smoke
 tests/                  payload builders  (python -m unittest discover tests)
 ```
 

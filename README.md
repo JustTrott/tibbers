@@ -58,6 +58,9 @@ skins, builds and counters in one place while you're deciding.
   [op.gg](https://op.gg) — every mode, Arena's augments and tier list
   included — and ARAM Mayhem's augment rankings from [u.gg](https://u.gg)
   alongside the build. One click imports the build straight into the client.
+- **Share skins with your party**, if you turn it on: friends in your League
+  party who also run tibbers see the skin you picked in game, and you see
+  theirs.
 - An optional one-time setup lets it apply skins without asking for your
   password every game.
 - Close the window and it drops into the menu bar, still watching champ select.
@@ -160,6 +163,27 @@ on your own files, and it checks itself before every run. If you want the
 details, they're in
 [ARCHITECTURE.md](ARCHITECTURE.md#skipping-the-password-prompt).
 
+## Sharing skins with your party
+
+Turn on **Share skins with your party** in Settings or on the Lobby tab, and
+everyone in your League party who runs tibbers sees the others' skins in game.
+It is off until you turn it on, and while it is off tibbers sends nothing
+anywhere.
+
+What leaves your machine, and only while you are in a party of two or more, is
+the champion, skin and chroma you picked, as numbers. Your party is found from
+the party id your League client already shares with the people in it, hashed
+first, so there is no code to pass around and nobody outside the party can
+join. No name, account id or game id is sent. The relay that passes the numbers
+between you sees only hashes and skin ids, and keeps nothing once your party
+disconnects. No skin files travel either: every install builds its friends'
+skins out of its own game files, the same way it builds yours.
+
+People in your game who aren't in your party never see your skin, and you never
+see theirs. In a custom game with party members on the other team, your pick is
+held back until they could see it anyway: until you lock in, in draft, or until
+the loading screen, in blind pick.
+
 ## How it works
 
 When you pick a skin, tibbers builds a tiny replacement game archive that points
@@ -201,7 +225,9 @@ Custom skins are client-side only — no one else sees them, and they change
 nothing about how the game plays, so they give no competitive advantage. Riot
 treats purely cosmetic mods like this as use-at-your-own-risk rather than
 something they action, and Rose, the equivalent tool on Windows, injects the
-same way without getting people banned.
+same way without getting people banned. Sharing skins with your party doesn't
+change that: the skins only ever show on the machines of people in your party
+who run tibbers themselves.
 
 The usual caveats: don't expect Riot support if something breaks, and a few
 regions (Korea, Turkey, Russia) enforce more strictly than NA or EU, so know
