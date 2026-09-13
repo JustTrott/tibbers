@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Arena statistics from op.gg.
+Build, counters and Arena statistics from op.gg.
 
-u.gg publishes nothing for Arena -- the URLs its own Arena pages reference
-return AccessDenied on every patch tried, and augments appear nowhere in its
-endpoint manifest. metasrc has the data but its robots.txt names ClaudeBot
-with ``Disallow: /``, puts the paginated augment rows behind ``Disallow:
-/api/`` for every agent, and its terms forbid extraction beyond indexing;
-reaching it at all needs a spoofed browser fingerprint to pass a Cloudflare
-challenge. So neither is used here.
+Everything the build and counters pages render comes from here: items, runes,
+skills, summoners and counters for Summoner's Rift, ARAM and URF, and Arena's
+augments, items and tier list. One request per champion, mode and lane carries
+all of it.
 
-op.gg serves the same figures as plain JSON from an API host whose robots.txt
-is ``User-agent: * / Disallow:`` -- everything permitted -- with no challenge
-and no spoofing required.
+Why here and not u.gg: u.gg's build CDN scores the TLS handshake and refuses
+roughly one request in five, which is what a spoofed user-agent, four
+alternative header sets and a 4 MB downloaded curl-impersonate all existed to
+get past -- and it published nothing for Arena at all. op.gg serves the same
+figures as plain JSON from an API host whose robots.txt is
+``User-agent: * / Disallow:`` -- everything permitted -- with no challenge and
+no spoofing, so the user-agent here is honest. Keep it that way.
 
-Augment and item names and icons still come from the client, as everywhere
-else in this app; only the numbers come from here.
+metasrc has the data too and is off limits: its robots.txt names ClaudeBot
+with ``Disallow: /``, it puts the paginated augment rows behind
+``Disallow: /api/`` for every agent, its terms forbid extraction beyond
+indexing, and reaching it at all needs a spoofed browser fingerprint.
+
+Two things op.gg does not publish, and that the pages therefore do not show:
+a build against a named lane opponent (its counters carry each matchup's win
+rate, but no build for it), and gold at fifteen.
+
+Names and icons still come from the client, as everywhere else in this app;
+only the numbers come from here.
 """
 
 from __future__ import annotations
@@ -51,7 +61,7 @@ class Unavailable(Exception):
 
 
 class OPGG:
-    """Arena data: augments, prismatic items, item builds and skills."""
+    """Builds, counters and Arena data, for every mode tibbers supports."""
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -254,6 +264,52 @@ class OPGG:
         it for keys without guarding each one."""
         return (rows or [{}])[0] or {}
 
+    #: The modes that insist on a real lane. `ranked` refuses `none` outright
+    #: (HTTP 422, "The position must be one of the following types"), where
+    #: ARAM and URF assign no lane and answer for the pooled row.
+    LANED = ("ranked",)
+
+    #: op.gg's position names back to the client's role names, for saying
+    #: which lane a build is actually for.
+    ROLES = {v: k for k, v in POSITIONS.items()}
+
+    def roster(self, mode: str = "rift", region: str = "global") -> List[dict]:
+        """Every champion's summary for a mode, in one file."""
+        path = self.MODE_PATHS.get(mode, "ranked")
+        payload = self._get(f"{BASE}/{region}/champions/{path}",
+                            f"roster-{path}", ttl=CACHE_SECONDS)
+        data = (payload or {}).get("data")
+        return data if isinstance(data, list) else []
+
+    def primary_position(self, champion_id: int, mode: str = "rift",
+                         region: str = "global") -> str:
+        """The lane this champion is actually played in most.
+
+        Champ select does not always say which lane you are in -- blind pick
+        never does, and a draft has not assigned one while you are still
+        hovering. u.gg had a pooled row for that; op.gg refuses a build
+        without a lane, so the lane has to be chosen, and the honest choice is
+        the one the champion is played in. Read from the roster file, which is
+        one request for all of them and is cached.
+        """
+        try:
+            roster = self.roster(mode, region)
+        except Unavailable:
+            return "mid"
+        for entry in roster:
+            if int(entry.get("id") or 0) != int(champion_id):
+                continue
+            best, rate = "", -1.0
+            for pos in entry.get("positions") or []:
+                share = float((pos.get("stats") or {}).get("role_rate") or 0)
+                if share > rate:
+                    best, rate = str(pos.get("name", "")).lower(), share
+            if best in self.ROLES:
+                return best
+        # Every champion is playable mid, and a build is better than a blank
+        # page while champ select works out where you are going.
+        return "mid"
+
     def laned(self, champion_id: int, role: Optional[str],
               mode: str = "rift", region: str = "global") -> dict:
         """The whole page op.gg has for one champion, mode and lane."""
@@ -261,6 +317,8 @@ class OPGG:
         if path is None:
             raise Unavailable(f"op.gg has no build data for {mode}")
         position = self.POSITIONS.get((role or "").lower(), "none")
+        if position == "none" and path in self.LANED:
+            position = self.primary_position(champion_id, mode, region)
         url = f"{BASE}/{region}/champions/{path}/{int(champion_id)}/{position}"
         payload = self._get(url, f"{path}-{champion_id}-{position}")
         data = (payload or {}).get("data")
@@ -270,7 +328,8 @@ class OPGG:
         # no separate manifest to resolve and no chance of asking for a patch
         # that has not been published yet.
         meta = (payload or {}).get("meta") or {}
-        return {"data": data, "patch": meta.get("version") or ""}
+        return {"data": data, "patch": meta.get("version") or "",
+                "position": position}
 
     def build(self, champion_id: int, role: Optional[str],
               mode: str = "rift", region: str = "global") -> dict:
@@ -285,6 +344,7 @@ class OPGG:
         """
         page = self.laned(champion_id, role, mode, region)
         data = page["data"]
+        position = page["position"]
 
         def block(key: str) -> Optional[dict]:
             row = self._first(data.get(key))
@@ -309,8 +369,7 @@ class OPGG:
         # carries every lane's. The lane is what the page is about.
         stats = {}
         for entry in ((data.get("summary") or {}).get("positions") or []):
-            if str(entry.get("name", "")).lower() == \
-                    self.POSITIONS.get((role or "").lower(), ""):
+            if str(entry.get("name", "")).lower() == position:
                 stats = entry.get("stats") or {}
                 break
         if not stats:
@@ -319,7 +378,10 @@ class OPGG:
 
         out: dict = {
             "patch": page["patch"],
-            "role": role,
+            # The lane actually read, which is not always the one asked for:
+            # champ select may not have assigned one yet, and op.gg has no
+            # pooled row to fall back on.
+            "role": role or self.ROLES.get(position),
             "matchup": None,
             "matches": matches,
             "thin": matches < self.MIN_MATCHES,

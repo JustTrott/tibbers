@@ -172,5 +172,62 @@ class Modes(unittest.TestCase):
                 client.build(142, "middle", "rift")
 
 
+class NoLaneYet(unittest.TestCase):
+    """Champ select does not always say which lane you are in.
+
+    Blind pick never does, and a draft has not assigned one while you are
+    still hovering. u.gg had a pooled row for that; op.gg refuses a laned
+    build without a lane -- `/ranked/<id>/none` is a 422, "The position must
+    be one of the following types" -- so one has to be chosen.
+    """
+
+    ROSTER = [
+        {"id": 25, "positions": [
+            {"name": "SUPPORT", "stats": {"role_rate": 0.82}},
+            {"name": "MID", "stats": {"role_rate": 0.15}}]},
+        {"id": 64, "positions": [
+            {"name": "JUNGLE", "stats": {"role_rate": 0.95}}]},
+    ]
+
+    def setUp(self):
+        self.client = OPGG()
+        self.asked = []
+
+        def fake_get(url, key, ttl=None):
+            self.asked.append(url)
+            if key.startswith("roster-"):
+                return {"data": self.ROSTER}
+            return PAGE
+
+        patcher = mock.patch.object(self.client, "_get", side_effect=fake_get)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_lane_the_champion_is_actually_played_in_is_used(self):
+        self.client.build(25, None, "rift")
+        self.assertTrue(any("/ranked/25/support" in u for u in self.asked))
+        self.assertFalse(any(u.endswith("/ranked/25/none") for u in self.asked))
+
+    def test_the_build_says_which_lane_it_settled_on(self):
+        # Shown rather than left blank: the numbers are a support Morgana's,
+        # and a page that does not say so is a page that misleads.
+        self.assertEqual(self.client.build(25, None, "rift")["role"], "utility")
+
+    def test_the_highest_share_wins_not_the_first_listed(self):
+        self.assertEqual(self.client.primary_position(25, "rift"), "support")
+
+    def test_a_champion_not_in_the_roster_still_gets_a_build(self):
+        # Better a mid build than a blank page while champ select catches up.
+        self.assertEqual(self.client.primary_position(9999, "rift"), "mid")
+
+    def test_an_explicit_role_is_never_second_guessed(self):
+        self.client.build(25, "middle", "rift")
+        self.assertTrue(any("/ranked/25/mid" in u for u in self.asked))
+
+    def test_a_mode_with_no_lanes_still_asks_for_the_pooled_row(self):
+        self.client.build(25, None, "aram")
+        self.assertTrue(any("/aram/25/none" in u for u in self.asked))
+
+
 if __name__ == "__main__":
     unittest.main()
