@@ -281,6 +281,11 @@ class State:
         # it fires on lock-in and the picker has to be able to show what
         # happened.
         self.last_import: dict = {}
+        # The party's room, for the Lobby tab: {"enabled", "inRoom", "error",
+        # "members"}, painted by main from tibbers/lobby.py's snapshot with
+        # names and a status word added.
+        self.lobby: dict = {"enabled": False, "inRoom": False, "error": None,
+                            "members": []}
 
     def snapshot(self) -> dict:
         """What `/api/state` answers with.
@@ -320,6 +325,8 @@ class State:
                 "queue": self.queue,
                 "guide": self.guide,
                 "import": self.last_import,
+                "lobby": {**self.lobby,
+                          "members": list(self.lobby.get("members") or [])},
             }
 
     def say(self, message: str) -> None:

@@ -460,6 +460,73 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(world.relay.rooms, {})
 
 
+class Composition(unittest.TestCase):
+    """What the app builds from a room, and the word it shows for each pick."""
+
+    @staticmethod
+    def member(me=False, tibbers=True, c=None, s=None, k=None):
+        return {"me": me, "name": "", "tibbers": tibbers,
+                "championId": c, "skinId": s, "chromaId": k}
+
+    def status(self, member, champion=103, armed=None, unavailable=(),
+               building=False, hooked=False):
+        picks = lobby.party_picks({"members": [member]}, champion)
+        return lobby.status(member, picks, armed or {}, set(unavailable),
+                            building, hooked)
+
+    def test_the_picks_are_everyone_elses_skins_in_party_order(self):
+        snap = {"members": [self.member(me=True, c=103, s=103015),
+                            self.member(c=64, s=64012),
+                            self.member(c=99, s=99007, k=99008)]}
+        self.assertEqual(lobby.party_picks(snap, 103),
+                         ((64, 64012, None), (99, 99007, 99008)))
+
+    def test_a_pick_for_your_champion_is_dropped_whatever_you_chose(self):
+        snap = {"members": [self.member(c=103, s=103001)]}
+        self.assertEqual(lobby.party_picks(snap, 103), ())
+
+    def test_the_first_member_in_the_party_keeps_a_champion(self):
+        snap = {"members": [self.member(c=64, s=64012), self.member(c=64, s=64001)]}
+        self.assertEqual(lobby.party_picks(snap, None), ((64, 64012, None),))
+
+    def test_no_skin_a_base_skin_or_no_tibbers_is_nothing_to_build(self):
+        snap = {"members": [self.member(c=64), self.member(c=99, s=99000),
+                            self.member(tibbers=False, c=12, s=12001)]}
+        self.assertEqual(lobby.party_picks(snap, None), ())
+
+    def test_a_pick_in_the_armed_overlay_is_armed(self):
+        pick = self.member(c=64, s=64012)
+        self.assertEqual(self.status(pick, armed={"party": [[64, 64012, None]]}),
+                         "armed")
+
+    def test_a_pick_on_its_way_is_building(self):
+        self.assertEqual(self.status(self.member(c=64, s=64012), building=True),
+                         "building")
+
+    def test_a_pick_that_could_not_be_built_is_unavailable(self):
+        self.assertEqual(self.status(self.member(c=64, s=64012),
+                                     unavailable={(64, 64012, None)}),
+                         "unavailable")
+
+    def test_a_pick_for_your_own_champion_is_unavailable(self):
+        self.assertEqual(self.status(self.member(c=103, s=103001)), "unavailable")
+
+    def test_a_pick_after_the_game_is_hooked_is_late(self):
+        self.assertEqual(self.status(self.member(c=64, s=64012), hooked=True),
+                         "late")
+
+    def test_your_own_row_is_armed_when_the_patcher_holds_it(self):
+        mine = self.member(me=True, c=103, s=103015)
+        self.assertEqual(self.status(mine, armed={"skinId": 103015,
+                                                  "chromaId": None}), "armed")
+        self.assertEqual(self.status(mine, armed={"skinId": 103001}), "none")
+
+    def test_no_pick_is_none(self):
+        self.assertEqual(self.status(self.member(tibbers=False, c=64, s=64012)),
+                         "none")
+        self.assertEqual(self.status(self.member(c=64)), "none")
+
+
 @unittest.skipUnless(HAVE_WEBSOCKET, "needs websocket-client")
 class Unreachable(unittest.TestCase):
 

@@ -681,3 +681,56 @@ class Lobby(threading.Thread):
                 })
         return {"enabled": self._enabled, "inRoom": room is not None,
                 "error": error, "members": members}
+
+
+# -- what the app makes of a room ---------------------------------------------
+
+#: The words the Lobby tab shows beside a member's skin.
+STATUSES = ("armed", "building", "unavailable", "late", "none")
+
+
+def party_picks(snapshot: dict, champion_id: Optional[int]
+                ) -> Tuple[Tuple[int, int, Optional[int]], ...]:
+    """The skins to build beside yours: one per champion, in party order.
+
+    Only members running tibbers who picked a skin other than the base count.
+    A pick for your own champion is dropped whatever you chose -- a mod dresses
+    everyone playing that champion, so theirs would replace yours, base skin
+    included -- and after that the first member in the party keeps a champion.
+    """
+    taken = {champion_id} if champion_id else set()
+    picks = []
+    for member in snapshot.get("members") or []:
+        c, s = member.get("championId"), member.get("skinId")
+        if (member.get("me") or not member.get("tibbers") or not c or not s
+                or s % 1000 == 0 or c in taken):
+            continue
+        taken.add(c)
+        picks.append((c, s, member.get("chromaId")))
+    return tuple(picks)
+
+
+def status(member: dict, picks, armed: dict, unavailable, building: bool,
+           hooked: bool) -> str:
+    """What has become of one member's pick, as one of `STATUSES`.
+
+    `picks` is what `party_picks` chose, `armed` what the patcher was last
+    armed with, `unavailable` the picks whose mods could not be built,
+    `building` whether an arming is under way, and `hooked` whether the game
+    has already read its files, after which nothing new reaches it.
+    """
+    c, s, k = member.get("championId"), member.get("skinId"), member.get("chromaId")
+    if not member.get("tibbers") or not s or s % 1000 == 0:
+        return "none"
+    if member.get("me"):
+        if armed.get("skinId") == s and armed.get("chromaId") == k:
+            return "armed"
+        return "building" if building else "none"
+    pick = (c, s, k)
+    if pick not in picks or pick in unavailable:
+        return "unavailable"
+    if [c, s, k] in (armed.get("party") or []):
+        return "armed"
+    if hooked:
+        return "late"
+    return "building" if building else "none"

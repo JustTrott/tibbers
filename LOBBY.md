@@ -1,8 +1,8 @@
 # 1.2.0: the lobby
 
-*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 to 3 are built
-(the relay, `tibbers/lobby.py`, an overlay of several mods); nothing is
-wired into the app yet.*
+*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 to 6 are built;
+the relay is not deployed yet, so until it is, turning sharing on reports
+that the relay cannot be reached.*
 
 Several people who queue together, each running tibbers, each seeing the
 others' chosen skins in game. No skin data ever leaves a machine: every
@@ -340,8 +340,9 @@ names come from `lcu.champion_skins(championId)`, cached per champion for
 the session. `armed` keeps its shape for the local pick and gains
 `others`, the skin ids built alongside it.
 
-`modes.Mode.tabs` sends `lobby` after `skin` when sharing is on, never for
-TFT. The rule that a tab must be paid for by data holds, with the one
+`modes.Mode.tabs` sends `lobby` after `skin` in every mode with skins,
+sharing on or off, and never for TFT; before the first champ select the
+page adds it itself, since there is no queue yet. The rule that a tab must be paid for by data holds, with the one
 allowance that a tab holding the switch is what teaches the feature
 exists, and it says so in a line rather than rendering an empty list.
 

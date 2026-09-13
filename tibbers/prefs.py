@@ -56,6 +56,10 @@ DEFAULTS: Dict[str, Any] = {
     # On: the alternative is a "you are up to date" that goes stale for
     # anyone who never opens Settings. Never in champ select or a game.
     "auto_update": True,
+    # Share your skin with the rest of your League party, and see theirs. Off:
+    # turning it on is what sends anything anywhere -- a row of ids to the
+    # lobby relay -- and that is for the player to decide, not an update.
+    "share_skins": False,
     # The one-time answer to "how should injection get permission": None until
     # the user is first asked, then "auto" (a helper is installed, so no
     # prompt) or "prompt" (ask each time). Not a switch on the settings page --

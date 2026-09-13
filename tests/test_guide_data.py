@@ -311,16 +311,16 @@ class TabDerivation(unittest.TestCase):
 
     def test_rift_has_build_and_counters(self):
         self.assertEqual(self.tabs("CLASSIC", 11, 420),
-                         ["skin", "build", "counters"])
+                         ["skin", "lobby", "build", "counters"])
 
     def test_swiftplay_and_urf_match_rift(self):
         self.assertEqual(self.tabs("SWIFTPLAY", 11, 480),
-                         ["skin", "build", "counters"])
+                         ["skin", "lobby", "build", "counters"])
         self.assertEqual(self.tabs("URF", 11, 1900),
-                         ["skin", "build", "counters"])
+                         ["skin", "lobby", "build", "counters"])
 
     def test_aram_has_no_counters(self):
-        self.assertEqual(self.tabs("ARAM", 12, 450), ["skin", "build"])
+        self.assertEqual(self.tabs("ARAM", 12, 450), ["skin", "lobby", "build"])
 
     def test_mayhem_is_aram_plus_its_augments(self):
         """Mayhem borrows ARAM's build and adds the page ARAM has no use for.
@@ -330,7 +330,7 @@ class TabDerivation(unittest.TestCase):
         mode and Arena, where the build sheet has nothing to draw.
         """
         self.assertEqual(self.tabs("KIWI", 12, 3270),
-                         ["skin", "build", "augments"])
+                         ["skin", "lobby", "build", "augments"])
 
     def test_mayhem_picks_no_runes(self):
         """The one thing a borrowed ARAM build must not carry through.
@@ -359,12 +359,14 @@ class TabDerivation(unittest.TestCase):
 
     def test_arena_splits_its_pages(self):
         self.assertEqual(self.tabs("CHERRY", 30, 1750),
-                         ["skin", "tiers", "augments", "items"])
+                         ["skin", "lobby", "tiers", "augments", "items"])
 
-    def test_modes_with_no_data_show_only_skins(self):
-        self.assertEqual(self.tabs("NEXUSBLITZ", 21, 1300), ["skin"])
+    def test_modes_with_no_data_show_only_skins_and_the_lobby(self):
+        self.assertEqual(self.tabs("NEXUSBLITZ", 21, 1300), ["skin", "lobby"])
+        self.assertEqual(self.tabs("SOMETHING_NEW", 999), ["skin", "lobby"])
+
+    def test_tft_has_no_skins_so_no_party_to_share_them_with(self):
         self.assertEqual(self.tabs("TFT", 22, 1090), ["skin"])
-        self.assertEqual(self.tabs("SOMETHING_NEW", 999), ["skin"])
 
     def test_every_tab_is_labelled(self):
         for game_mode, map_id in (("CLASSIC", 11), ("ARAM", 12),
@@ -379,7 +381,7 @@ class TabDerivation(unittest.TestCase):
         arena = modes.resolve("CHERRY", 30, 1750)
         block = modes.payload(arena, 1750, "CHERRY", 30, "Arena")
         self.assertEqual([t["key"] for t in block["tabs"]],
-                         ["skin", "tiers", "augments", "items"])
+                         ["skin", "lobby", "tiers", "augments", "items"])
         self.assertEqual(block["kind"], "arena")
         self.assertEqual(block["source"], "opgg")
         self.assertFalse(block["roles"])

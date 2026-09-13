@@ -31,8 +31,8 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from tibbers import (autostart, downloader, i18n, importer, injector, lcu,
-                       library, modes, prefs as prefs_mod, server, shell,
-                       skinsmith, system)  # noqa: E402
+                       library, lobby as lobby_mod, modes, prefs as prefs_mod,
+                       server, shell, skinsmith, system)  # noqa: E402
 
 log = logging.getLogger("tibbers")
 
@@ -134,6 +134,11 @@ class Session:
     #: champion the client knows, and two of them racing would write the same
     #: files from two threads.
     rebuild: Optional[threading.Thread] = None
+    #: The party's picks the room last reported, so a room that changed
+    #: nothing arms nothing, and the picks whose mods could not be built,
+    #: for the Lobby tab. Forgotten when champ select is over.
+    party_seen: tuple = ()
+    party_unavailable: set = field(default_factory=set)
 
 
 def memoise(memo: OrderedDict, key, value, keep: int):
@@ -860,32 +865,155 @@ def main() -> int:
         if request is None:
             disarm()
             return
-        mod, meta = request
+        mod, meta, party = request
         # Arrowing away and back lands on what is already armed. The worker
         # serialises every change to the overlay, so `armed` is the overlay,
-        # and rebuilding the same one only costs time.
+        # and rebuilding the same one only costs time. The party's picks are
+        # part of the overlay too, so a changed pick is a changed overlay.
         with state.lock:
             same = (state.armed.get("skinId") == meta["skinId"]
-                    and state.armed.get("chromaId") == meta["chromaId"])
+                    and state.armed.get("chromaId") == meta["chromaId"]
+                    and state.armed.get("party", []) == meta["party"])
         if same and inject.is_running():
             state.say(f"{meta['label']} is already armed")
             return
         with state.lock:
             state.arming = True
+        paint_lobby()
+        result, others = None, []
         try:
-            result = inject.prepare([mod], progress=state.say, meta=meta)
+            mods = [mod] if mod is not None else []
+            # A party member's skin is built here when it is not on disk yet,
+            # on this thread: skinsmith takes about a second a skin, and arm()
+            # is called from threads that must not wait for one.
+            for champion_id, skin_id, chroma_id in party:
+                path, leaf = party_mod(champion_id, skin_id, chroma_id)
+                if path is None:
+                    session.party_unavailable.add((champion_id, skin_id, chroma_id))
+                    continue
+                mods.append(path)
+                others.append(leaf)
+            if mods:
+                result = inject.prepare(mods, progress=state.say, meta=meta)
         finally:
             with state.lock:
                 state.arming = armer.has_pending()
-        if not result.ok:
+        if result is None:
+            # Only the party's skins were asked for and none could be built.
+            # Whatever was armed before is not what anyone has picked now.
+            disarm("none of the party's skins could be built")
+        elif not result.ok:
             state.say("failed: " + result.message)
-            return
-        with state.lock:
-            state.armed = {"skinId": meta["skinId"],
-                           "chromaId": meta["chromaId"],
-                           "label": meta["label"]}
+        else:
+            with state.lock:
+                state.armed = {"skinId": meta["skinId"],
+                               "chromaId": meta["chromaId"],
+                               "label": meta["label"],
+                               "party": meta["party"],
+                               "others": others}
+        paint_lobby()
 
     armer = LatestOnly(apply_request)
+
+    # -- the party ---------------------------------------------------------
+
+    def party_mod(champion_id: int, skin_id: int, chroma_id: Optional[int]):
+        """A party member's pick as a mod on disk, built from the install if it
+        is not there yet: ``(path, the id it dresses the champion in)``, or
+        ``(None, None)``. A chroma that cannot be built falls back to its skin,
+        which is still most of what they picked."""
+        targets = [downloader.Target(skin_id, chroma_id)] if chroma_id else []
+        targets.append(downloader.Target(skin_id))
+        key = None
+        for target in targets:
+            path = downloader.existing(champion_id, target)
+            if path is None:
+                if key is None:
+                    alias = gamedata.champion_alias(champion_id)
+                    key = (skinsmith.champion_key(alias) if alias else None) or ""
+                if key and downloader.prepare(champion_id, target, key):
+                    path = downloader.existing(champion_id, target)
+            if path is not None:
+                return path, target.leaf
+        return None, None
+
+    #: Skin names and tiles by champion, read from the client once a run.
+    party_skins: dict = {}
+
+    def skin_facts(champion_id: int) -> dict:
+        facts = party_skins.get(champion_id)
+        if facts is not None:
+            return facts
+        client = watcher.lcu
+        if client is None:
+            return {}
+        facts = {}
+        for skin in client.champion_skins(champion_id):
+            facts[skin["id"]] = {"name": skin["name"] or "", "tile": skin["tile"]}
+            for chroma in skin["chromas"]:
+                facts[chroma["id"]] = {"name": chroma["name"] or skin["name"] or "",
+                                       "tile": chroma["icon"] or skin["tile"]}
+        if facts:
+            party_skins[champion_id] = facts
+        return facts
+
+    def paint_lobby(snapshot: Optional[dict] = None) -> None:
+        """The room as the Lobby tab draws it: names, skins and a status word."""
+        snap = share.snapshot() if snapshot is None else snapshot
+        with state.lock:
+            armed, arming, on_screen = dict(state.armed), state.arming, state.champion_id
+        picks = lobby_mod.party_picks(snap, session.champion_id or on_screen)
+        hooked = bool(snap["members"]) and inject.overlay_in_use()
+        forced = mock_client.forced_status if mock_client is not None else None
+        members = []
+        for member in snap["members"]:
+            champion = member["championId"]
+            info = (gamedata.champion(champion) if champion else None) or {}
+            skin = (skin_facts(champion).get(member["chromaId"] or member["skinId"])
+                    if champion and member["skinId"] else None) or {}
+            word = lobby_mod.status(member, picks, armed, session.party_unavailable,
+                                    arming, hooked)
+            if forced and not member["me"] and word != "none":
+                word = forced
+            members.append({**member,
+                            "championName": info.get("name", ""),
+                            "championIcon": info.get("icon", ""),
+                            "skinName": skin.get("name", ""),
+                            "skinTile": skin.get("tile", ""),
+                            "status": word})
+        with state.lock:
+            state.lobby = {**snap, "members": members}
+
+    def publish_selection() -> None:
+        """Your own pick, for the party. When it goes out is the lobby's call."""
+        with state.lock:
+            champion = state.champion_id
+        share.publish(champion, session.selected, session.chroma)
+
+    def on_lobby(snapshot: dict) -> None:
+        """The room changed: redraw the tab, and arm again if the picks did."""
+        paint_lobby(snapshot)
+        with state.lock:
+            on_screen = state.champion_id
+        picks = lobby_mod.party_picks(snapshot, session.champion_id or on_screen)
+        if picks != session.party_seen:
+            session.party_seen = picks
+            arm()
+
+    # A mock instance plays its party over a relay in memory, unless
+    # TIBBERS_LOBBY_URL points it at a real one.
+    party_relay = (lobby_mod.MemoryRelay()
+                   if args.mock and not os.environ.get("TIBBERS_LOBBY_URL")
+                   else None)
+    share = lobby_mod.Lobby(
+        lobby_mod.MemoryTransport(party_relay) if party_relay is not None
+        else lobby_mod.WsTransport(),
+        # Under the mock the party is the mock's, not the real client's.
+        get_lcu=lambda: (mock_client.party_client() if mock_client is not None
+                         else watcher.lcu),
+        on_change=on_lobby,
+        enabled=lambda: bool(prefs.get("share_skins")),
+        hooked=inject.overlay_in_use)
 
     def arm(skip_ask: bool = False) -> None:
         """Build the overlay and start the patcher, ready for the next game.
@@ -899,21 +1027,40 @@ def main() -> int:
         """
         skin_id = session.selected
         champ = session.champion_id
-        if not skin_id or not champ:
-            return
+        with state.lock:
+            on_screen = state.champion_id
+        # Everyone else in the party who picked a skin, one per champion,
+        # built into the same overlay as yours.
+        party = lobby_mod.party_picks(share.snapshot(), champ or on_screen)
 
         # A chroma is a separate mod living inside its parent skin's folder;
         # picking one replaces the base skin rather than layering on it.
-        chroma_id = session.chroma
-        if chroma_id:
-            mod = library.find_chroma_mod(champ, skin_id, chroma_id)
-            label = f"chroma {chroma_id}"
-        else:
-            mod = library.find_mod(champ, skin_id)
-            label = f"skin {skin_id}"
+        mod, chroma_id, label = None, None, ""
+        if skin_id and champ:
+            chroma_id = session.chroma
+            if chroma_id:
+                mod = library.find_chroma_mod(champ, skin_id, chroma_id)
+                label = f"chroma {chroma_id}"
+            else:
+                mod = library.find_mod(champ, skin_id)
+                label = f"skin {skin_id}"
+            if mod is None:
+                state.say(f"no mod file for {label}")
+                if not party:
+                    return
         if mod is None:
-            state.say(f"no mod file for {label}")
-            return
+            skin_id = chroma_id = None
+            label = ""
+            if not party:
+                # The base skin, or nothing picked, and nothing from the
+                # party either: whatever is armed has to go.
+                with state.lock:
+                    armed = bool(state.armed)
+                if armed or inject.is_running() or armer.busy():
+                    armer.submit(None)
+                return
+        if party:
+            label = " and ".join(filter(None, [label, f"{len(party)} from the party"]))
 
         # A patcher that has already hooked a running game keeps what it is
         # serving. Rebuilding the overlay under it is what corrupts a live
@@ -947,11 +1094,11 @@ def main() -> int:
             return
 
         meta = {"championId": champ, "skinId": skin_id, "chromaId": chroma_id,
-                "label": label}
+                "label": label, "party": [list(pick) for pick in party]}
         # Queued behind a build already running, if there is one, and only
         # the newest request survives the wait: the last thing picked is
         # what gets armed, however fast the picks came.
-        if not armer.submit((mod, meta)):
+        if not armer.submit((mod, meta, party)):
             with state.lock:
                 state.arming = True
             state.say(f"{label} will be armed after the current build")
@@ -974,13 +1121,14 @@ def main() -> int:
         champ = session.champion_id
         if champ and prefs.get("remember_selections"):
             prefs.remember(champ, skin_id, chroma_id)
+        publish_selection()
         if skin_id is None:
-            # The base skin, or nothing: either way there is nothing to arm.
+            # The base skin, or nothing: nothing of yours to arm, though
+            # whatever the party picked still is.
             state.say("base skin -- nothing to arm")
-            armer.submit(None)
-            return
-        state.say(f"queued skin {skin_id}"
-                  + (f" chroma {chroma_id}" if chroma_id else ""))
+        else:
+            state.say(f"queued skin {skin_id}"
+                      + (f" chroma {chroma_id}" if chroma_id else ""))
         # Prepare now rather than at game start: the patcher must already be
         # watching before the game launches.
         arm()
@@ -991,6 +1139,9 @@ def main() -> int:
             state.phase = snapshot["phase"]
             state.patcher = (inject.patcher_status()
                              if inject.is_running() else {})
+        # The lobby reads the phase for itself; this only spares it waiting
+        # for its next poll to notice.
+        share.nudge()
 
         if not snapshot["connected"]:
             state.say("waiting for the League client...")
@@ -1169,8 +1320,9 @@ def main() -> int:
                 # to whoever plays that champion, so after a bench swap the
                 # teammate who took it would show up in the skin picked here.
                 # Restoring below arms the new champion's own choice, if any.
-                if inject.is_running() or armer.busy():
-                    armer.submit(None)
+                # Armed again rather than disarmed: the party's skins stay,
+                # and only yours drops out of the set.
+                arm()
                 have = sum(1 for k in skins if k["available"])
                 state.say(f"{'locked' if locked else 'hovering'} {name} "
                           f"-- {have} skins ready")
@@ -1217,10 +1369,16 @@ def main() -> int:
             downloads.cancel()
             session.selected = None
             session.champion_id = None
+            session.party_unavailable.clear()
             with state.lock:
                 state.skins = []
                 state.champion_name = None
                 state.selected_skin_id = None
+
+        # Your pick as it stands now, for the party, and the Lobby tab redrawn
+        # for whatever this change moved.
+        publish_selection()
+        paint_lobby()
 
     def load_champion(champion_id: int):
         """Champion data for the mock overlay, from the live client."""
@@ -1275,7 +1433,8 @@ def main() -> int:
             on_change(snap)
 
         mock_client = mock_mod.MockClient(state, load_champion, mock_applied,
-                                          describe_champion=gamedata.champion)
+                                          describe_champion=gamedata.champion,
+                                          party_relay=party_relay)
         watcher.lcu = lcu.LCU.connect()   # for art only
         state.say(f"mock client at http://127.0.0.1:{args.port}/mock")
     elif args.demo:
@@ -1306,6 +1465,8 @@ def main() -> int:
     else:
         watcher.on_change = on_change
         watcher.start()
+    if not args.demo:
+        share.start()
 
     #: Set to stop a rebuild early -- the app quitting, mostly. Held out
     #: here so the shutdown path can reach the thread `start_rebuild` made.
@@ -1667,6 +1828,11 @@ def main() -> int:
         except KeyError:
             return {"ok": False, "error": f"unknown setting: {name}"}
 
+        if name == "share_skins":
+            # Joined or left now rather than at the lobby's next poll; leaving
+            # drops the party's skins from the next build.
+            share.nudge()
+
         if name == "patch":
             # The guide is entirely patch-dependent, so it is refetched rather
             # than left showing figures from another one.
@@ -1811,6 +1977,7 @@ def main() -> int:
         with a game up it is left running, and the next start adopts it.
         """
         watcher.stop()
+        share.stop()
         rebuild_cancel.set()
         reloader.stop()
         # Window positions are written on a delay, so that dragging the

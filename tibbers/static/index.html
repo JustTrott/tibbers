@@ -592,6 +592,55 @@
                 gap: 6px; color: var(--ink-low); font-size: 12px; padding: 20px; }
   .note-empty b { color: var(--ink-mid); font-weight: 600; font-size: 13px; }
 
+  /* ═══ lobby: the party, one row a member ═══════════════════════════
+     Five rows at most, so the page never scrolls inside the picker. A
+     member who does not run tibbers stays in the list, dimmed, the way a
+     skin with no mod stays on the rail: absence visible, not mysterious. */
+  .lhead { flex: none; display: flex; align-items: center; gap: 12px;
+           min-height: 33px; padding: 5px 16px; border-bottom: 1px solid var(--rule-d);
+           font: 9.5px ui-monospace, Menlo, monospace; letter-spacing: .1em;
+           text-transform: uppercase; color: var(--ink-low);
+           font-variant-numeric: tabular-nums; }
+  .lhead b { color: var(--ink-mid); font-weight: 500; margin-left: 4px; }
+  .lhead .lerr { color: var(--warn); letter-spacing: .02em; text-transform: none;
+                 min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lhead .tog { margin-left: auto; flex: none; }
+  .lrows { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .lrow { display: flex; align-items: center; gap: 11px; height: 58px; padding: 0 16px;
+          border-bottom: 1px solid var(--hair); }
+  .lrow.off { opacity: .55; }
+  .lic { width: 34px; height: 34px; flex: none; border-radius: 50%; overflow: hidden;
+         background: var(--raised); }
+  .lic img { width: 100%; height: 100%; display: block; }
+  .lwho { flex: 0 1 34%; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .lname { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .lname b { font-weight: 700; font-size: 13px; color: var(--ink);
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lrow.me .lname b { color: var(--gold-b); }
+  .lwho em { font: normal 9.5px ui-monospace, Menlo, monospace; color: var(--ink-low);
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The tibbers mark: the chroma strip's rotated square, small, on whoever
+     runs tibbers. A shape rather than a colour, so it survives a glance. */
+  .mark { width: 6px; height: 6px; flex: none; transform: rotate(45deg);
+          border: 1px solid var(--gold); background: oklch(0.80 0.095 85 / .3); }
+  .lskin { width: 38px; height: 38px; flex: none; border-radius: 3px; overflow: hidden;
+           background: var(--raised); }
+  .lskin img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .lsname { flex: 1 1 0; min-width: 0; font-size: 12.5px; color: var(--ink-mid);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lsname.quiet { font: 9.5px ui-monospace, Menlo, monospace; color: var(--ink-low); }
+  /* Status words, in the status line's own voice. "armed" is the one lit,
+     by the live dot beside the word, never by colour alone; the two that
+     mean a skin will not show are in the failure colour, and say so. */
+  .lst { width: 92px; flex: none; text-align: right; white-space: nowrap;
+         font: 9px ui-monospace, Menlo, monospace; letter-spacing: .1em;
+         text-transform: uppercase; color: var(--ink-low); }
+  .lst.armed { color: var(--ink-mid); }
+  .lst.armed::before { content: ""; display: inline-block; width: 5px; height: 5px;
+                       margin-right: 6px; border-radius: 50%; background: var(--live);
+                       vertical-align: 1px; }
+  .lst.unavailable, .lst.late { color: var(--warn); }
+
   /* ═══ the splash owns the middle ═══════════════════════════════════ */
   .stage { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0;
            display: flex; align-items: flex-end; padding: 0 24px 4px; }
@@ -807,6 +856,9 @@
     .status { padding: 4px 14px 6px; font-size: 9.5px; }
     .arrow { width: 22px; height: 34px; }
     .arrow.prev { left: 4px; } .arrow.next { right: 4px; }
+    .lrow { height: 50px; }
+    .lic { width: 30px; height: 30px; }
+    .lskin { width: 32px; height: 32px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -935,6 +987,20 @@
          aria-label="Arena items, scrollable" data-t-aria="ai.aria"></div>
   </section>
 
+  <!-- The party: who runs tibbers and what they picked. The switch sits here
+       as well as in Settings, because this is where the feature lives. -->
+  <section class="sheet" id="view-lobby" hidden>
+    <div class="lhead">
+      <span id="lcount"></span>
+      <span class="lerr" id="lerror" role="status" aria-live="polite"></span>
+      <button class="tog" id="lshare" role="switch" aria-checked="false"
+              aria-label="Share skins with your party" data-t-aria="lobby.share.aria"
+              title="Send your skin to your party, and see theirs in game"
+              data-t-title="lobby.share.title" data-t="lobby.share">share my skin</button>
+    </div>
+    <div class="lrows" id="lrows"></div>
+  </section>
+
   <footer class="status">
     <span id="msg">starting</span>
     <span class="bar" id="bar" hidden><i></i></span>
@@ -1034,6 +1100,21 @@ const T = {
     'empty.champ.text': 'Skins appear as soon as you hover, before you lock in.',
     'tab.skin': 'Skin', 'tab.build': 'Build', 'tab.counters': 'Counters',
     'tab.tiers': 'Tier list', 'tab.augments': 'Augments', 'tab.items': 'Items',
+    'tab.lobby': 'Lobby',
+    'lobby.share': 'share my skin', 'lobby.share.aria': 'Share skins with your party',
+    'lobby.share.title': 'Send your skin to your party, and see theirs in game',
+    'lobby.off': 'Share skins with your party',
+    'lobby.off.text': 'Everyone in your party who runs tibbers sees the others\u2019 skins in game.'
+      + ' Only the ids of what you picked are sent: never a name, and never to anyone outside the party.',
+    'lobby.solo': 'Nobody to share with',
+    'lobby.solo.text': 'Invite someone, or join a party. Playing alone sends nothing.',
+    'lobby.party': 'party', 'lobby.running': 'tibbers',
+    'lobby.error': 'the party relay cannot be reached \u2014 your own skin still works',
+    'lobby.you': 'you', 'lobby.mark': 'runs tibbers',
+    'lobby.nochamp': 'no champion yet', 'lobby.waiting': 'waiting for champ select',
+    'lobby.noskin': 'no skin picked', 'lobby.without': 'no tibbers',
+    'lobby.st.armed': 'armed', 'lobby.st.building': 'building\u2026',
+    'lobby.st.unavailable': 'no mod', 'lobby.st.late': 'too late',
     'stamp.borrowed': 'borrowed',
     'stamp.title': '{label} has no data of its own; these are {src} numbers.',
     'stamp.title.build': 'The build for {label} is read from {src}.'
@@ -1141,6 +1222,21 @@ const T = {
     'empty.champ.text': 'Образы появляются при наведении, ещё до подтверждения выбора.',
     'tab.skin': 'Образ', 'tab.build': 'Сборка', 'tab.counters': 'Контрпики',
     'tab.tiers': 'Тир-лист', 'tab.augments': 'Аугменты', 'tab.items': 'Предметы',
+    'tab.lobby': 'Лобби',
+    'lobby.share': 'делиться образом', 'lobby.share.aria': 'Делиться образами с группой',
+    'lobby.share.title': 'Отправлять свой образ группе и видеть их образы в игре',
+    'lobby.off': 'Делитесь образами с группой',
+    'lobby.off.text': 'Все в группе, у кого есть tibbers, видят образы друг друга в игре.'
+      + ' Отправляются только номера выбранного образа: без имён и никому вне группы.',
+    'lobby.solo': 'Делиться не с кем',
+    'lobby.solo.text': 'Пригласите кого-нибудь или вступите в группу. В одиночку ничего не отправляется.',
+    'lobby.party': 'группа', 'lobby.running': 'tibbers',
+    'lobby.error': 'сервер группы недоступен \u2014 ваш образ всё равно применится',
+    'lobby.you': 'вы', 'lobby.mark': 'использует tibbers',
+    'lobby.nochamp': 'чемпион не выбран', 'lobby.waiting': 'ждёт выбора чемпионов',
+    'lobby.noskin': 'образ не выбран', 'lobby.without': 'без tibbers',
+    'lobby.st.armed': 'применён', 'lobby.st.building': 'собирается\u2026',
+    'lobby.st.unavailable': 'нет мода', 'lobby.st.late': 'поздно',
     'stamp.borrowed': 'заимствовано',
     'stamp.title': 'У режима {label} нет собственных данных; это цифры {src}.',
     'stamp.title.build': 'Сборка для режима {label} взята из {src}.'
@@ -1502,6 +1598,7 @@ function render(s) {
   renderCounters(s);
   renderModeViews(s);
   renderImport(s);
+  renderLobby(s);
 
   const has = s.connected && s.championId && s.skins.length;
   HAS = !!has;
@@ -1801,12 +1898,16 @@ let TABS = [{ key: 'skin', label: 'Skin' }];
 /* The server's label is the fallback: a tab this page has no word for keeps
    the name it arrived with, rather than its key. */
 const tabLabel = tb => ('tab.' + tb.key) in T.en ? t('tab.' + tb.key) : tb.label;
-const VIEW_IDS = ['skin', 'build', 'counters', 'tiers', 'augments', 'items'];
+const VIEW_IDS = ['skin', 'lobby', 'build', 'counters', 'tiers', 'augments', 'items'];
 const viewId = key => 'view-' + key;
 
 function tabsOf(s) {
   const list = (s.queue || {}).tabs;
-  return (Array.isArray(list) && list.length) ? list : [{ key: 'skin', label: 'Skin' }];
+  // Before the first champ select there is no queue to earn tabs from, but
+  // the party already exists, and saying who in it runs tibbers before the
+  // timer starts is half of what the Lobby tab is for.
+  return (Array.isArray(list) && list.length) ? list
+    : [{ key: 'skin', label: 'Skin' }, { key: 'lobby', label: 'Lobby' }];
 }
 
 function paintTabs(list) {
@@ -1879,7 +1980,7 @@ function showView(name) {
   document.querySelector('.splash').style.opacity = name === 'skin' ? '' : '.35';
   // The patch only governs the build and counter pages; on the skin page it
   // is furniture with nothing to steer.
-  $('patch').classList.toggle('offpage', name === 'skin');
+  $('patch').classList.toggle('offpage', name === 'skin' || name === 'lobby');
 }
 
 const pct = v => (v === undefined || v === null) ? '' : v.toFixed(1) + '%';
@@ -2495,6 +2596,67 @@ let COUNTER_SIDE = 'them';
 //: the enemy with the most games and re-nominates as they lock), at which
 //: point the page snaps back to that opponent, the actionable side.
 let COUNTER_OPP;
+
+/* ═══ lobby ══════════════════════════════════════════════════════════
+   Drawn from s.lobby, which the server paints from the party's room: one
+   row a member, in party order, you included. The switch in the header is
+   the share_skins setting; flipping it here or in Settings is the same. */
+let LOBBY_SIG = '';
+const LOBBY_WORDS = { armed: 'lobby.st.armed', building: 'lobby.st.building',
+                      unavailable: 'lobby.st.unavailable', late: 'lobby.st.late' };
+
+function renderLobby(s) {
+  const lb = s.lobby || {};
+  const sig = sigOf(LANG, lb);
+  if (sig === LOBBY_SIG) return;
+  LOBBY_SIG = sig;
+  const on = !!lb.enabled, members = lb.members || [];
+  $('lshare').setAttribute('aria-checked', String(on));
+  const running = members.filter(m => m.tibbers).length;
+  $('lcount').innerHTML = on && members.length
+    ? `${esc(t('lobby.party'))}<b>${members.length}</b>&ensp;${esc(t('lobby.running'))}<b>${running}</b>`
+    : '';
+  $('lerror').textContent = on && lb.error ? t('lobby.error') : '';
+  $('lerror').title = on && lb.error ? lb.error : '';
+
+  const box = $('lrows');
+  if (!on || !members.length) {
+    const key = on ? 'lobby.solo' : 'lobby.off';
+    box.innerHTML = `<div class="note-empty"><b>${esc(t(key))}</b>`
+      + `<span>${esc(t(key + '.text'))}</span></div>`;
+    return;
+  }
+  box.innerHTML = members.map(m => {
+    const name = m.me ? t('lobby.you') : (m.name || m.championName);
+    const word = LOBBY_WORDS[m.status];
+    const quiet = !m.tibbers ? 'lobby.without'
+      : !m.championId ? 'lobby.waiting' : 'lobby.noskin';
+    return `
+    <div class="lrow ${m.me ? 'me' : ''} ${m.tibbers ? '' : 'off'}">
+      <span class="lic">${m.championIcon ? `<img src="${esc(art(m.championIcon))}" alt="">` : ''}</span>
+      <span class="lwho">
+        <span class="lname"><b>${esc(name)}</b>${m.tibbers
+          ? `<i class="mark" role="img" aria-label="${esc(t('lobby.mark'))}" title="${esc(t('lobby.mark'))}"></i>` : ''}</span>
+        <em>${esc(m.championName || t('lobby.nochamp'))}</em>
+      </span>
+      <span class="lskin">${m.skinId && m.skinTile ? `<img src="${esc(art(m.skinTile))}" alt="">` : ''}</span>
+      ${m.skinId ? `<span class="lsname">${esc(m.skinName)}</span>`
+        : `<span class="lsname quiet">${esc(t(quiet))}</span>`}
+      <span class="lst ${esc(m.status || '')}">${word ? esc(t(word)) : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+$('lshare').onclick = async () => {
+  const sw = $('lshare'), on = sw.getAttribute('aria-checked') !== 'true';
+  sw.setAttribute('aria-checked', String(on));
+  try {
+    await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'share_skins', value: on }) });
+  } catch { /* the next poll draws whatever the app really has */ }
+  LOBBY_SIG = '';
+};
 
 function renderCounters(s) {
   const g = s.guide || {}, tables = g.counterTables || {};

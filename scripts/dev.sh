@@ -108,6 +108,8 @@ MOCK
     role <lane>    enemy [id]     bans           queue <rift|aram|arena|urf|...>
     download <0-100|complete|idle>                availability <all|some|none>
     patcher <idle|watching|found|patching|error>  script
+    party <1-5>    party_pick <slot>              party_relay <drop|restore>
+    party_status <armed|building|unavailable|late|auto>
 
 MOCK
 fi

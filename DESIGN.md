@@ -172,6 +172,25 @@ their chosen state in `aria-pressed`, and the switches in `aria-checked`.
 The state is never only a class, and never only a colour: the switches also
 draw a filled or hollow dot, and the chips carry live counts.
 
+**Lobby rows.** One row a party member, you included, in party order and
+never more than five, so the page fits the picker without scrolling. Each
+row is the champion's round portrait, the name (yours reads *you*, in the
+brighter gold), the skin's own tile and name, and a status word on the
+right. A member who does not run tibbers stays in the list at 55% opacity,
+the way a skin with no mod stays on the rail. With sharing off the page is
+the switch in its header and one sentence; the tab exists anyway, because
+it is the only place anyone would learn the feature does.
+
+**The tibbers mark.** A 6px rotated square beside the name of whoever runs
+tibbers: the chroma strip's shape, drawn small. A shape rather than a colour,
+so it survives being glanced at, and named for screen readers.
+
+**Status words.** What became of a member's skin, in the status line's mono
+voice: *armed*, *building…*, *no mod*, *too late*, or nothing. Only *armed*
+is lit, by a live-green dot before the word; *no mod* and *too late* mean
+the skin will not show and take the failure colour. The word always carries
+the meaning on its own.
+
 **Status.** One line, always present, never modal: a message, and under the
 skin name whether the patcher actually holds it ("arming…", "armed", or the
 name of what it holds instead). The picker's header carries no lamps -- the

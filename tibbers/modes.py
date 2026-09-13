@@ -39,6 +39,7 @@ DATA_URF = "urf"
 #: half of the app and not the other.
 TAB_LABELS = {
     "skin": "Skin",
+    "lobby": "Lobby",
     "build": "Build",
     "counters": "Counters",
     "tiers": "Tier list",
@@ -88,6 +89,9 @@ class Mode:
         for by data that exists:
 
         * **Skin** is the app, and is always there.
+        * **Lobby** is the one tab not paid for by data. Wherever there are
+          skins it is there, because with sharing off it holds the switch
+          that turns it on, and a feature nobody can see is one nobody uses.
         * **Build** needs a source. Arena spends its source differently --
           augments are picked three times a match and decide more than items
           do, so they get their own page rather than sharing one.
@@ -98,6 +102,8 @@ class Mode:
           players in ``myTeam``, so there is nobody to counter.
         """
         keys = ["skin"]
+        if self.skins:
+            keys.append("lobby")
         if self.arena:
             # Arena: a champion tier list to pick with, the augment table to
             # play with, and items in their own right rather than as a footer.

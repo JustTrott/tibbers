@@ -21,7 +21,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
+
+from . import lobby
 
 log = logging.getLogger("tibbers.mock")
 
@@ -45,7 +47,8 @@ class MockClient:
 
     def __init__(self, state, load_champion: Callable[[int], Optional[dict]],
                  on_applied: Optional[Callable[[], None]] = None,
-                 describe_champion: Optional[Callable[[int], Optional[dict]]] = None):
+                 describe_champion: Optional[Callable[[int], Optional[dict]]] = None,
+                 party_relay: Optional[lobby.MemoryRelay] = None):
         self.state = state
         self.load_champion = load_champion
         # Skins can only come from the running client, but the build, counter
@@ -60,6 +63,16 @@ class MockClient:
         self.on_applied = on_applied
         self._lock = threading.Lock()
         self._champion: Optional[int] = None
+        # The party, made up: see "the party" below. None when the app's
+        # lobby talks to a real relay, where the other members are real too.
+        self.party_relay = party_relay
+        self.party = {"id": "mock-party", "me": "mock-you", "players": ["mock-you"]}
+        self.members: Dict[str, dict] = {}
+        #: A status word forced onto every member's pick, or None for the
+        #: real one. A dev instance never injects, so most words are
+        #: otherwise unreachable.
+        self.forced_status: Optional[str] = None
+        self._party_client = _PartyClient(self)
 
     # -- helpers ----------------------------------------------------------
 
@@ -78,6 +91,7 @@ class MockClient:
             self.state.bans = {}
             self.state.guide = {}
         self._champion = None
+        self._clear_party_picks()
 
     # -- actions ----------------------------------------------------------
 
@@ -300,6 +314,133 @@ class MockClient:
                     chroma["available"] = has
         return f"availability {mode}"
 
+    # -- the party ----------------------------------------------------------
+    #
+    # Party skin sharing needs other people in your party running tibbers,
+    # which is exactly what one machine does not have. These make them up:
+    # members on the same in-memory relay the app's lobby joins, and a League
+    # client that answers the lobby's questions about the party.
+
+    #: Stable per member, so resizing the party keeps who is who.
+    PARTY_NAMES = {"mock-you": "Tibbers", "mock-2": "Juniper", "mock-3": "Pebble",
+                   "mock-4": "Marlowe", "mock-5": "Nightingale"}
+    #: Never runs tibbers, so the tab has both kinds of row to show.
+    WITHOUT_TIBBERS = "mock-3"
+    #: The champion that member plays, read from their champ select cell.
+    UNSHARED_CHAMPION = 25
+    #: What a member picks when only a slot is given: real skins, so the
+    #: client has names and art for them.
+    CANNED_PICKS = [(222, 222004, None), (99, 99007, None),
+                    (157, 157003, None), (412, 412001, None)]
+
+    def party_client(self):
+        """The League client the app's lobby reads, while one is 'running'."""
+        with self.state.lock:
+            connected = self.state.connected
+        return self._party_client if connected else None
+
+    def member_name(self, puuid: str) -> str:
+        return self.PARTY_NAMES.get(puuid, puuid)
+
+    def _do_party(self, value) -> str:
+        """A party of `value` players, you included: 1 to 5.
+
+        An object ``{"id", "me", "players"}`` names the party outright
+        instead, and makes no members up: that is for two dev instances
+        sharing a real relay through TIBBERS_LOBBY_URL, each told the same
+        party and a different `me`.
+        """
+        if isinstance(value, dict):
+            players = [str(p) for p in value.get("players") or []]
+            me = str(value.get("me") or "")
+            if me not in players:
+                raise ValueError("`me` must be one of `players`")
+            self._set_party(str(value.get("id") or "mock-party"), me, players,
+                            make_up=False)
+            return f"party {self.party['id']} as {me}"
+        size = max(1, min(5, int(value or 1)))
+        players = ["mock-you"] + [f"mock-{i}" for i in range(2, size + 1)]
+        self._set_party("mock-party", "mock-you", players, make_up=True)
+        return f"party of {size}"
+
+    def _set_party(self, party_id: str, me: str, players: list,
+                   make_up: bool) -> None:
+        moved = party_id != self.party["id"]
+        for puuid in list(self.members):
+            if moved or not make_up or puuid not in players:
+                member = self.members.pop(puuid)
+                if member["transport"] is not None:
+                    member["transport"].close()
+        self.party = {"id": party_id, "me": me, "players": list(players)}
+        if not make_up:
+            return
+        room = lobby.room_id(party_id)
+        for puuid in players:
+            if puuid == me or puuid in self.members:
+                continue
+            member = {"championId": None, "row": dict(lobby.EMPTY),
+                      "transport": None}
+            if puuid != self.WITHOUT_TIBBERS and self.party_relay is not None:
+                transport = lobby.MemoryTransport(self.party_relay)
+                transport.connect(room, lobby.member_id(room, puuid),
+                                  lambda rows: None, lambda message: None)
+                member["transport"] = transport
+            self.members[puuid] = member
+
+    def _do_party_pick(self, value) -> str:
+        """A member picks. ``{"slot", "championId", "skinId", "chromaId"}``,
+        counting you as slot 1; a bare slot picks something real for them."""
+        value = value if isinstance(value, dict) else {"slot": value}
+        slot = int(value.get("slot") or 2)
+        players = self.party["players"]
+        if not 2 <= slot <= len(players):
+            raise ValueError(f"slot {slot}: the party has {len(players)} "
+                             f"players, and slot 1 is you")
+        puuid = players[slot - 1]
+        member = self.members.get(puuid)
+        if member is None or member["transport"] is None:
+            raise ValueError(f"slot {slot} ({self.member_name(puuid)}) "
+                             f"is not running tibbers here")
+        if value.get("championId"):
+            pick = (int(value["championId"]), value.get("skinId"),
+                    value.get("chromaId"))
+        else:
+            pick = self.CANNED_PICKS[(slot - 2) % len(self.CANNED_PICKS)]
+        member["championId"] = pick[0]
+        member["row"] = lobby.row(*pick)
+        member["transport"].send(member["row"])
+        return f"{self.member_name(puuid)} picked {member['row']}"
+
+    def _do_party_relay(self, value) -> str:
+        """'drop' cuts every connection to the relay; 'restore' reconnects."""
+        if self.party_relay is None:
+            raise ValueError("this instance uses a real relay (TIBBERS_LOBBY_URL)")
+        if value == "drop":
+            self.party_relay.drop()
+            return "relay dropped"
+        if value in (None, "", "restore"):
+            self.party_relay.restore()
+            return "relay restored"
+        raise ValueError(f"unknown relay action: {value}")
+
+    def _do_party_status(self, value) -> str:
+        """Force every member's status word, or 'auto' for the real one."""
+        word = None if value in (None, "", "auto") else str(value)
+        if word is not None and word not in lobby.STATUSES:
+            raise ValueError(f"unknown status: {word} "
+                             f"(try {', '.join(lobby.STATUSES)} or auto)")
+        self.forced_status = word
+        return f"party status {word or 'auto'}"
+
+    def _clear_party_picks(self) -> None:
+        """Champ select is over or starting again, for the made-up members too."""
+        for member in self.members.values():
+            member["championId"] = None
+            if member["row"] != lobby.EMPTY:
+                member["row"] = dict(lobby.EMPTY)
+                if member["transport"] is not None:
+                    member["transport"].send(member["row"])
+
     def _do_script(self, _value) -> str:
         """Walk the whole happy path, with pauses, in a background thread."""
         def run():
@@ -323,3 +464,52 @@ class MockClient:
 
         threading.Thread(target=run, daemon=True).start()
         return "running the full sequence"
+
+
+class _PartyClient:
+    """The League client as the lobby asks it about the party, answered from
+    the mock: the phase, the roster, the names and a champ select."""
+
+    def __init__(self, mock: MockClient):
+        self.mock = mock
+
+    def phase(self):
+        with self.mock.state.lock:
+            return self.mock.state.phase or "None"
+
+    def champ_select(self):
+        mock = self.mock
+        with mock.state.lock:
+            if mock.state.phase != "ChampSelect":
+                return None
+            champion, locked = mock.state.champion_id or 0, mock.state.locked
+        party = mock.party
+        team = [{"cellId": 0, "puuid": party["me"],
+                 "championId": champion if locked else 0,
+                 "championPickIntent": 0 if locked else champion}]
+        others = [p for p in party["players"] if p != party["me"]]
+        for cell, puuid in enumerate(others, start=1):
+            member = mock.members.get(puuid)
+            if member is None:
+                champion = 0
+            elif member["transport"] is None:
+                champion = mock.UNSHARED_CHAMPION
+            else:
+                champion = member["championId"] or 0
+            team.append({"cellId": cell, "puuid": puuid, "championId": champion,
+                         "championPickIntent": 0})
+        return {"localPlayerCellId": 0, "myTeam": team, "theirTeam": [],
+                "isCustomGame": False, "hasSimultaneousPicks": False}
+
+    def get(self, endpoint: str):
+        party = self.mock.party
+        if endpoint == "/lol-lobby/v1/parties/player":
+            return {"puuid": party["me"],
+                    "currentParty": {"partyId": party["id"],
+                                     "players": [{"puuid": p}
+                                                 for p in party["players"]]}}
+        if endpoint == "/lol-lobby/v2/comms/members":
+            return {"partyId": party["id"],
+                    "players": {p: {"puuid": p, "gameName": self.mock.member_name(p),
+                                    "tagLine": "MOCK"} for p in party["players"]}}
+        return None
