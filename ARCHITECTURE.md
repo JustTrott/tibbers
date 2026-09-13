@@ -211,7 +211,7 @@ tibbers/patchcheck.py   whether this League build can still be patched
 tibbers/privileged.py   the root-owned helper and its sudoers rule
 tibbers/modes.py        which mode this is, and which tabs it earns
 tibbers/ugg.py          ARAM Mayhem augment rankings from u.gg
-tibbers/opgg.py         Arena statistics from op.gg
+tibbers/opgg.py         builds, counters and Arena statistics from op.gg
 tibbers/guide.py        those numbers, wearing the client's names and icons
 tibbers/importer.py     writes the build back: rune page, spells, item set
 tibbers/server.py       local HTTP API, art proxy, reload channel
