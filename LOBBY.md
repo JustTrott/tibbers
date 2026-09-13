@@ -196,16 +196,19 @@ Two properties keep it small before any of that matters.
   party, not thousands.
 
 Ten thousand daily users, with under a third of them queueing in parties
-at four games a day, comes to roughly four million messages a month. The
-$5 Workers Paid plan includes ten million requests, and the duration
-involved is negligible against its included allowance. The practical
-answer at the scale in question is a flat five dollars a month, and the
-free plan covers a private group.
+at four games a day, comes to roughly four million messages a month.
+Durable Objects bill incoming WebSocket messages at twenty to one, so that
+is about two hundred thousand billed requests, plus one for each
+connection opened. The $5 Workers Paid plan includes a million Durable
+Object requests and 400,000 GB-s of duration a month, and the duration
+involved is negligible against that. The practical answer at the scale in
+question is a flat five dollars a month, and the free plan (100,000
+requests and 13,000 GB-s a day) covers a private group.
 
-Check the figures against Cloudflare's current rates before step 1. They
-are the reason to start on hibernation rather than treat it as an escape
-hatch: the long-poll design was heading for real money at ten thousand
-users, and this one is not.
+Checked against Cloudflare's published rates on 2026-09-13. They are the
+reason to start on hibernation rather than treat it as an escape hatch:
+the long-poll design was heading for real money at ten thousand users,
+and this one is not.
 
 ## Prior art: Rose
 
