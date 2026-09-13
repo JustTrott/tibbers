@@ -1,6 +1,7 @@
 # 1.2.0: the lobby
 
-*Plan. Nothing here is built yet. Written 2026-09-09 against the 1.1.0 branch.*
+*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 and 2 are built
+(the relay and `tibbers/lobby.py`); nothing is wired into the app yet.*
 
 Several people who queue together, each running tibbers, each seeing the
 others' chosen skins in game. No skin data ever leaves a machine: every
@@ -124,7 +125,7 @@ on your team and already watches you hover. There is nothing to withhold,
 and rows go out on every selection change.
 
 Customs are the exception, because the enemy team is in the lobby. The
-policy is computed once when champ select starts:
+policy is read from every champ select session, and only ever tightens:
 
 - **Team-only room.** No room member's puuid appears in `theirTeam`.
   Publish on every change. Matchmade queues always land here, including
@@ -138,8 +139,13 @@ policy is computed once when champ select starts:
   publish. The loading screen is the window to build them, which is the
   same late-pick window the design already accepts.
 
-`gameConfig.pickType` and `isCustom` decide this, so it is one flag rather
-than a queue table.
+The champ select session's own `isCustomGame` and `hasSimultaneousPicks`
+decide this, read alongside the teams they are weighed against, so it is
+one flag rather than a queue table. Every doubt is read the cautious way: a
+cell opposite with no puuid counts as a party member, a flag the client
+leaves out counts as a custom blind, and within one champ select the policy
+only ever gets stricter, so a read that missed the other team cannot undo
+one that saw it.
 
 ## The relay
 
@@ -253,9 +259,11 @@ three-way disclosure policy above has nothing to copy from.
 ### `tibbers/lobby.py`
 
 A `Lobby` thread owning one room at a time, constructed with a transport,
-a `get_lcu` and an `on_change(snapshot)` callback. It is driven by the
-existing `PhaseWatcher` rather than polling the client on its own
-schedule.
+a `get_lcu` and an `on_change(snapshot)` callback. Every decision is made in
+one `step`, which the phase watcher nudges whenever it reports a change and
+the relay whenever the room changes. Otherwise it reads the party every two
+seconds, because someone joining the party changes nothing the watcher
+reports.
 
 - **Join** whenever `share_skins` is on and `parties/player` reports a
   `currentParty` with two or more players, at any phase. Derives the room
@@ -267,9 +275,10 @@ schedule.
 - **Publish** under the policy above. `on_select` and the champion branch
   of `on_change` in `main.py` call `lobby.publish(champion_id, skin_id,
   chroma_id)`.
-- **Merge** each broadcast against the champ select session by champion
-  id into the snapshot below, hand it to `on_change`, which stores it and
-  calls `arm()`.
+- **Merge** each broadcast with the party roster into the snapshot below:
+  each party puuid's member id finds its row, so a row under any other id
+  is never read, and a member with no row takes their champion from their
+  champ select cell. `on_change` stores the snapshot and calls `arm()`.
 - **Stay connected** through `GameStart` into `InProgress` until
   `inject.overlay_in_use()` says the patcher has hooked. That is the real
   deadline; after it nothing can change, so the socket closes and the last
@@ -282,10 +291,9 @@ schedule.
 
 `Transport` is `connect(room, member)`, `send(row)` and an `on_state`
 callback, with reconnect and backoff behind it. `WsTransport` speaks the
-WebSocket; the standard library has no client, so this is the one place
-the plan needs a dependency, and a minimal RFC 6455 client over `socket`
-and `ssl` is a few hundred lines if adding one is unwelcome. Decide at
-step 1. `MemoryTransport` is a dict with direct delivery, for the mock and
+WebSocket through `websocket-client`, the one dependency the plan adds:
+pure Python with none of its own, installed by `scripts/setup.sh` and the
+Windows venv. `MemoryTransport` is a dict with direct delivery, for the mock and
 the tests. `TIBBERS_LOBBY_URL` points a dev instance at `wrangler dev`.
 
 ### The overlay becomes a set
@@ -415,3 +423,8 @@ Each of these is cheap to check and none of them changes the shape.
 - **Arena subteams.** `subteamIndex` and `intraSubteamPosition` are on the
   participant, so a party in Arena is still just a party. Only the tab
   layout may want to group by subteam.
+- **`isCustomGame` and `hasSimultaneousPicks` on the champ select
+  session.** The disclosure policy reads them there, beside the teams it
+  weighs them against, rather than from `/lol-lobby/v2/lobby`. Not yet
+  seen on a live client. If either is missing, customs are treated as
+  blind: picks are held until loading, and nothing else is lost.

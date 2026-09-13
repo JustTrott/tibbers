@@ -20,7 +20,7 @@ if [[ ! -x ".venv/bin/python" ]]; then
     python3 -m venv .venv
 fi
 .venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet psutil xxhash zstandard
+.venv/bin/pip install --quiet psutil xxhash zstandard websocket-client
 
 echo "==> mod-tools (cslol, built here with our patcher)"
 scripts/fetch_modtools.sh

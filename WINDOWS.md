@@ -39,7 +39,7 @@ anti-cheat, and neither of these binaries is modified.
 git clone https://github.com/JustTrott/tibbers.git
 cd tibbers
 py -3 -m venv .venv
-.\.venv\Scripts\pip install psutil xxhash zstandard pywebview pystray Pillow
+.\.venv\Scripts\pip install psutil xxhash zstandard websocket-client pywebview pystray Pillow
 
 # Fetch BOTH tool pairs -- cslol mod-tools (mkoverlay) and the LTK patcher
 # (injection). This installs the four files into tools\.

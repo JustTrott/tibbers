@@ -59,3 +59,11 @@ if [[ -z "$URL" ]]; then
 fi
 
 node "${WORKER}/smoke.mjs" "$URL"
+
+# tibbers' own client (tibbers/lobby.py) against the same relay.
+PYTHON="${REPO_ROOT}/.venv/bin/python"
+if [[ -x "$PYTHON" ]] && "$PYTHON" -c 'import websocket' 2>/dev/null; then
+    TIBBERS_LOBBY_TEST_URL="${URL/#http/ws}" "$PYTHON" "${REPO_ROOT}/tests/test_lobby.py"
+else
+    echo "skipped tibbers/lobby.py: no .venv with websocket-client (scripts/setup.sh)" >&2
+fi
