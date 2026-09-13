@@ -25,6 +25,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -77,6 +78,81 @@ def have_tools(where: Optional[Path] = None) -> bool:
 Progress = Callable[[str, Optional[int]], None]
 
 
+#: What was fetched, and which release it came from. Written beside the
+#: binaries themselves so a copied or restored tools directory carries its own
+#: provenance rather than trusting a preference elsewhere.
+RECORD = "installed.json"
+
+#: LTK's patcher DLL carries an expiry. Past it the DLL still attaches to the
+#: game and then refuses to do anything, logging this and redirecting no wad
+#: at all -- the game opens, the skin simply is not there. cslol's Windows DLL
+#: has the same kind of kill-switch; it is why that one is not used to inject.
+#: A tools directory that has served an expired patcher is stale whatever its
+#: recorded tag says, so the line is worth reading directly.
+END_OF_LIFE = "end of life reached"
+
+
+def _read_record(where: Path) -> dict:
+    try:
+        data = json.loads((Path(where) / RECORD).read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _record(where: Path, **fields) -> None:
+    """Note which release a pair came from, merging into what is already there.
+
+    Best effort: the binaries are what matter, and a tools directory whose
+    record failed to write is merely treated as stale next time, which costs a
+    re-fetch rather than a broken install.
+    """
+    data = _read_record(where)
+    data.update(fields)
+    data["at"] = time.time()
+    try:
+        (Path(where) / RECORD).write_text(json.dumps(data))
+    except OSError as exc:  # noqa: BLE001
+        log.debug("could not write %s: %s", RECORD, exc)
+
+
+def expired(log_path: Path) -> bool:
+    """True when the patcher's own log says its DLL is past its expiry.
+
+    Read rather than inferred: the tag comparison needs the network, and this
+    does not -- so a machine that cannot reach GitHub still knows the patcher
+    it has is finished.
+    """
+    try:
+        text = Path(log_path).read_text(errors="replace")
+    except OSError:
+        return False
+    return END_OF_LIFE in text
+
+
+def ltk_outdated(where: Optional[Path] = None) -> bool:
+    """True when the installed LTK patcher is not the latest release.
+
+    An install from before this was recorded has no record at all, which is
+    exactly the population whose patcher has since expired -- so a missing
+    record counts as outdated rather than as up to date. A network failure
+    counts as up to date: a machine that cannot ask must not throw away a
+    patcher that may be working.
+    """
+    where = Path(where) if where is not None else tools_dir()
+    if not all((where / name).exists() for name in LTK_FILES):
+        return True
+    have = _read_record(where).get("ltk")
+    if not have:
+        return True
+    try:
+        latest = _latest_release(LTK_LATEST).get("tag_name") or ""
+    except Exception as exc:  # noqa: BLE001
+        log.info("could not check for a newer LTK patcher: %s", exc)
+        return False
+    return bool(latest) and latest != have
+
+
 def _report(progress: Optional[Progress], message: str,
             percent: Optional[int] = None) -> None:
     if progress:
@@ -85,17 +161,25 @@ def _report(progress: Optional[Progress], message: str,
         log.info(message)
 
 
-def _latest_asset(api_url: str, match: Callable[[dict], bool]) -> dict:
+def _latest_release(api_url: str) -> dict:
     req = urllib.request.Request(api_url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "tibbers-wintools",
     })
     with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.load(resp)
-    for asset in data.get("assets") or []:
+        return json.load(resp)
+
+
+def _pick_asset(release: dict, match: Callable[[dict], bool],
+                api_url: str) -> dict:
+    for asset in release.get("assets") or []:
         if match(asset):
             return asset
     raise RuntimeError(f"no matching asset in {api_url}")
+
+
+def _latest_asset(api_url: str, match: Callable[[dict], bool]) -> dict:
+    return _pick_asset(_latest_release(api_url), match, api_url)
 
 
 def _download(url: str, dest: Path, progress: Optional[Progress] = None,
@@ -163,8 +247,10 @@ def _fetch_cslol(into: Path, progress) -> None:
 
 
 def _fetch_ltk(into: Path, progress) -> None:
-    asset = _latest_asset(
-        LTK_LATEST, lambda a: str(a.get("name", "")).lower().endswith(".msi"))
+    release = _latest_release(LTK_LATEST)
+    asset = _pick_asset(
+        release, lambda a: str(a.get("name", "")).lower().endswith(".msi"),
+        LTK_LATEST)
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-ltk-"))
     try:
         msi = tmp / asset["name"]
@@ -182,6 +268,7 @@ def _fetch_ltk(into: Path, progress) -> None:
         if host is None:
             raise RuntimeError("ltk_patcher_host.exe not found after extraction")
         _install_pair(host.parent, LTK_FILES, into)
+        _record(into, ltk=release.get("tag_name") or "")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -249,6 +336,32 @@ def ensure(where: Optional[Path] = None,
 
     _report(progress, "injection tools ready")
     return where
+
+
+def refresh_ltk(where: Optional[Path] = None,
+                progress: Optional[Progress] = None) -> bool:
+    """Replace the LTK patcher pair with the latest release.
+
+    The caller must have stopped the patcher first. Both files are load-time
+    images -- the host is a running exe while it watches, and the DLL is
+    mapped into the game while a game is up -- and Windows refuses to
+    overwrite either then, so a refresh attempted underneath a live game
+    fails on the copy with the pair half replaced. `_install_pair` checks both
+    sources before copying anything, but nothing can make the destination
+    writable; that is the caller's job and why this says so rather than
+    guessing at League's state itself.
+
+    Returns True when the pair was replaced.
+    """
+    where = Path(where) if where is not None else tools_dir()
+    where.mkdir(parents=True, exist_ok=True)
+    try:
+        _fetch_ltk(where, progress)
+    except PermissionError as exc:
+        raise RuntimeError(
+            "the patcher is still running, so its files could not be "
+            f"replaced ({exc})") from exc
+    return True
 
 
 def missing(where: Optional[Path] = None) -> List[str]:

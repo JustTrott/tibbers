@@ -5,7 +5,18 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
-## 1.1.1 — in progress
+## 1.1.2 — in progress
+
+Skins work again on Windows, and the build pages stop depending on a CDN that
+refuses us.
+
+**Windows: the patcher had quietly expired**
+- LTK's patcher carries an expiry date. Past it the patcher still attaches to the game and then does nothing at all -- the game opens, and the skin is simply not there. Nothing in tibbers had ever replaced the patcher it downloaded the first time it ran, so every install was carrying one release for good and all of them reached that date together. tibbers now checks the patcher at every launch, reads its own log for the line the expired one writes, and fetches the current release when it is behind. Nothing to reinstall, and nothing to delete by hand.
+
+*Planned*
+- Build and counters data from op.gg rather than u.gg, which now refuses roughly one request in five and needs a 4 MB downloaded curl to be spoken to at all. op.gg serves the same figures as plain JSON, permits automated access in its `robots.txt`, and answers for every mode in one request -- so the fetched curl goes away entirely. The build shown against a specific lane opponent goes with it: op.gg has no per-matchup build. Counters stay.
+
+## 1.1.1 — 2026-09-12
 
 A new picker, English and Russian, the build pages working on Windows, and
 skins working again after League's 16.18 patch. Everything here is new since

@@ -1517,6 +1517,45 @@ def main() -> int:
                                    "message": "could not download injection tools"}
                 state.say(f"could not download injection tools: {exc}")
 
+        # A patcher that is present is not therefore a patcher that works.
+        # LTK's DLL carries an expiry, and until 1.1.2 nothing ever replaced
+        # what the first launch fetched: an install kept the release it
+        # happened to download for as long as it lived, and when that release
+        # expired every game opened with no skin and no way back short of
+        # deleting the directory by hand. So the pair is checked on every
+        # launch and replaced when it is behind.
+        #
+        # The expiry is read from the patcher's own log first because it needs
+        # no network and is the symptom itself; the tag comparison catches the
+        # rest. Neither can run under a live game -- both files are load-time
+        # images Windows will not let us overwrite while they are in use -- so
+        # the patcher is stopped first and the whole thing is skipped while a
+        # game is up, to be done at the next quiet launch.
+        try:
+            if wintools.expired(inject.patcher_log):
+                stale = "the patcher reported it had reached its end of life"
+            elif wintools.ltk_outdated(tools_dir):
+                stale = "a newer patcher has been released"
+            else:
+                stale = ""
+            if stale and system.game_pid() is None:
+                log.info("refreshing the injection patcher: %s", stale)
+                report("updating the injection patcher")
+                inject.stop_patcher()
+                wintools.refresh_ltk(tools_dir, progress=report)
+                with state.lock:
+                    state.setup = {"active": False, "percent": 100,
+                                   "message": "injection patcher updated"}
+                state.say("the injection patcher was out of date and has "
+                          "been updated -- skins work again")
+            elif stale:
+                log.info("patcher is out of date (%s) but a game is running; "
+                         "leaving it until the next launch", stale)
+        except Exception as exc:  # noqa: BLE001
+            # Never fatal: a failure here leaves whatever is installed in
+            # place, which is exactly where it already was.
+            log.warning("could not refresh the injection patcher: %s", exc)
+
         # The build-data fetcher. On Windows it is the u.gg transport, not a
         # spare: the CDN refuses the system curl's handshake, and most
         # machines have no system curl at all, so without it the build and
