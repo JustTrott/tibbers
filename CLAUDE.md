@@ -75,8 +75,8 @@ needs no venv and no running app.
 
 | source | how |
 |--------|-----|
-| u.gg (`ugg.py`) | static JSON CDN, over curl (retried; `HEADER_SETS` via urllib as a last resort). The CDN scores the TLS handshake, so urllib is refused and the system curl passes only on a home connection over HTTP/1.1; on Windows the system curl is refused or absent, so `system.browser_curl` supplies a fetched curl-impersonate, run without the HTTP/1.1 pin (a browser speaks HTTP/2; pinning it gets a 403 every time). `TIBBERS_CURL` overrides it; `TIBBERS_UGG_CACHE_HOURS` sets the cache window (default 8). ARAM Mayhem's augment rankings are u.gg's too but live on `static.bigbrain.gg/custom-aram-mayhem`, which has no challenge; Mayhem has no build file at all, so its items stay ARAM's |
-| op.gg (`opgg.py`) | Arena only. `robots.txt` permits everything, so the user-agent is honest — keep it that way |
+| op.gg (`opgg.py`) | **everything: builds, counters, every mode.** Plain `urllib`, honest user-agent, no challenge. `robots.txt` on the API host is `Disallow:` — all permitted — so keep the agent honest. One request per champion and lane carries the build and the counters together, and names its own patch, so there is no manifest to resolve. No per-matchup build exists: counters carry each matchup's win rate but no build for it |
+| u.gg (`ugg.py`) | **ARAM Mayhem's augment rankings only**, on `static.bigbrain.gg`, which puts up no challenge. Mayhem has no build file, so its items stay ARAM's. The build CDN (`stats2.u.gg`) is no longer used at all: it scores the TLS handshake and refuses roughly one request in five, which is what the spoofed agent, the header sets and the downloaded curl-impersonate all existed to get past. All of that is gone — do not bring it back |
 | metasrc | **off limits.** `robots.txt` names ClaudeBot `Disallow: /`, its terms forbid extraction, and reaching it needs a spoofed browser fingerprint |
 | skin mods | **no network at all.** Built from the install by `skinsmith.py`. There is no download path and no skin repository is contacted; a skin that cannot be built simply has no mod |
 

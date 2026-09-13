@@ -128,16 +128,13 @@ if ($Installer) {
     }
     $ltk = Resolve-Asset "LeagueToolkit/ltk-manager" { param($n) $n -like "*.msi" }
     $cslol = Resolve-Asset "LeagueToolkit/cslol-manager" { param($n) $n -eq "cslol-manager-windows.exe" }
-    $curl = Resolve-Asset "lexiforest/curl-impersonate" { param($n) $n -like "curl-impersonate-*.x86_64-win32.tar.gz" }
     $defines = @("/DMyAppVersion=$version")
-    if ($ltk -and $cslol -and $curl) {
+    if ($ltk -and $cslol) {
         $defines += "/DLtkUrl=$($ltk.url)", "/DLtkSize=$($ltk.size)",
-                    "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)",
-                    "/DCurlUrl=$($curl.url)", "/DCurlSize=$($curl.size)"
+                    "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)"
         Write-Host "==> Setup will download:"
         Write-Host "    $($ltk.url)"
         Write-Host "    $($cslol.url)"
-        Write-Host "    $($curl.url)"
     } else {
         Write-Warning "building an installer that downloads no tools; the app fetches them on first launch"
     }

@@ -13,8 +13,11 @@ refuses us.
 **Windows: the patcher had quietly expired**
 - LTK's patcher carries an expiry date. Past it the patcher still attaches to the game and then does nothing at all -- the game opens, and the skin is simply not there. Nothing in tibbers had ever replaced the patcher it downloaded the first time it ran, so every install was carrying one release for good and all of them reached that date together. tibbers now checks the patcher at every launch, reads its own log for the line the expired one writes, and fetches the current release when it is behind. Nothing to reinstall, and nothing to delete by hand.
 
-*Planned*
-- Build and counters data from op.gg rather than u.gg, which now refuses roughly one request in five and needs a 4 MB downloaded curl to be spoken to at all. op.gg serves the same figures as plain JSON, permits automated access in its `robots.txt`, and answers for every mode in one request -- so the fetched curl goes away entirely. The build shown against a specific lane opponent goes with it: op.gg has no per-matchup build. Counters stay.
+**Build and counters pages that are not refused**
+- The build and counters pages now read op.gg instead of u.gg. u.gg's build CDN scores the TLS handshake and refuses roughly one request in five, which is why tibbers downloaded a 4 MB curl that impersonated Chrome just to be spoken to -- and why, when a request did get through the cracks, the page said "u.gg refused the request (403)". op.gg serves the same figures as plain JSON, permits automated access in its `robots.txt`, and answers for a champion and lane in one request instead of three. That download, the spoofed user-agent and the alternative header sets are all gone.
+- The pages also stop going blank at a new patch. The old cache was keyed by patch, so the day League updated there was nothing to fall back on and every refusal became a blank page; before that, a failing fetch was quietly papered over with the previous patch's numbers.
+- What goes with it: the build shown against a named lane opponent, and gold at fifteen. op.gg publishes neither. Counters stay, and the lane opponent is still nominated and still has its win rate.
+- Items are now boots and late items rather than a fourth, fifth and sixth. op.gg publishes one pooled list of everything bought after the core, so those are shown as what they are rather than cut into three slots. The shop import gains a boots tab, which never filled before.
 
 ## 1.1.1 — 2026-09-12
 

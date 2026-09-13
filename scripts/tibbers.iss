@@ -59,12 +59,6 @@
 #ifndef CslolSize
   #define CslolSize 38000000
 #endif
-#ifndef CurlUrl
-  #define CurlUrl ""
-#endif
-#ifndef CurlSize
-  #define CurlSize 2000000
-#endif
 
 ; The instance mutex the running app holds (tibbers/_system_windows.py
 ; INSTANCE_MUTEX). Overridable so a stand-in install can be exercised while
@@ -130,7 +124,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "{cm:AutoStartProgram,{#MyAppName}}"; GroupDescription: "{cm:AutoStartProgramGroupDescription}"
 ; Offered only when there is something to download and the tools are not
 ; already in place (an update over a working install skips the whole thing).
-#define ToolsMB (Int(LtkSize) + Int(CslolSize) + Int(CurlSize)) / 1048576
+#define ToolsMB (Int(LtkSize) + Int(CslolSize)) / 1048576
 Name: "tools"; Description: "{cm:ToolsTask,{#ToolsMB}}"; GroupDescription: "{cm:ToolsGroup}"; Check: ToolsOffered
 
 [Files]
@@ -146,9 +140,6 @@ Source: "{#LtkUrl}"; DestDir: "{tmp}"; DestName: "ltk.msi"; ExternalSize: {#LtkS
 #endif
 #if CslolUrl != ""
 Source: "{#CslolUrl}"; DestDir: "{tmp}"; DestName: "cslol.exe"; ExternalSize: {#CslolSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: tools
-#endif
-#if CurlUrl != ""
-Source: "{#CurlUrl}"; DestDir: "{tmp}"; DestName: "curl.tar.gz"; ExternalSize: {#CurlSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: tools
 #endif
 
 [Icons]
@@ -221,9 +212,11 @@ end;
 
 // -- the game tools ---------------------------------------------------------
 //
-// Five files, in the data directory's tools\ (tibbers/wintools.py names the
-// same five): cslol's overlay builder pair, LTK's patcher pair, and the
-// browser-handshake curl the build pages read u.gg through.
+// Four files, in the data directory's tools\ (tibbers/wintools.py names the
+// same four): cslol's overlay builder pair and LTK's patcher pair. There used
+// to be a fifth -- a curl that impersonated Chrome, because u.gg's build CDN
+// refused anything else. The build pages read op.gg now, which answers plain
+// urllib, so it is neither downloaded nor needed.
 
 function ToolsDir: String;
 begin
@@ -235,8 +228,7 @@ begin
   Result := FileExists(ToolsDir + '\mod-tools.exe')
         and FileExists(ToolsDir + '\cslol-dll.dll')
         and FileExists(ToolsDir + '\ltk_patcher_host.exe')
-        and FileExists(ToolsDir + '\ltk_patcher_dll.dll')
-        and FileExists(ToolsDir + '\curl-impersonate.exe');
+        and FileExists(ToolsDir + '\ltk_patcher_dll.dll');
 end;
 
 function ToolsOffered: Boolean;
@@ -324,16 +316,6 @@ begin
     RunHidden(tmp + '\cslol.exe', '-o"' + tmp + '\cslol" -y');
     Take(tmp + '\cslol', 'mod-tools.exe');
     Take(tmp + '\cslol', 'cslol-dll.dll');
-  end;
-
-  // The browser-handshake curl: a tarball, opened by the tar.exe every
-  // Windows since 10 ships in System32.
-  if FileExists(tmp + '\curl.tar.gz') then
-  begin
-    ForceDirectories(tmp + '\curl');
-    RunHidden(ExpandConstant('{sys}\tar.exe'),
-              '-xzf "' + tmp + '\curl.tar.gz" -C "' + tmp + '\curl"');
-    Take(tmp + '\curl', 'curl-impersonate.exe');
   end;
 end;
 
