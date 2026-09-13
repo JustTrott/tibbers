@@ -1,7 +1,8 @@
 # 1.2.0: the lobby
 
-*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 and 2 are built
-(the relay and `tibbers/lobby.py`); nothing is wired into the app yet.*
+*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 to 3 are built
+(the relay, `tibbers/lobby.py`, an overlay of several mods); nothing is
+wired into the app yet.*
 
 Several people who queue together, each running tibbers, each seeing the
 others' chosen skins in game. No skin data ever leaves a machine: every

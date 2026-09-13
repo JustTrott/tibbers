@@ -873,7 +873,7 @@ def main() -> int:
         with state.lock:
             state.arming = True
         try:
-            result = inject.prepare(mod, progress=state.say, meta=meta)
+            result = inject.prepare([mod], progress=state.say, meta=meta)
         finally:
             with state.lock:
                 state.arming = armer.has_pending()

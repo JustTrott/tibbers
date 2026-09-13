@@ -6,7 +6,7 @@ Skin injection: build an overlay, then let cslol's patcher hook the game.
 Two stages, matching cslol's `mod-tools`:
 
   mkoverlay   Pure local file work. Reads the game's WADs, merges the chosen
-              mod, writes a replacement WAD into this tool's own directory.
+              mods, writes replacement WADs into this tool's own directory.
               Touches nothing in the League install and needs no privileges.
 
   runoverlay  Hooks fopen in the game so reads of `.wad.client` are redirected
@@ -43,7 +43,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Sequence
 
 from . import patchcheck, system
 
@@ -158,9 +158,17 @@ class Injector:
             shutil.rmtree(d, ignore_errors=True)
             d.mkdir(parents=True, exist_ok=True)
 
-    def _extract(self, fantome: Path) -> str:
-        """Unpack a .fantome/.zip into the mods directory; return its name."""
-        name = Path(fantome).stem
+    def _extract(self, fantome: Path, taken: Sequence[str] = ()) -> str:
+        """Unpack a .fantome/.zip into the mods directory; return its name.
+
+        The name is the archive's stem, kept apart from the names already
+        `taken`: mkoverlay finds a mod by its folder, and two archives can
+        share a stem when a folder was dropped in from elsewhere.
+        """
+        stem = Path(fantome).stem
+        name, n = stem, 2
+        while name in taken:
+            name, n = f"{stem}-{n}", n + 1
         dest = self.mods_dir / name
         dest.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(fantome) as zf:
@@ -171,8 +179,19 @@ class Injector:
             zf.extractall(dest)
         return name
 
-    def build_overlay(self, fantome: Path, timeout: int = 300) -> InjectionResult:
-        """Run mkoverlay. Needs no game running and no privileges."""
+    def build_overlay(self, fantomes: Sequence[Path],
+                      timeout: int = 300) -> InjectionResult:
+        """Run mkoverlay over every mod given. Needs no game and no privileges.
+
+        Several mods make one overlay, which is how a party's skins load
+        together: each skinsmith mod rewrites one champion's own WAD, so mods
+        for different champions never touch the same file, and mkoverlay
+        merges every name listed in `--mods:`. Choosing the mods -- one per
+        champion -- is the caller's business.
+        """
+        if isinstance(fantomes, (str, os.PathLike)):
+            raise TypeError("build_overlay takes a sequence of mods")
+        fantomes = [Path(f) for f in fantomes]
         if not self.enabled:
             return InjectionResult(
                 False, "injection is disabled for this instance")
@@ -183,11 +202,15 @@ class Injector:
             return InjectionResult(
                 False, "a patcher is serving a running game from this overlay "
                        "-- refusing to rebuild it underneath")
+        if not fantomes:
+            return InjectionResult(False, "no mod to build")
         started = time.time()
         self._reset_dirs()
 
+        names: List[str] = []
         try:
-            mod_name = self._extract(Path(fantome))
+            for fantome in fantomes:
+                names.append(self._extract(fantome, names))
         except (OSError, zipfile.BadZipFile, ValueError) as exc:
             return InjectionResult(False, f"could not read mod: {exc}")
 
@@ -196,7 +219,7 @@ class Injector:
             str(modtools), "mkoverlay",
             str(self.mods_dir), str(self.overlay_dir),
             f"--game:{self.game_dir}",
-            f"--mods:{mod_name}",
+            f"--mods:{'/'.join(names)}",
             "--noTFT", "--ignoreConflict",
         ]
         log.info("mkoverlay: %s", " ".join(cmd))
@@ -218,7 +241,8 @@ class Injector:
             return InjectionResult(False, "mkoverlay produced no overlay WAD")
 
         elapsed = time.time() - started
-        log.info("overlay built in %.2fs (%d wad)", elapsed, len(wads))
+        log.info("overlay built in %.2fs (%d wad, %d mod)", elapsed,
+                 len(wads), len(names))
         return InjectionResult(True, "overlay ready", elapsed)
 
     # -- the patcher -------------------------------------------------------
@@ -402,9 +426,13 @@ class Injector:
 
     # -- convenience -------------------------------------------------------
 
-    def prepare(self, fantome: Path, progress=None,
+    def prepare(self, fantomes: Sequence[Path], progress=None,
                 meta: Optional[dict] = None) -> InjectionResult:
-        """Build the overlay and start the patcher, ready for the next game."""
+        """Build the overlay and start the patcher, ready for the next game.
+
+        The patcher starts exactly as it does for one mod; only the overlay it
+        serves holds more.
+        """
         def report(msg: str) -> None:
             # progress() is state.say, which logs too -- logging here as well
             # duplicates every line in the terminal.
@@ -418,7 +446,7 @@ class Injector:
             return InjectionResult(False, "injection is disabled")
 
         report("building overlay...")
-        built = self.build_overlay(fantome)
+        built = self.build_overlay(fantomes)
         if not built.ok:
             return built
         report(f"overlay ready ({built.seconds:.1f}s)")
