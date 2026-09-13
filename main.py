@@ -1534,6 +1534,15 @@ def main() -> int:
                 report("updating the injection patcher")
                 inject.stop_patcher()
                 wintools.refresh_ltk(tools_dir, progress=report)
+                # The expiry was read out of the patcher's log, and the log
+                # outlives the patcher that wrote it -- the injector clears it
+                # when it next starts one, which may be days away. Left alone
+                # it would report the same expiry at every launch until then,
+                # and each one would fetch the patcher again.
+                try:
+                    inject.patcher_log.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 with state.lock:
                     state.setup = {"active": False, "percent": 100,
                                    "message": "injection patcher updated"}
