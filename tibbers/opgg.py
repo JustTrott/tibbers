@@ -214,6 +214,163 @@ class OPGG:
                 "boots": rows("boots"),
                 "late": rows("last_items")}
 
+    # -- the laned modes ---------------------------------------------------
+    #
+    # The same host answers for Summoner's Rift, ARAM and URF, and answers
+    # with the whole page in one request: items, runes, skills, summoners and
+    # counters together. u.gg needs three separate files for that, each one
+    # through a CDN that scores the TLS handshake and refuses roughly one
+    # request in five -- which is why a 4 MB curl had to be downloaded on
+    # Windows to speak to it at all. None of that applies here.
+    #
+    # What op.gg does not have is a build against a named lane opponent. Its
+    # counters carry the win rate for each matchup but not a build tailored to
+    # it, so that page is gone rather than faked from the general build.
+
+    #: tibbers' role names (the client's) to op.gg's path segment.
+    POSITIONS = {"top": "top", "jungle": "jungle", "middle": "mid",
+                 "bottom": "adc", "utility": "support"}
+
+    #: Mode to op.gg's path segment. A mode that assigns no lane is asked for
+    #: with ``none``, which is the pooled row every game in it lands in.
+    MODE_PATHS = {"rift": "ranked", "aram": "aram", "urf": "urf"}
+
+    #: Below this many games a figure is noise rather than a recommendation.
+    #: Flagged rather than hidden, so the number can be judged on the page.
+    MIN_MATCHES = 100
+
+    @staticmethod
+    def _won(row: dict) -> dict:
+        """Plain wins out of games played -- a Rift win rate, not a placement."""
+        play = int(row.get("play") or 0)
+        wins = int(row.get("win") or 0)
+        return {"matches": play,
+                "winRate": round(wins / play * 100, 2) if play else 0.0}
+
+    @classmethod
+    def _first(cls, rows: Optional[List[dict]]) -> dict:
+        """op.gg orders every block by pick rate, so the first row is the
+        recommendation. Returned empty rather than missing so callers can ask
+        it for keys without guarding each one."""
+        return (rows or [{}])[0] or {}
+
+    def laned(self, champion_id: int, role: Optional[str],
+              mode: str = "rift", region: str = "global") -> dict:
+        """The whole page op.gg has for one champion, mode and lane."""
+        path = self.MODE_PATHS.get(mode)
+        if path is None:
+            raise Unavailable(f"op.gg has no build data for {mode}")
+        position = self.POSITIONS.get((role or "").lower(), "none")
+        url = f"{BASE}/{region}/champions/{path}/{int(champion_id)}/{position}"
+        payload = self._get(url, f"{path}-{champion_id}-{position}")
+        data = (payload or {}).get("data")
+        if not data:
+            raise Unavailable("op.gg has no build for this champion and role")
+        # The patch the figures are for is in the payload itself, so there is
+        # no separate manifest to resolve and no chance of asking for a patch
+        # that has not been published yet.
+        meta = (payload or {}).get("meta") or {}
+        return {"data": data, "patch": meta.get("version") or ""}
+
+    def build(self, champion_id: int, role: Optional[str],
+              mode: str = "rift", region: str = "global") -> dict:
+        """The recommended build, in the shape `guide.Guide.build` resolves.
+
+        Deliberately the same raw shape u.gg produced, so the picker, the
+        importer and the rune pages did not have to learn a second one. The
+        one honest difference is the item slots: u.gg published a separate
+        distribution for the fourth, fifth and sixth item, and op.gg publishes
+        boots and one pooled list of late items. Those are reported as what
+        they are rather than sliced into three to keep an old shape.
+        """
+        page = self.laned(champion_id, role, mode, region)
+        data = page["data"]
+
+        def block(key: str) -> Optional[dict]:
+            row = self._first(data.get(key))
+            ids = [int(i) for i in (row.get("ids") or [])]
+            return {"items": ids, **self._won(row)} if ids else None
+
+        def options(key: str) -> List[dict]:
+            out = []
+            for row in data.get(key) or []:
+                ids = [int(i) for i in (row.get("ids") or [])]
+                if ids:
+                    out.append({"itemId": ids[0], **self._won(row)})
+            return out
+
+        runes = self._first(data.get("runes"))
+        primary = [int(i) for i in (runes.get("primary_rune_ids") or [])]
+        spells = self._first(data.get("summoner_spells"))
+        skills = self._first(data.get("skills"))
+        mastery = self._first(data.get("skill_masteries"))
+
+        # The position block carries this lane's games; the champion summary
+        # carries every lane's. The lane is what the page is about.
+        stats = {}
+        for entry in ((data.get("summary") or {}).get("positions") or []):
+            if str(entry.get("name", "")).lower() == \
+                    self.POSITIONS.get((role or "").lower(), ""):
+                stats = entry.get("stats") or {}
+                break
+        if not stats:
+            stats = ((data.get("summary") or {}).get("average_stats")) or {}
+        matches = int(stats.get("play") or 0)
+
+        out: dict = {
+            "patch": page["patch"],
+            "role": role,
+            "matchup": None,
+            "matches": matches,
+            "thin": matches < self.MIN_MATCHES,
+            "overall": {"matches": matches,
+                        "winRate": round(float(stats.get("win_rate") or 0) * 100, 2)},
+            "general": None,
+            "start": block("starter_items"),
+            "core": block("core_items"),
+            "boots": options("boots"),
+            "late": options("last_items"),
+        }
+        if primary:
+            out["runes"] = {
+                "keystone": primary[0],
+                "primary": primary[1:],
+                "primaryTree": int(runes.get("primary_page_id") or 0),
+                "secondary": [int(i) for i in
+                              (runes.get("secondary_rune_ids") or [])],
+                "secondaryTree": int(runes.get("secondary_page_id") or 0),
+                **self._won(runes),
+            }
+            out["shards"] = {"ids": [int(i) for i in
+                                     (runes.get("stat_mod_ids") or [])]}
+        if spells.get("ids"):
+            out["spells"] = {"ids": [int(i) for i in spells["ids"]],
+                             **self._won(spells)}
+        if skills.get("order"):
+            out["skills"] = {"order": [str(s) for s in skills["order"]],
+                             "priority": [str(s) for s in
+                                          (mastery.get("ids") or [])],
+                             **self._won(skills)}
+        return out
+
+    def counters(self, champion_id: int, role: Optional[str],
+                 mode: str = "rift", region: str = "global") -> List[dict]:
+        """Every opponent met in this lane, worst first.
+
+        The same request the build came from, so the counters page costs
+        nothing extra once the build has been fetched.
+        """
+        data = self.laned(champion_id, role, mode, region)["data"]
+        out = []
+        for row in data.get("counters") or []:
+            cid = int(row.get("champion_id") or 0)
+            play = int(row.get("play") or 0)
+            if not cid or not play:
+                continue
+            out.append({"championId": cid, **self._won(row)})
+        out.sort(key=lambda r: r["winRate"])
+        return out
+
     def skills(self, champion_id: int, region: str = "global") -> dict:
         data = self.arena(champion_id, region)["data"]
         mastery = (data.get("skill_masteries") or [{}])[0]
