@@ -112,5 +112,33 @@ class Outdated(unittest.TestCase):
         self.assertEqual(wintools._read_record(self.where), {})
 
 
+
+class Orphans(unittest.TestCase):
+    """Tools an older version fetched and no version still uses."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.where = Path(self.tmp.name)
+
+    def test_the_dead_curl_is_removed(self):
+        # 4 MB whose only job was getting past u.gg's CDN. The data directory
+        # survives every upgrade, so nothing else would ever delete it.
+        (self.where / "curl-impersonate.exe").write_bytes(b"MZ\x90\x00")
+        self.assertEqual(wintools.remove_orphans(self.where),
+                         ["curl-impersonate.exe"])
+        self.assertFalse((self.where / "curl-impersonate.exe").exists())
+
+    def test_the_tools_still_in_use_are_left_alone(self):
+        for name in (*wintools.CSLOL_FILES, *wintools.LTK_FILES):
+            (self.where / name).write_bytes(b"MZ\x90\x00")
+        wintools.remove_orphans(self.where)
+        for name in (*wintools.CSLOL_FILES, *wintools.LTK_FILES):
+            self.assertTrue((self.where / name).exists(), name)
+
+    def test_nothing_to_remove_is_not_an_error(self):
+        self.assertEqual(wintools.remove_orphans(self.where), [])
+
+
 if __name__ == "__main__":
     unittest.main()

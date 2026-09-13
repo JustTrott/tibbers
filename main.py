@@ -1556,6 +1556,11 @@ def main() -> int:
             # place, which is exactly where it already was.
             log.warning("could not refresh the injection patcher: %s", exc)
 
+        # An upgrade replaces the install, never the data directory, so a tool
+        # an older version fetched would otherwise sit there for good.
+        for name in wintools.remove_orphans(tools_dir):
+            log.info("removed %s -- no longer used", name)
+
     threading.Thread(target=provision_tools, daemon=True).start()
 
     # First launch: the welcome card (installed, and I live in the tray / menu

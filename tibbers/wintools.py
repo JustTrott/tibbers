@@ -280,6 +280,31 @@ def ensure(where: Optional[Path] = None,
     return where
 
 
+#: Files earlier versions fetched into the tools directory and no longer use.
+#: `curl-impersonate.exe` is 4 MB whose entire job was presenting Chrome's TLS
+#: handshake to u.gg's build CDN. The build pages read op.gg now, so it is
+#: never opened again -- and nothing else would ever remove it, since it sits
+#: in the data directory rather than in the install an update replaces.
+ORPHANS = ("curl-impersonate.exe",)
+
+
+def remove_orphans(where: Optional[Path] = None) -> List[str]:
+    """Delete tools no version still uses. Returns what was removed."""
+    where = Path(where) if where is not None else tools_dir()
+    gone = []
+    for name in ORPHANS:
+        path = where / name
+        try:
+            if path.exists():
+                path.unlink()
+                gone.append(name)
+        except OSError as exc:  # noqa: BLE001
+            # Somebody has it open, or it is read-only. It is 4 MB of nothing,
+            # not a reason to fail a launch.
+            log.debug("could not remove %s: %s", name, exc)
+    return gone
+
+
 def refresh_ltk(where: Optional[Path] = None,
                 progress: Optional[Progress] = None) -> bool:
     """Replace the LTK patcher pair with the latest release.
