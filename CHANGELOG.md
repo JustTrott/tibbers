@@ -5,6 +5,14 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
+## 1.3.0 — in progress
+
+*Planned*
+- **Custom skins you import yourself.** A **My mods** button in the picker, and the same item in the tray menu, opens a place to drop a `.fantome` you downloaded -- from Divine Skins, which it links to, or from anywhere else. tibbers itself downloads nothing: Divine Skins' terms forbid bots and its download sits behind a Cloudflare check, so there is no catalog inside the app. A champion skin joins that champion's skin ring and is picked in champ select like any other. Its tile shows the file's own picture, or the base splash when the file has none, with a small mark that tells it apart from the skins tibbers builds.
+- **Always-on mods.** A mod that is not one champion's skin -- a map, the HUD, an announcer -- is switched on once in My mods and loads in every game beside whatever skin is picked. While one is on, every game is patched, even one where you picked the base skin.
+- **Outdated after a patch.** When a League patch changes a game file an imported mod replaces, that mod is marked outdated until a newer copy is imported. It can still be picked.
+- Imported mods are not shared with a party: only ids travel, and a whole mod file is too heavy to send.
+
 ## 1.2.0 — 2026-09-25
 
 Share skins with your party, counters before you hover, and the Windows
