@@ -1,8 +1,7 @@
 # 1.2.0: the lobby
 
-*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 to 6 are built;
-the relay is not deployed yet, so until it is, turning sharing on reports
-that the relay cannot be reached.*
+*Plan, written 2026-09-09 against the 1.1.0 branch. Steps 1 to 7 are built,
+and the relay has been live at `lobby.tibbers.lol` since 2026-09-14.*
 
 Several people who queue together, each running tibbers, each seeing the
 others' chosen skins in game. No skin data ever leaves a machine: every
@@ -180,7 +179,11 @@ GET  /v1/room?room=<32 hex>            -> 101, WebSocket
 - **Limits, which Rose's relay has none of.** Room and member ids are
   fixed-length hex, frames are capped at 128 bytes, sixteen members per
   room, `s // 1000 == c` enforced so a row cannot carry arbitrary data,
-  and a per-IP rate limit as a zone rule on the upgrade request. There is
+  and a per-IP rate limit as a zone rule on the upgrade request: more than
+  20 requests to `/v1/room` in 10 s from one IP is blocked for 10 s. The
+  zone's browser check also refuses Python's default `urllib` user agent
+  (Cloudflare error 1010); the app's WebSocket client names itself and
+  is let through. There is
   no listing endpoint: a room is reachable only by someone who already
   derived its id.
 - **Versioned path** and a `User-Agent: tibbers/<version>` on the upgrade,

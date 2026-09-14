@@ -15,7 +15,7 @@ in `CLAUDE.md`.
 **Updates**
 - Settings has a **Check now** button beside the version, instead of waiting for the next automatic check.
 
-*Before this ships:* `worker/` has to be deployed to `lobby.tibbers.lol`, and the custom-game checks under "To verify on first contact" in `LOBBY.md` run on a live client.
+*Before this ships:* the custom-game checks under "To verify on first contact" in `LOBBY.md` have to run on a live client. The relay has been live at `lobby.tibbers.lol` since 2026-09-14.
 
 ## 1.1.2 — 2026-09-13
 

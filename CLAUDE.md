@@ -48,7 +48,7 @@ needs no venv and no running app.
 | `scripts/deploy.sh --static` | UI-only change: syncs `tibbers/static` into the bundle and reloads open windows. No restart, so it is safe in champ select |
 | `scripts/build_app.sh` | build to `dist/` to check the bundle still builds. `--install` writes to `/Applications` — the user's call |
 | `scripts/fetch_python.sh` | the CPython that ships inside the bundle (python-build-standalone, pinned), into `runtime/python`. Run once; `build_app.sh` refuses without it |
-| `scripts/lobby_smoke.sh` | party sharing end to end: the relay in `worker/` on `wrangler dev`, and `tibbers/lobby.py` against it. No account, nothing deployed. Deploying `worker/` (`npm run deploy` in it) is the user's call, like `deploy.sh` |
+| `scripts/lobby_smoke.sh [--url https://lobby.tibbers.lol]` | party sharing end to end: the relay in `worker/` and `tibbers/lobby.py` against it, on `wrangler dev` unless given a URL. Against the live relay it opens more connections than the zone's rate limit allows (20 in 10 s per IP), so its later checks get refused there. Deploying `worker/` is the user's call: `wrangler deploy` in it, with the token the `cloudflare` skill describes |
 
 `dev.sh --mock` prints its own controls; drive them with
 `curl -s 127.0.0.1:7778/api/mock -d '{"action":"hover","value":202}'`.
