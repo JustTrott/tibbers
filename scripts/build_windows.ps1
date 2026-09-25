@@ -126,14 +126,13 @@ if ($Installer) {
         }
         return $null
     }
-    $ltk = Resolve-Asset "LeagueToolkit/ltk-manager" { param($n) $n -like "*.msi" }
+    # LTK's patcher is not among them: it ships only as an NSIS setup now,
+    # which Setup cannot open, so the app unpacks it on first launch.
     $cslol = Resolve-Asset "LeagueToolkit/cslol-manager" { param($n) $n -eq "cslol-manager-windows.exe" }
     $defines = @("/DMyAppVersion=$version")
-    if ($ltk -and $cslol) {
-        $defines += "/DLtkUrl=$($ltk.url)", "/DLtkSize=$($ltk.size)",
-                    "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)"
+    if ($cslol) {
+        $defines += "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)"
         Write-Host "==> Setup will download:"
-        Write-Host "    $($ltk.url)"
         Write-Host "    $($cslol.url)"
     } else {
         Write-Warning "building an installer that downloads no tools; the app fetches them on first launch"

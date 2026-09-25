@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import json
 import logging
+import lzma
 import shutil
+import struct
 import subprocess
 import tempfile
 import time
@@ -233,28 +235,124 @@ def _fetch_cslol(into: Path, progress) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+#: NSIS's own opcode for "write this file out of the payload" (EW_EXTRACTFILE
+#: in its fileform.h). Its second argument names the file, its third is where
+#: the file's bytes start in the payload.
+_NSIS_EXTRACTFILE = 20
+_NSIS_MAGIC = b"\xef\xbe\xad\xdeNullsoftInst"
+
+
+class _Stream:
+    """Forward-only reads from a raw LZMA stream, discarding what is skipped."""
+
+    def __init__(self, data: bytes, props: bytes):
+        lc, rest = props[0] % 9, props[0] // 9
+        self._dec = lzma.LZMADecompressor(lzma.FORMAT_RAW, filters=[{
+            "id": lzma.FILTER_LZMA1,
+            "dict_size": struct.unpack("<I", props[1:5])[0],
+            "lc": lc, "lp": rest % 5, "pb": rest // 5,
+        }])
+        self._data = data
+        self._buf = b""
+        self.pos = 0
+
+    def read(self, n: int) -> bytes:
+        while len(self._buf) < n and not self._dec.eof:
+            more = self._dec.decompress(self._data, max_length=1 << 22)
+            self._data = b""
+            if not more and self._dec.needs_input:
+                break
+            self._buf += more
+        if len(self._buf) < n:
+            raise RuntimeError("the installer's payload ends early")
+        out, self._buf = self._buf[:n], self._buf[n:]
+        self.pos += n
+        return out
+
+    def skip_to(self, pos: int) -> None:
+        while self.pos < pos:
+            self.read(min(pos - self.pos, 1 << 22))
+
+
+def unpack_nsis(exe: Path, names, into: Path) -> None:
+    """Write the named files out of an NSIS installer without running it.
+
+    LTK Manager ships only as an NSIS setup since v1.20.0 (its MSI is gone),
+    and running a setup -- even silently -- is an install: registry entries,
+    an uninstaller, shortcuts. This reads the payload instead, the way 7-Zip
+    does, with nothing but the standard library: the installer Tauri builds
+    is one solid LZMA stream holding NSIS's script header and then each file
+    as a length and its bytes. The header's extract-file instructions say
+    which name sits at which offset.
+    """
+    data = Path(exe).read_bytes()
+    at = data.find(_NSIS_MAGIC)
+    if at < 4:
+        raise RuntimeError(f"{Path(exe).name} is not an NSIS installer")
+    start = at - 4 + 28                     # past NSIS's 28-byte first header
+    header_len, length = struct.unpack("<II", data[at + 16:at + 24])
+    props = data[start:start + 5]
+    if props[0] >= 225 or props[1:5] == b"\0\0\0\0":
+        raise RuntimeError("the installer is not solid-LZMA compressed; "
+                           "this NSIS layout is not supported")
+    stream = _Stream(data[start + 5:at - 4 + length], props)
+    size = struct.unpack("<I", stream.read(4))[0]
+    if size != header_len:
+        raise RuntimeError("the installer's header does not decode")
+    header = stream.read(size)
+
+    # Eight (offset, count) pairs after a flags word: pages, sections,
+    # entries, strings, ... Entries are seven words, an opcode and six args;
+    # strings are UTF-16, addressed in characters.
+    blocks = [struct.unpack("<II", header[4 + 8 * k:12 + 8 * k])
+              for k in range(8)]
+    (entries, count), (strings, _), (lang, _) = blocks[2], blocks[3], blocks[4]
+    table = header[strings:lang]
+
+    def string(index: int) -> str:
+        end = index * 2
+        while table[end:end + 2] not in (b"\0\0", b""):
+            end += 2
+        return table[index * 2:end].decode("utf-16-le", "replace")
+
+    want = {}
+    for k in range(count):
+        op, _, name, offset = struct.unpack(
+            "<IIII", header[entries + 28 * k:entries + 28 * k + 16])
+        if op != _NSIS_EXTRACTFILE:
+            continue
+        base = string(name).rsplit("\\", 1)[-1]
+        if base in names:
+            want.setdefault(base, offset)
+    lost = [n for n in names if n not in want]
+    if lost:
+        raise RuntimeError(f"{', '.join(lost)} not found in {Path(exe).name}")
+
+    # Each file's offset counts from the end of the header block.
+    for name, offset in sorted(want.items(), key=lambda kv: kv[1]):
+        stream.skip_to(4 + size + offset)
+        blob = stream.read(struct.unpack("<I", stream.read(4))[0])
+        (Path(into) / name).write_bytes(blob)
+
+
 def _fetch_ltk(into: Path, progress) -> None:
     release = _latest_release(LTK_LATEST)
     asset = _pick_asset(
-        release, lambda a: str(a.get("name", "")).lower().endswith(".msi"),
+        release,
+        lambda a: str(a.get("name", "")).lower().endswith("-setup.exe"),
         LTK_LATEST)
     tmp = Path(tempfile.mkdtemp(prefix="tibbers-ltk-"))
     try:
-        msi = tmp / asset["name"]
-        _download(asset["browser_download_url"], msi,
+        setup = tmp / asset["name"]
+        _download(asset["browser_download_url"], setup,
                   progress, "downloading injection patcher")
         extract = tmp / "x"
+        extract.mkdir()
         _report(progress, "extracting injection patcher...")
-        # Administrative install: unpacks the payload with NO install -- no
-        # service, no registry, no Vanguard interaction. Windowless as above.
-        subprocess.run(["msiexec.exe", "/a", str(msi), "/qn",
-                        f"TARGETDIR={extract}"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       check=True, creationflags=system.CREATE_NO_WINDOW)
-        host = _find(extract, "ltk_patcher_host.exe")
-        if host is None:
-            raise RuntimeError("ltk_patcher_host.exe not found after extraction")
-        _install_pair(host.parent, LTK_FILES, into)
+        # Read out of the installer, never run: no install, no service, no
+        # registry, no Vanguard interaction.
+        unpack_nsis(setup, LTK_FILES, extract)
+        _install_pair(extract, LTK_FILES, into)
         _record(into, ltk=release.get("tag_name") or "")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

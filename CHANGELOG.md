@@ -15,6 +15,10 @@ in `CLAUDE.md`.
 **Updates**
 - Settings has a **Check now** button beside the version, instead of waiting for the next automatic check.
 
+**Windows: the patcher updates again**
+- LTK stopped publishing an MSI at v1.20.0 and now ships only a setup program, so the patcher update added in 1.1.2 found nothing to download and every install stayed on v1.19.2. tibbers now reads the two patcher files straight out of LTK's setup, without running it: nothing is installed, and no registry entry or shortcut is added. Installs update to the current LTK on their next launch.
+- The Windows installer no longer downloads LTK itself; the app fetches it on first launch, as it already did whenever Setup's download had failed.
+
 *Before this ships:* the custom-game checks under "To verify on first contact" in `LOBBY.md` have to run on a live client. The relay has been live at `lobby.tibbers.lol` since 2026-09-14.
 
 ## 1.1.2 — 2026-09-13

@@ -79,53 +79,36 @@ Write-Host "==> Installed mod-tools.exe and cslol-dll.dll into $tools"
 # LTK patcher -- the injection host + hook DLL
 # ---------------------------------------------------------------------------
 #
-# LTK ships only an installer, so its two patcher files are pulled out of the
-# MSI with an administrative install (msiexec /a): that unpacks the payload to
-# a directory WITHOUT installing anything -- no service, no registry, no
-# Start Menu entry, no Vanguard interaction. We keep only the two files.
+# LTK ships only an NSIS setup (its MSI went away in v1.20.0). Running that
+# would install LTK Manager, so its two patcher files are read out of the
+# setup instead by tibbers' own unpacker -- the one the packaged app uses --
+# which never runs it: no install, no registry, no Vanguard interaction.
 
 Write-Host "==> Resolving latest LTK Manager release"
 $ltkApi = "https://api.github.com/repos/LeagueToolkit/ltk-manager/releases/latest"
 $ltkRel = Invoke-RestMethod -Uri $ltkApi -Headers @{ "User-Agent" = "tibbers" }
-$msi = $ltkRel.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
-if (-not $msi) {
-    throw ("no .msi in the latest ltk-manager release. Install LTK Manager " +
-           "yourself and copy ltk_patcher_host.exe and ltk_patcher_dll.dll " +
-           "from its install folder into $tools")
+$setup = $ltkRel.assets | Where-Object { $_.name -like "*-setup.exe" } | Select-Object -First 1
+if (-not $setup) {
+    throw ("no -setup.exe in the latest ltk-manager release. Install LTK " +
+           "Manager yourself and copy ltk_patcher_host.exe and " +
+           "ltk_patcher_dll.dll from its install folder into $tools")
 }
 
 $ltkTmp = Join-Path $env:TEMP "tibbers-ltk"
 New-Item -ItemType Directory -Force -Path $ltkTmp | Out-Null
-$msiPath = Join-Path $ltkTmp $msi.name
+$setupPath = Join-Path $ltkTmp $setup.name
 
-Write-Host "==> Downloading $($msi.name)"
-Invoke-WebRequest -Uri $msi.browser_download_url -OutFile $msiPath
+Write-Host "==> Downloading $($setup.name)"
+Invoke-WebRequest -Uri $setup.browser_download_url -OutFile $setupPath
 
-Write-Host "==> Extracting LTK patcher (msiexec administrative install; no install performed)"
-$ltkExtract = Join-Path $ltkTmp "extracted"
-Remove-Item -Recurse -Force $ltkExtract -ErrorAction SilentlyContinue
-$args = "/a `"$msiPath`" /qn TARGETDIR=`"$ltkExtract`""
-$proc = Start-Process msiexec.exe -ArgumentList $args -Wait -PassThru
-if ($proc.ExitCode -ne 0) {
-    throw "msiexec administrative extract failed (exit $($proc.ExitCode))"
+Write-Host "==> Extracting LTK patcher (read out of the setup; nothing is run)"
+$python = Join-Path $root ".venv\Scripts\python.exe"
+if (-not (Test-Path $python)) { $python = "python" }
+& $python -c "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); from tibbers import wintools; wintools.unpack_nsis(Path(sys.argv[2]), wintools.LTK_FILES, Path(sys.argv[3]))" $root $setupPath $tools
+if ($LASTEXITCODE -ne 0) {
+    throw ("could not unpack $setupPath. Install LTK Manager yourself and " +
+           "copy ltk_patcher_host.exe and ltk_patcher_dll.dll into $tools")
 }
-
-$ltkHost = Get-ChildItem -Path $ltkExtract -Recurse -Filter "ltk_patcher_host.exe" |
-    Select-Object -First 1
-if (-not $ltkHost) {
-    throw ("ltk_patcher_host.exe was not found after extraction. Install LTK " +
-           "Manager yourself and copy it and ltk_patcher_dll.dll into $tools")
-}
-
-$ltkDll = Join-Path $ltkHost.Directory.FullName "ltk_patcher_dll.dll"
-if (-not (Test-Path $ltkDll)) {
-    throw ("ltk_patcher_dll.dll was not found beside the host in " +
-           "$($ltkHost.Directory.FullName) -- the host loads it to inject and " +
-           "cannot work without it. Copy both files into $tools by hand")
-}
-
-Copy-Item $ltkHost.FullName (Join-Path $tools "ltk_patcher_host.exe") -Force
-Copy-Item $ltkDll (Join-Path $tools "ltk_patcher_dll.dll") -Force
 Write-Host "==> Installed ltk_patcher_host.exe and ltk_patcher_dll.dll into $tools"
 
 Write-Host ""

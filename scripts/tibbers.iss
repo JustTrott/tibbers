@@ -16,9 +16,9 @@
 ;     and [Run] reopens the app --quiet when /RELAUNCH=1 was passed.
 ;
 ; Build:  scripts\build_windows.ps1 -Installer
-; The version and the three download URLs are passed in by the build script
-; (it resolves the newest release of each tool); a hand run of ISCC gets the
-; defaults below and builds an installer that downloads nothing.
+; The version and cslol's download URL are passed in by the build script
+; (it resolves the newest release); a hand run of ISCC gets the defaults
+; below and builds an installer that downloads nothing.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.1"
@@ -45,14 +45,11 @@
   #define MyDataDir "{localappdata}\tibbers"
 #endif
 
-; The tools Setup downloads. Empty URL = that tool is not fetched by Setup
-; (the app fetches what is missing on first launch, so nothing breaks).
-#ifndef LtkUrl
-  #define LtkUrl ""
-#endif
-#ifndef LtkSize
-  #define LtkSize 20000000
-#endif
+; The tool Setup downloads. Empty URL = it is not fetched by Setup (the app
+; fetches what is missing on first launch, so nothing breaks). LTK's patcher
+; is never fetched here: since v1.20.0 LTK ships only an NSIS setup, which
+; Inno cannot open without running it, so the app unpacks it itself
+; (tibbers/wintools.py unpack_nsis).
 #ifndef CslolUrl
   #define CslolUrl ""
 #endif
@@ -109,13 +106,13 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 english.StillRunning=%1 is still running.%n%nQuit it from the tray icon, then click Retry.
 english.StillRunningGiveUp=%1 is still running. Quit it from the tray icon and run Setup again.
 english.ToolsGroup=Game tools:
-english.ToolsTask=Download the injection tools and the build-data fetcher (about %1 MB)
+english.ToolsTask=Download the overlay builder (about %1 MB)
 english.ToolsUnpacking=Unpacking the game tools...
 english.ToolsFailed=The game tools could not be unpacked (%1).%n%n%2 will download them itself the first time it runs.
 russian.StillRunning=%1 всё ещё запущен.%n%nЗакройте его через значок в трее и нажмите «Повторить».
 russian.StillRunningGiveUp=%1 всё ещё запущен. Закройте его через значок в трее и запустите установку заново.
 russian.ToolsGroup=Игровые инструменты:
-russian.ToolsTask=Скачать инструменты внедрения и загрузчик сборок (около %1 МБ)
+russian.ToolsTask=Скачать сборщик оверлея (около %1 МБ)
 russian.ToolsUnpacking=Распаковка игровых инструментов...
 russian.ToolsFailed=Не удалось распаковать игровые инструменты (%1).%n%n%2 скачает их самостоятельно при первом запуске.
 
@@ -124,7 +121,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "{cm:AutoStartProgram,{#MyAppName}}"; GroupDescription: "{cm:AutoStartProgramGroupDescription}"
 ; Offered only when there is something to download and the tools are not
 ; already in place (an update over a working install skips the whole thing).
-#define ToolsMB (Int(LtkSize) + Int(CslolSize)) / 1048576
+#define ToolsMB Int(CslolSize) / 1048576
 Name: "tools"; Description: "{cm:ToolsTask,{#ToolsMB}}"; GroupDescription: "{cm:ToolsGroup}"; Check: ToolsOffered
 
 [Files]
@@ -132,12 +129,8 @@ Name: "tools"; Description: "{cm:ToolsTask,{#ToolsMB}}"; GroupDescription: "{cm:
 ; in the data directory, fetched below or by the app.
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; The tools, downloaded on Setup's own download page with its progress bar.
-; Landed in {tmp} and unpacked in CurStepChanged(ssPostInstall) below: an MSI
-; (administrative install, no service, no registry), a 7-Zip console
-; self-extractor, and a tarball Windows' own tar.exe opens.
-#if LtkUrl != ""
-Source: "{#LtkUrl}"; DestDir: "{tmp}"; DestName: "ltk.msi"; ExternalSize: {#LtkSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: tools
-#endif
+; Landed in {tmp} and unpacked in CurStepChanged(ssPostInstall) below: a
+; 7-Zip console self-extractor.
 #if CslolUrl != ""
 Source: "{#CslolUrl}"; DestDir: "{tmp}"; DestName: "cslol.exe"; ExternalSize: {#CslolSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: tools
 #endif
@@ -213,9 +206,10 @@ end;
 // -- the game tools ---------------------------------------------------------
 //
 // Four files, in the data directory's tools\ (tibbers/wintools.py names the
-// same four): cslol's overlay builder pair and LTK's patcher pair. There used
-// to be a fifth -- a curl that impersonated Chrome, because u.gg's build CDN
-// refused anything else. The build pages read op.gg now, which answers plain
+// same four): cslol's overlay builder pair, fetched here, and LTK's patcher
+// pair, which the app fetches itself on first launch. There used to be a
+// fifth -- a curl that impersonated Chrome, because u.gg's build CDN refused
+// anything else. The build pages read op.gg now, which answers plain
 // urllib, so it is neither downloaded nor needed.
 
 function ToolsDir: String;
@@ -223,17 +217,17 @@ begin
   Result := ExpandConstant('{#MyDataDir}\tools');
 end;
 
+// Setup fetches only cslol's pair; LTK's comes from the app (see LtkUrl's
+// absence above), so only cslol's decides whether there is anything to offer.
 function HaveTools: Boolean;
 begin
   Result := FileExists(ToolsDir + '\mod-tools.exe')
-        and FileExists(ToolsDir + '\cslol-dll.dll')
-        and FileExists(ToolsDir + '\ltk_patcher_host.exe')
-        and FileExists(ToolsDir + '\ltk_patcher_dll.dll');
+        and FileExists(ToolsDir + '\cslol-dll.dll');
 end;
 
 function ToolsOffered: Boolean;
 begin
-  Result := ('{#LtkUrl}' <> '') and not HaveTools;
+  Result := ('{#CslolUrl}' <> '') and not HaveTools;
 end;
 
 // The one file we want out of an unpacked tree, wherever the packer put it.
@@ -298,16 +292,6 @@ var
 begin
   tmp := ExpandConstant('{tmp}');
   ForceDirectories(ToolsDir);
-
-  // LTK's patcher: an administrative install unpacks the MSI's payload
-  // with no install -- no service, no registry, no Vanguard interaction.
-  if FileExists(tmp + '\ltk.msi') then
-  begin
-    RunHidden(ExpandConstant('{sys}\msiexec.exe'),
-              '/a "' + tmp + '\ltk.msi" /qn TARGETDIR="' + tmp + '\ltk"');
-    Take(tmp + '\ltk', 'ltk_patcher_host.exe');
-    Take(tmp + '\ltk', 'ltk_patcher_dll.dll');
-  end;
 
   // cslol's overlay builder: the Windows release is a 7-Zip console
   // self-extractor; -o/-y unpack it without a window.
