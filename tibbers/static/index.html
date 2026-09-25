@@ -2705,7 +2705,12 @@ async function setSharing(on) {
 $('lshare').onclick = () => setSharing($('lshare').getAttribute('aria-checked') !== 'true');
 
 /* The hover preview. Delegated, because the rows are redrawn whenever the
-   room changes and a listener on a tile would go with it. */
+   room changes and a listener on a tile would go with it.
+   Lifted out to <body>: the sheet it is written in keeps its entry
+   animation's transform (fill-mode both), which makes a fixed child position
+   against the sheet rather than the window, and the sheet clips its
+   overflow -- together they pushed the panel down and cut its bottom off. */
+document.body.appendChild($('lpeek'));
 function peekAt(tile) {
   const peek = $('lpeek');
   if (!tile) { peek.classList.remove('on'); return; }

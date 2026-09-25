@@ -431,6 +431,31 @@ class Lifecycle(unittest.TestCase):
         settle(self.ann, self.bea)
         self.assertEqual(self.ann.published(), EMPTY)
 
+    def test_whoever_hooks_first_stays_on_everyone_elses_screen(self):
+        # Five installs never hook at the same moment. The first to hook
+        # closes its socket, and the relay says it is gone; the rest, still
+        # loading, used to drop it from the list for the whole game.
+        self.bea.lobby.publish(222, 222004)
+        self.world.phase = "InProgress"
+        settle(self.ann, self.bea)
+        self.assertEqual(self.ann.sees("bea")["skinId"], 222004)
+
+        self.bea.hooked = True
+        settle(self.ann, self.bea)
+        self.assertIsNone(self.bea.published())
+        seen = self.ann.sees("bea")
+        self.assertTrue(seen["tibbers"])
+        self.assertEqual(seen["skinId"], 222004)
+
+    def test_someone_leaving_before_the_game_still_leaves(self):
+        # Only a game in progress keeps a quiet member: in champ select a
+        # socket closing is somebody really going.
+        self.world.phase = "ChampSelect"
+        settle(self.ann, self.bea)
+        self.bea.enabled = False
+        settle(self.ann, self.bea)
+        self.assertFalse(self.ann.sees("bea")["tibbers"])
+
     def test_a_relay_that_drops_is_reported_and_what_was_heard_is_kept(self):
         self.world.phase = "ChampSelect"
         team = [("ann", 103, True), ("bea", 64, True)]

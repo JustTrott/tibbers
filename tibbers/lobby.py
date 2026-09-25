@@ -636,7 +636,15 @@ class Lobby(threading.Thread):
         with self._lock:
             if room != self._room:
                 return
-            self._rows = {m: r for m, r in rows.items() if isinstance(r, dict)}
+            heard = {m: r for m, r in rows.items() if isinstance(r, dict)}
+            if self._phase in GAME_PHASES:
+                # Once the game is starting, a member going quiet is their
+                # install finishing with the room -- each one closes its
+                # socket as its own game hooks -- not them leaving the party.
+                # Whoever hooked first used to vanish from everyone still
+                # loading, so their last row is kept until the game is over.
+                heard = {**self._rows, **heard}
+            self._rows = heard
         self.nudge()
 
     def _failed(self, room: str, message: Optional[str]) -> None:
