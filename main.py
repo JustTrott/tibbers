@@ -808,6 +808,49 @@ def main() -> int:
         threading.Thread(target=refresh_guide, daemon=True,
                          args=(champion_id, role, opponent, generation)).start()
 
+    def start_enemy_counters(role, enemies) -> None:
+        """Counters before you have hovered: what beats each locked enemy.
+
+        With no champion of yours there is no build and no "what beats me",
+        but the enemies who have locked are already a question worth
+        answering -- it is the one that decides what to hover. One table per
+        enemy, in your lane, the enemy likeliest to be your lane opponent
+        first. Superseded the moment you hover, like any other guide run.
+        """
+        session.guide_generation += 1
+        generation = session.guide_generation
+        with state.lock:
+            state.guide = {"state": "loading"}
+            data_mode = (state.queue or {}).get("dataMode") or modes.DATA_RIFT
+
+        def run() -> None:
+            def stale() -> bool:
+                return session.guide_generation != generation
+            try:
+                order = guides.by_lane(enemies, role, mode=data_mode)
+                tables = {}
+                for enemy in order:
+                    table = guides.counter_table(enemy, role, mode=data_mode)
+                    if stale():
+                        return
+                    if table:
+                        tables[f"e{enemy}"] = table
+                        # Drawn as each arrives: the first is the one the
+                        # page opens on, and it should not wait for the rest.
+                        with state.lock:
+                            state.guide = {"state": "ready", "counterTables": dict(tables),
+                                           "counterOrder": list(tables)}
+                if not tables and not stale():
+                    with state.lock:
+                        state.guide = {"state": "ready", "counterTables": {}}
+            except Exception as exc:  # noqa: BLE001
+                log.debug("no counters for the enemies: %s", exc)
+                if not stale():
+                    with state.lock:
+                        state.guide = {"state": "ready", "counterTables": {}}
+
+        threading.Thread(target=run, daemon=True).start()
+
     def refresh_availability(champion_id: int) -> None:
         """Re-mark which skins and chromas have a local mod, after files land.
 
@@ -949,10 +992,19 @@ def main() -> int:
             return {}
         facts = {}
         for skin in client.champion_skins(champion_id):
-            facts[skin["id"]] = {"name": skin["name"] or "", "tile": skin["tile"]}
+            # The hover preview, chosen as the Skin tab chooses its own: the
+            # model render when the skin ships one, else its load-screen card.
+            card = not skin.get("icon") and bool(skin.get("loadScreen"))
+            facts[skin["id"]] = {"name": skin["name"] or "", "tile": skin["tile"],
+                                 "preview": skin.get("icon") or skin.get("loadScreen") or "",
+                                 "card": card}
             for chroma in skin["chromas"]:
                 facts[chroma["id"]] = {"name": chroma["name"] or skin["name"] or "",
-                                       "tile": chroma["icon"] or skin["tile"]}
+                                       "tile": chroma.get("icon") or skin["tile"],
+                                       "preview": chroma.get("icon") or skin.get("icon")
+                                       or skin.get("loadScreen") or "",
+                                       "card": not (chroma.get("icon") or skin.get("icon"))
+                                       and bool(skin.get("loadScreen"))}
         if facts:
             party_skins[champion_id] = facts
         return facts
@@ -980,6 +1032,8 @@ def main() -> int:
                             "championIcon": info.get("icon", ""),
                             "skinName": skin.get("name", ""),
                             "skinTile": skin.get("tile", ""),
+                            "skinPreview": skin.get("preview", ""),
+                            "skinCard": bool(skin.get("card")),
                             "status": word})
         with state.lock:
             state.lobby = {**snap, "members": members}
@@ -1231,6 +1285,10 @@ def main() -> int:
                 and key != session.guide_key):
             session.guide_key = key
             start_guide(champion, role, chosen)
+        elif (not champion and has_source and in_select and has_lanes
+              and locked_enemies and key != session.guide_key):
+            session.guide_key = key
+            start_enemy_counters(role, locked_enemies)
 
         # Tracked outside the guard below, so it is still right if the shell
         # was not built yet when champ select began.

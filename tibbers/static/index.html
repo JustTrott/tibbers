@@ -646,6 +646,21 @@
   .lskin { width: 38px; height: 38px; flex: none; border-radius: 3px; overflow: hidden;
            background: var(--raised); }
   .lskin img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .lskin[data-pv] { cursor: zoom-in; }
+  /* Hovering a member's skin enlarges it, the way the Skin tab's preview
+     does: the same art (model render, else load-screen card) in the same
+     frame, beside the row rather than over the thumbnail. One panel for the
+     page, moved to whichever row is hovered. */
+  .lpeek { position: fixed; z-index: 20; left: 0; top: 0;
+           width: 220px; aspect-ratio: 270/303; overflow: hidden;
+           background: var(--rift); border: 2px solid var(--gold);
+           box-shadow: 0 10px 34px oklch(0.04 0 0 / .8);
+           opacity: 0; transform: scale(.94); transform-origin: right center;
+           pointer-events: none;
+           transition: opacity 160ms var(--out-quart), transform 200ms var(--out-quart); }
+  .lpeek.on { opacity: 1; transform: none; }
+  .lpeek img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .lpeek.card img { object-fit: cover; object-position: 50% 18%; }
   .lsname { flex: 1 1 0; min-width: 0; font-size: 12.5px; color: var(--ink-mid);
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lsname.quiet { font: 9.5px ui-monospace, Menlo, monospace; color: var(--ink-low); }
@@ -1019,6 +1034,7 @@
               data-t-title="lobby.share.title" data-t="lobby.share" hidden>sharing on</button>
     </div>
     <div class="lrows" id="lrows"></div>
+    <div class="lpeek" id="lpeek" aria-hidden="true"><img alt=""></div>
   </section>
 
   <footer class="status">
@@ -1208,7 +1224,7 @@ const T = {
     'role.top': 'Top', 'role.jungle': 'Jungle', 'role.mid': 'Mid', 'role.bot': 'Bot',
     'role.support': 'Support', 'role.lane': 'Your lane',
     'c.head': '{role} picks, best against {name}',
-    'c.win': 'Win', 'c.share': 'Pick share', 'c.gold': 'Gold @15',
+    'c.win': 'Win', 'c.share': 'Pick share', 'c.games': 'Games',
     'c.mine': 'your pick · ranked {rank} of {of}',
     'c.note.rare': '<b>{rare}</b> of the {above} above {mine} are picked in under 2% of'
       + " {name}'s games. {mine} sits {rank} of {of}.",
@@ -1338,7 +1354,7 @@ const T = {
     'role.top': 'на топе', 'role.jungle': 'в лесу', 'role.mid': 'на миде', 'role.bot': 'на боте',
     'role.support': 'на саппорте', 'role.lane': 'на вашей линии',
     'c.head': 'Пики {role}, лучшие против {name}',
-    'c.win': 'Победы', 'c.share': 'Доля пиков', 'c.gold': 'Зол. @15',
+    'c.win': 'Победы', 'c.share': 'Доля пиков', 'c.games': 'Игры',
     'c.mine': 'ваш пик · {rank} из {of}',
     'c.note.rare': 'Выше {mine} — {above}, и <b>{rare}</b> из них выбирают менее чем'
       + ' в 2% игр {name}. {mine} — {rank} из {of}.',
@@ -2005,6 +2021,9 @@ function showView(name) {
 
 const pct = v => (v === undefined || v === null) ? '' : v.toFixed(1) + '%';
 const num = v => (v || 0).toLocaleString(LANG);
+/* A count that has to fit a narrow column: 683, 12.4k, 1.2M. */
+const compact = v => new Intl.NumberFormat(LANG, { notation: 'compact',
+                                                 maximumFractionDigits: 1 }).format(v || 0);
 /* The percent sign travels with its figure and is drawn smaller, so a column
    of numbers still reads as a column while every one of them stays labelled. */
 const fig = (v, places = 1) => (v === undefined || v === null) ? '<i>&mdash;</i>'
@@ -2665,7 +2684,8 @@ function renderLobby(s) {
           ? `<i class="mark" role="img" aria-label="${esc(t('lobby.mark'))}" title="${esc(t('lobby.mark'))}"></i>` : ''}</span>
         <em>${esc(m.championName || t('lobby.nochamp'))}</em>
       </span>
-      <span class="lskin">${m.skinId && m.skinTile ? `<img src="${esc(art(m.skinTile))}" alt="">` : ''}</span>
+      <span class="lskin"${m.skinId && m.skinPreview
+        ? ` data-pv="${esc(art(m.skinPreview))}"${m.skinCard ? ' data-card' : ''}` : ''}>${m.skinId && m.skinTile ? `<img src="${esc(art(m.skinTile))}" alt="">` : ''}</span>
       ${m.skinId ? `<span class="lsname">${esc(m.skinName)}</span>`
         : `<span class="lsname quiet">${esc(t(quiet))}</span>`}
       <span class="lst ${esc(m.status || '')}">${word ? esc(t(word)) : ''}</span>
@@ -2684,6 +2704,27 @@ async function setSharing(on) {
 }
 $('lshare').onclick = () => setSharing($('lshare').getAttribute('aria-checked') !== 'true');
 
+/* The hover preview. Delegated, because the rows are redrawn whenever the
+   room changes and a listener on a tile would go with it. */
+function peekAt(tile) {
+  const peek = $('lpeek');
+  if (!tile) { peek.classList.remove('on'); return; }
+  const img = peek.querySelector('img');
+  if (img.getAttribute('src') !== tile.dataset.pv) img.src = tile.dataset.pv;
+  peek.classList.toggle('card', 'card' in tile.dataset);
+  // Beside the tile, left if it fits, and kept inside the window.
+  const r = tile.getBoundingClientRect(), gap = 12;
+  const w = peek.offsetWidth, h = peek.offsetHeight;
+  let x = r.left - w - gap;
+  if (x < 8) x = Math.min(r.right + gap, innerWidth - w - 8);
+  const y = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, innerHeight - h - 8));
+  peek.style.left = `${x}px`;
+  peek.style.top = `${y}px`;
+  peek.classList.add('on');
+}
+$('lrows').addEventListener('mouseover', e => peekAt(e.target.closest('.lskin[data-pv]')));
+$('lrows').addEventListener('mouseleave', () => peekAt(null));
+
 function renderCounters(s) {
   const g = s.guide || {}, tables = g.counterTables || {};
   // Snap to the opponent's page whenever the surfaced opponent changes -- on
@@ -2696,10 +2737,13 @@ function renderCounters(s) {
     COUNTER_OPP = opp;
     if (opp != null) COUNTER_SIDE = 'them';
   }
+  // The tables in the order their buttons go. Hovering gives the two
+  // directions; before that there is one per locked enemy, sent already
+  // ordered with the likeliest lane opponent first.
+  const order = (g.counterOrder || ['them', 'you']).filter(k => tables[k]);
   // Only one direction exists before an opponent is nominated.
-  const side = tables[COUNTER_SIDE] ? COUNTER_SIDE
-    : (tables.them ? 'them' : 'you');
-  const sig = sigOf(g.state, side, tables);
+  const side = tables[COUNTER_SIDE] ? COUNTER_SIDE : (order[0] || 'them');
+  const sig = sigOf(g.state, side, tables, order);
   if (sig === COUNT_SIG) return;
   COUNT_SIG = sig;
   COUNTER_SIDE = side;
@@ -2707,11 +2751,8 @@ function renderCounters(s) {
   const tb = tables[side];
   const me = (s.championName || t('c.you'));
 
-  $('csegs').innerHTML = (tables.them || tables.you) ? `
-    ${tables.them ? `<button class="mode" aria-pressed="${side === 'them'}"
-        data-side="them">${t('c.beats', { name: esc(tables.them.name) })}</button>` : ''}
-    ${tables.you ? `<button class="mode" aria-pressed="${side === 'you'}"
-        data-side="you">${t('c.beats', { name: esc(tables.you.name || me) })}</button>` : ''}` : '';
+  $('csegs').innerHTML = order.map(k => `<button class="mode" aria-pressed="${side === k}"
+        data-side="${esc(k)}">${t('c.beats', { name: esc(tables[k].name || me) })}</button>`).join('');
   for (const b of $('csegs').querySelectorAll('.mode'))
     b.onclick = () => { COUNTER_SIDE = b.dataset.side; COUNT_SIG = ''; render(LAST); };
 
@@ -2731,7 +2772,7 @@ function renderCounters(s) {
     <span class="tnm">${t('c.head', { role: esc(role), name: esc(tb.name) })}</span>
     <span class="cfig">${esc(t('c.win'))}</span>
     <span class="cshare">${esc(t('c.share'))}</span>
-    <span class="cgold">${esc(t('c.gold'))}</span>`;
+    <span class="cgold">${esc(t('c.games'))}</span>`;
 
   // The widest share on screen sets the bar's full length, so the bars
   // compare with each other rather than with an invisible 100%.
@@ -2754,9 +2795,7 @@ function renderCounters(s) {
       <span class="cshare"><b>${fig(c.pickShare, 2)}</b>
         <span class="prop"><i style="width:${
           Math.round((c.pickShare || 0) / top * 100)}%"></i></span></span>
-      <span class="cgold">${c.goldAt15 === undefined || c.goldAt15 === null ? '&mdash;'
-        : (c.goldAt15 >= 0 ? '+' : '') + num(Math.round(c.goldAt15))
-          + `<i>${esc(t('unit.gold'))}</i>`}</span>
+      <span class="cgold">${c.matches ? esc(compact(c.matches)) : '&mdash;'}</span>
     </div>`;
 
   freshen($('crows'));

@@ -515,6 +515,14 @@ class Guide:
         if not usable:
             return None
 
+        # op.gg's matchups carry games and wins and nothing else. The games
+        # still say how often each champion is the one met in this lane: its
+        # share of every game the subject played here. That is the pick share
+        # u.gg used to publish, counted from the other side, and it is what
+        # keeps an off-role pick with a flattering win rate from reading as a
+        # recommendation.
+        met = sum(r["matches"] for r in table) or 1
+
         def dress(row: dict) -> dict:
             champ = self.gamedata.champion(row["championId"]) or {}
             # Every figure is the LISTED champion's, not the subject's. op.gg
@@ -524,6 +532,7 @@ class Guide:
                     "name": champ.get("name") or "",
                     "icon": champ.get("icon") or "",
                     "winRate": round(100 - row["winRate"], 2),
+                    "pickShare": round(row["matches"] / met * 100, 2),
                     "matches": row["matches"]}
 
         ranked = sorted(usable, key=lambda r: r["winRate"])
@@ -574,6 +583,31 @@ class Guide:
             out.append(entry)
         out.sort(key=lambda r: (r["winRate"] is None, r["winRate"] or 0))
         return out
+
+    def by_lane(self, enemies: List[int], role: Optional[str],
+                mode: str = "rift") -> List[int]:
+        """Locked enemies, the likeliest to be in your lane first.
+
+        Before you hover there is no champion of yours to measure them
+        against, so this reads how much of each enemy's play is in your lane
+        -- op.gg's role rate, from the roster file the lane guess already
+        uses. No lane of your own (blind pick) keeps the order they locked in.
+        """
+        position = OPGG_LANE.get((role or "").lower())
+        if not position or len(enemies) < 2:
+            return list(enemies)
+        try:
+            roster = self.opgg().roster(mode)
+        except Exception as exc:  # noqa: BLE001 -- the order is a nicety
+            log.debug("no roster to order enemies by lane: %s", exc)
+            return list(enemies)
+        share = {}
+        for entry in roster:
+            for pos in entry.get("positions") or []:
+                if str(pos.get("name", "")).lower() == position:
+                    share[int(entry.get("id") or 0)] = float(
+                        (pos.get("stats") or {}).get("role_rate") or 0)
+        return sorted(enemies, key=lambda e: share.get(e, 0.0), reverse=True)
 
     def suggest_opponent(self, champion_id: int, role: Optional[str],
                          enemies: List[int], mode: str = "rift") -> Optional[int]:

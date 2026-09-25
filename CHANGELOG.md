@@ -11,6 +11,11 @@ in `CLAUDE.md`.
 - Friends in your League party who also run tibbers now see the skin you picked in game, and you see theirs. It is off until you turn it on, in Settings or on the new Lobby tab. Only the ids of what each of you picked are sent -- never a name -- and each install builds the others' skins out of its own game files, so no skin files move. Nobody outside your party is ever in the room.
 - The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is armed for your game. While sharing is off it is one big button that turns it on.
 - The tabs sit on a dark band of their own, so they stay readable over any skin's splash art.
+- Hovering a skin on the Lobby tab enlarges it, the same preview the Skin tab gives your own.
+
+**Counters**
+- The Counters tab has something to say before you hover: what beats each enemy who has locked in, in your lane, starting with the one likeliest to be your lane opponent.
+- Pick share is back, counted from how often each matchup is actually played in the lane, and Gold @15 -- which op.gg does not publish -- is replaced by the number of games each figure rests on.
 - In a custom game with party members on the other team, your pick is held back until they could see it anyway: until you lock in, in draft, and until the loading screen, in blind pick.
 
 **Updates**
