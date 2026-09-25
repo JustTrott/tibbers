@@ -1,24 +1,27 @@
 # Cut a beta of the version this branch is building, for testers.
 #
-# A beta is a GitHub pre-release tagged vX.Y.Z-beta.N. Stable installs never
-# see it (they ask releases/latest, which skips pre-releases); a beta install
-# follows every release and updates itself to the next beta, and to X.Y.Z
-# once that ships -- see tibbers/update.py. Testers join by running the
-# beta's setup by hand.
+# Normally nobody runs this: .github/workflows/beta.yml runs it with -Publish
+# on every push to a version branch. It is here to be run by hand too, and
+# without -Publish it is a dry run.
+#
+# A beta is a GitHub pre-release tagged vX.Y.Z-beta.N, where X.Y.Z is the
+# branch. Stable installs never see it (they ask releases/latest, which skips
+# pre-releases); a beta install updates itself to the next beta of X.Y.Z, and
+# to X.Y.Z once that ships -- see tibbers/update.py. Testers join by running a
+# beta's setup once.
+#
+# The version is stamped into the build only: __init__.py is put back
+# afterwards and nothing is committed, so the branch carries no bot commits.
+# N is one past the highest beta of X.Y.Z ever tagged on GitHub, so a number
+# is never reused even when its release was deleted.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\release_beta.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\release_beta.ps1 -Publish
-#
-# Without -Publish: stamps the next beta number, builds the installer into
-# dist\ and puts __init__.py back, so nothing is committed or published. With
-# -Publish: also commits the version on this branch, pushes it, and publishes
-# the pre-release with the installer and this version's CHANGELOG section.
-#
-# N is one past the highest beta of X.Y.Z ever tagged on GitHub, so a number
-# is never reused even when its release was deleted.
 
 param(
-    [switch]$Publish
+    [switch]$Publish,
+    # The version branch. CI checks out a detached commit, so it passes this.
+    [string]$Branch = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,21 +29,29 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$branch = (git rev-parse --abbrev-ref HEAD).Trim()
-if ($branch -notmatch '^\d+\.\d+\.\d+$') {
-    throw "on '$branch': betas are cut from a version branch such as 1.2.0"
+if (-not $Branch) { $Branch = (git rev-parse --abbrev-ref HEAD).Trim() }
+if ($Branch -notmatch '^\d+\.\d+\.\d+$') {
+    throw "on '$Branch': betas are cut from a version branch such as 1.2.0"
 }
 if (git status --porcelain --untracked-files=no) {
     throw "the working tree has uncommitted changes; commit or stash them first"
 }
 
 git fetch --quiet --tags origin
-$tags = git ls-remote --tags origin "refs/tags/v$branch-beta.*" |
-    ForEach-Object { if ($_ -match "v$([regex]::Escape($branch))-beta\.(\d+)$") { [int]$Matches[1] } }
-$n = 1 + (@($tags) + 0 | Measure-Object -Maximum).Maximum
-$version = "$branch-beta.$n"
+$sha = (git rev-parse HEAD).Trim()
+if ($Publish) {
+    # A beta names a commit testers can find on GitHub. It need not be the
+    # tip: a queued CI run publishes its own push even if another followed.
+    git merge-base --is-ancestor $sha "origin/$Branch"
+    if ($LASTEXITCODE -ne 0) { throw "HEAD is not on origin/$Branch; push first" }
+}
+
+$betas = @(git tag --list "v$Branch-beta.*" |
+    ForEach-Object { if ($_ -match '-beta\.(\d+)$') { [int]$Matches[1] } })
+$last = ($betas + 0 | Measure-Object -Maximum).Maximum
+$version = "$Branch-beta.$($last + 1)"
 $tag = "v$version"
-Write-Host "==> Cutting $tag from $branch"
+Write-Host "==> Cutting $tag from $Branch at $($sha.Substring(0, 9))"
 
 $init = Join-Path $root "tibbers\__init__.py"
 (Get-Content $init -Raw) -replace '__version__ = "[^"]*"', "__version__ = `"$version`"" |
@@ -53,34 +64,36 @@ try {
 
     if (-not $Publish) {
         Write-Host ""
-        Write-Host "Built $setup as $version. Not published: run again with -Publish"
-        Write-Host "to commit the version, push $branch and publish $tag as a pre-release."
+        Write-Host "Built $setup as $version. Not published (dry run)."
         return
     }
 
-    # The notes: this version's CHANGELOG section, headed by what a beta is.
+    # The notes: what changed since the last beta, then this version's
+    # CHANGELOG section.
+    $since = if ($last -gt 0) { "v$Branch-beta.$last" } else { "origin/main" }
+    $changes = (git log --no-merges --format="- %s" "$since..$sha") -join "`n"
     $log = Get-Content (Join-Path $root "CHANGELOG.md") -Raw
     $section = ""
-    if ($log -match "(?ms)^## $([regex]::Escape($branch))\b[^\n]*\n(.*?)(?=^## |\z)") {
+    if ($log -match "(?ms)^## $([regex]::Escape($Branch))\b[^\n]*\n(.*?)(?=^## |\z)") {
         $section = $Matches[1].Trim()
     }
-    $notes = Join-Path $env:TEMP "tibbers-$tag-notes.md"
+    $notes = Join-Path ([IO.Path]::GetTempPath()) "tibbers-$tag-notes.md"
     @"
-**Beta, for testing.** It updates itself to each new beta, and to $branch when that ships -- after which it is an ordinary install again.
+**Beta, for testing.** Run the setup below once. It then updates itself to each new beta of $Branch, and to $Branch when that ships -- after which it is an ordinary install again.
 
+### Since $since
+$changes
+
+### $Branch so far
 $section
 "@ | Set-Content -Encoding UTF8 $notes
 
-    git add $init
-    git commit --quiet -m $version
-    git push --quiet origin $branch
-    $sha = (git rev-parse HEAD).Trim()
     gh release create $tag $setup --prerelease --target $sha `
         --title "tibbers $version" --notes-file $notes
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
-    Write-Host "==> Published $tag. Testers install it from:"
+    Write-Host "==> Published $tag"
     Write-Host "    https://github.com/JustTrott/tibbers/releases/tag/$tag"
 }
 finally {
-    if (-not $Publish) { git checkout --quiet -- $init }
+    git checkout --quiet -- $init
 }

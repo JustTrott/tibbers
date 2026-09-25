@@ -106,6 +106,14 @@ class Channels(unittest.TestCase):
         self.assertEqual(result["version"], "1.2.0")
         self.assertFalse(result["prerelease"])
 
+    def test_a_beta_stays_on_its_own_version_line(self):
+        # Pushing to the next version's branch publishes its betas too; a
+        # 1.2.0 tester is not moved onto them.
+        releases = [_gh("v1.3.0-beta.1", prerelease=True), *self.RELEASES]
+        with self._serve(releases, _gh("v1.1.2")):
+            result = update.check(current="1.2.0-beta.2")
+        self.assertFalse(result["available"])
+
     def test_a_beta_skips_a_release_without_its_platform_asset(self):
         releases = [_gh("v1.2.0-beta.3", prerelease=True, asset=False),
                     *self.RELEASES]

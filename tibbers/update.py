@@ -24,9 +24,10 @@ How the install is replaced differs by platform, on purpose:
 Betas are GitHub pre-releases, tagged `vX.Y.Z-beta.N`. `releases/latest`
 never returns a pre-release, so a stable install cannot see them and needs no
 setting to stay away. A beta build knows it is one from its own version, asks
-for every release instead, and takes the newest of them -- the next beta, or
-the stable release that supersedes the beta line, after which it is a stable
-install again and only follows `latest`. Testers join by installing a beta by
+for every release instead, and takes the newest of its own line -- the next
+beta of the same version, or any stable release -- after which it is a stable
+install again and only follows `latest`. Betas of another version are not its
+line: a 1.2.0 tester is not moved onto 1.3.0's betas. Testers join by installing a beta by
 hand; nobody is moved onto one.
 
 The two halves are separate on purpose: `stage` downloads (and unpacks), which
@@ -170,18 +171,26 @@ def _get_json(url: str):
         return json.load(resp)
 
 
-def latest_release(prereleases: bool = False) -> dict:
+def _line(version: str) -> str:
+    """The version a beta is a beta of: 1.2.0 for 1.2.0-beta.3."""
+    return str(version).lstrip("vV").partition("-")[0]
+
+
+def latest_release(beta_of: Optional[str] = None) -> dict:
     """The newest release: its tag, notes, and this platform's download URL.
 
-    With *prereleases*, the newest of every published release, betas
-    included, that carries this platform's asset -- a beta made on one
-    platform only must not strand the other on nothing.
+    With *beta_of* (the running beta's version), the newest of every stable
+    release and every beta of the same version that carries this platform's
+    asset -- a beta made on one platform only must not strand the other on
+    nothing.
     """
-    if not prereleases:
+    if not beta_of:
         return _release(_get_json(LATEST_URL))
     found = [_release(r) for r in _get_json(RELEASES_URL) or []
              if not r.get("draft")]
-    found = [r for r in found if r["url"]]
+    found = [r for r in found if r["url"] and (
+        not is_prerelease(r["version"])
+        or _line(r["version"]) == _line(beta_of))]
     if not found:
         raise RuntimeError(f"no release carries {asset_name()}")
     return max(found, key=lambda r: version_key(r["version"]))
@@ -211,7 +220,8 @@ def check(current: str = __version__) -> dict:
     `current`, `url`, `notes`, and on failure an `error`.
     """
     try:
-        rel = latest_release(prereleases=is_prerelease(current))
+        rel = latest_release(
+            beta_of=current if is_prerelease(current) else None)
     except Exception as exc:  # noqa: BLE001 -- offline is a normal outcome here
         log.debug("update check failed: %s", exc)
         return {"available": False, "current": current, "error": str(exc)}

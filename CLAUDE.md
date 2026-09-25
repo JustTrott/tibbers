@@ -107,12 +107,14 @@ only decided once it is written under that version in `CHANGELOG.md` on the
   progress lists what has landed and, under *Planned*, what it still will;
   a change that lands on the branch adds its line in the same commit. The
   section is the release notes when the version ships.
-- Betas: `scripts/release_beta.ps1` (dry run) then `-Publish` cuts
-  `vX.Y.Z-beta.N` from the version branch as a GitHub pre-release. Stable
-  installs never see pre-releases; a beta install follows every release and
-  updates to the next beta, then to `X.Y.Z` (`update.py`). The branch keeps
-  `__version__ = "X.Y.Z-beta.N"` until shipping sets `X.Y.Z`. Beta numbers
-  are never reused either. Publishing one is the user's call.
+- Betas are automatic: every push to a version branch runs
+  `.github/workflows/beta.yml`, which tests, builds the Windows installer and
+  publishes it as the pre-release `vX.Y.Z-beta.N` (`scripts/release_beta.ps1`
+  numbers and stamps it; the version is stamped into the build, never
+  committed). Stable installs never see pre-releases; a beta install updates
+  to the next beta of its own version, then to `X.Y.Z` (`update.py`). So a
+  push to a version branch reaches testers -- push what you would hand them.
+  Beta numbers are never reused. Shipping sets `__version__` to `X.Y.Z`.
 - Shipping: fast-forward `main` to the branch, build, publish the GitHub
   release `vX.Y.Z` from that commit with the section as its notes. A number
   that has been published is never reused, even if the release was pulled:

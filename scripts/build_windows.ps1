@@ -25,12 +25,12 @@ if (-not (Test-Path $python)) {
     throw "No venv at $root\.venv -- see the README / WINDOWS.md setup."
 }
 
-# PyInstaller lives in the venv; install it there if missing.
-& $python -c "import PyInstaller" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "==> Installing PyInstaller into the venv"
-    & $python -m pip install pyinstaller
-}
+# The venv is what gets bundled, so it is brought to requirements-windows.txt
+# every time: a package missing from it is missing from the app, with no
+# error until the code that needs it runs.
+Write-Host "==> Installing requirements-windows.txt into the venv"
+& $python -m pip install --quiet --disable-pip-version-check -r (Join-Path $root "requirements-windows.txt")
+if ($LASTEXITCODE -ne 0) { throw "pip could not install requirements-windows.txt" }
 
 # A .ico is required for the window/exe icon; derive it from the png if absent.
 $ico = Join-Path $root "assets\tibbers.ico"

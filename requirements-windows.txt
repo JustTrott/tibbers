@@ -1,0 +1,21 @@
+# What the Windows build bundles, pinned. scripts/build_windows.ps1 and the
+# beta workflow install exactly this into .venv; a package missing here is
+# missing from the app, silently (party sharing shipped without its
+# websocket-client once, and nothing failed until a party tried to connect).
+psutil==7.2.2
+xxhash==4.0.1
+zstandard==0.25.0
+websocket-client==1.9.2
+pywebview==6.2.1
+pystray==0.19.5
+pillow==12.3.0
+bottle==0.13.4
+pythonnet==3.1.0
+clr_loader==0.3.1
+proxy_tools==0.1.0
+cffi==2.1.1
+pycparser==3.0
+typing_extensions==4.16.0
+pyinstaller==6.22.2
+pyinstaller-hooks-contrib==2026.7
+pytest==9.1.1
