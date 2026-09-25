@@ -21,7 +21,7 @@ seeded with before any of it was built here:
    finds them when it looks up the base skin.
 4. For a chroma, turn `skinClassification` from 2 (chroma) back into 1, or
    the game refuses to show it as a skin in its own right.
-5. Replace the linked-file list with the mod signature plus
+5. Replace the linked-file list with
    `DATA/Characters/<C>/Skins/Skin<N>.bin`, which is what makes the two-entry
    file delegate to the real skin instead of describing it.
 6. For a skin that has stages -- one carrying `skinUpgradeData` -- link its
@@ -95,7 +95,12 @@ class Unsupported(SkinsmithError):
 #:    slot accepts it. Bytes differ from a v2 mod, so v2 mods are rebuilt.
 #: 4: a staged skin's overlay links its view controller, without which the
 #:    UI that switches between the stages is never loaded.
-GENERATOR = 4
+#: 5: no signature. Mods built here used to carry another project's name as
+#:    their author and four lines advertising it ahead of the delegation, to
+#:    match the library they were first seeded with. That project's own files
+#:    have since dropped the lines, and tibbers never had any business
+#:    signing its work with someone else's name. Only those bytes change.
+GENERATOR = 5
 
 #: Written beside each generated mod. Names the archive it came out of, so a
 #: patch that rewrites that archive is detectable, and marks the mod as ours
@@ -151,14 +156,15 @@ SECOND_CONVENTION = frozenset({
     103085,     # Risen Legend Ahri
 })
 
-#: The four lines every mod in the library carries ahead of its delegation.
-#: Kept because they are part of what the file *is* -- changing them would
-#: make a rebuilt library differ from the mods it was seeded with for no
-#: reason.
-SIGNATURE = ("=" * 40, "  Rose", "  discord.gg/roseskins", "=" * 40)
+#: Lines written ahead of the delegation in the linked list. None: the game
+#: reads that list as files to load, and a mod built here has nothing to say
+#: in it beyond the delegation itself. (Until generator 5 this was another
+#: project's banner -- see `GENERATOR`.)
+SIGNATURE: Tuple[str, ...] = ()
 
-INFO_AUTHOR = "Rоse"
-INFO_DESCRIPTION = "discord.gg/roseskins"
+#: What a mod built here says about itself in `META/info.json`.
+INFO_AUTHOR = "tibbers"
+INFO_DESCRIPTION = "Built by tibbers from your own League install"
 
 #: Highest skin number probed. Skin ids are ``championId * 1000 + n`` and
 #: chromas share the numbering, so a champion with many chromas runs into the
