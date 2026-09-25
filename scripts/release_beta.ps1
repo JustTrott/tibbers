@@ -86,7 +86,11 @@ $changes
 
 ### $Branch so far
 $section
-"@ | Set-Content -Encoding UTF8 $notes
+"@ | ForEach-Object {
+        # Windows PowerShell's UTF8 writes a byte-order mark, which GitHub
+        # keeps at the top of the notes; write it without one.
+        [IO.File]::WriteAllText($notes, $_, [Text.UTF8Encoding]::new($false))
+    }
 
     gh release create $tag $setup --prerelease --target $sha `
         --title "tibbers $version" --notes-file $notes
