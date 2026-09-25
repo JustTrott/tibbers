@@ -168,8 +168,14 @@
   @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 
   /* ═══ tabs ═════════════════════════════════════════════════════════ */
+  /* A plate of their own: the splash behind is whatever skin is picked, and
+     a bright one washed the labels out. Dark enough for any art, still
+     showing it through. */
   .tabs { position: relative; z-index: 3; flex: none; display: flex;
           align-items: center; gap: 2px; padding: 0 22px;
+          background: oklch(0.13 0.010 265 / .72);
+          -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+          border-top: 1px solid oklch(0.28 0.022 80 / .45);
           border-bottom: 1px solid var(--rule-d); }
   .tab { appearance: none; position: relative; padding: 7px 13px 8px; cursor: pointer;
          font-size: 10.5px; font-weight: 600; line-height: 1;
@@ -604,7 +610,21 @@
   .lhead b { color: var(--ink-mid); font-weight: 500; margin-left: 4px; }
   .lhead .lerr { color: var(--warn); letter-spacing: .02em; text-transform: none;
                  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lhead .tog { margin-left: auto; flex: none; }
+  .lhead .tog { margin-left: auto; flex: none; padding: 5px 10px; font-size: 9.5px; }
+  .lhead .tog[hidden], .lhead[hidden] { display: none; }
+  /* Off, the page is one thing: the button that turns it on. */
+  .note-empty > div { display: grid; justify-items: center; gap: 6px; }
+  .note-empty p { margin: 0; }
+  .lon { margin-top: 16px; padding: 11px 26px; cursor: pointer;
+         font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1;
+         letter-spacing: .14em; text-transform: uppercase;
+         color: var(--void); background: var(--gold);
+         border: 0; border-radius: 4px;
+         box-shadow: 0 0 0 1px var(--gold-d), 0 6px 18px oklch(0 0 0 / .35);
+         transition: background-color 160ms ease, transform 160ms var(--out-quart); }
+  .lon:hover { background: var(--gold-b); }
+  .lon:active { transform: translateY(1px); }
+  .lon:focus-visible { outline: 2px solid var(--gold-b); outline-offset: 3px; }
   .lrows { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
   .lrow { display: flex; align-items: center; gap: 11px; height: 58px; padding: 0 16px;
           border-bottom: 1px solid var(--hair); }
@@ -996,7 +1016,7 @@
       <button class="tog" id="lshare" role="switch" aria-checked="false"
               aria-label="Share skins with your party" data-t-aria="lobby.share.aria"
               title="Send your skin to your party, and see theirs in game"
-              data-t-title="lobby.share.title" data-t="lobby.share">share my skin</button>
+              data-t-title="lobby.share.title" data-t="lobby.share" hidden>sharing on</button>
     </div>
     <div class="lrows" id="lrows"></div>
   </section>
@@ -1101,11 +1121,11 @@ const T = {
     'tab.skin': 'Skin', 'tab.build': 'Build', 'tab.counters': 'Counters',
     'tab.tiers': 'Tier list', 'tab.augments': 'Augments', 'tab.items': 'Items',
     'tab.lobby': 'Lobby',
-    'lobby.share': 'share my skin', 'lobby.share.aria': 'Share skins with your party',
-    'lobby.share.title': 'Send your skin to your party, and see theirs in game',
+    'lobby.share': 'sharing on', 'lobby.share.aria': 'Share skins with your party',
+    'lobby.share.title': 'Turn skin sharing off',
     'lobby.off': 'Share skins with your party',
-    'lobby.off.text': 'Everyone in your party who runs tibbers sees the others\u2019 skins in game.'
-      + ' Only the ids of what you picked are sent: never a name, and never to anyone outside the party.',
+    'lobby.off.text': 'Everyone in your party who runs tibbers sees the others\u2019 skins in game.',
+    'lobby.on': 'Turn on skin sharing',
     'lobby.solo': 'Nobody to share with',
     'lobby.solo.text': 'Invite someone, or join a party. Playing alone sends nothing.',
     'lobby.party': 'party', 'lobby.running': 'tibbers',
@@ -1223,11 +1243,11 @@ const T = {
     'tab.skin': 'Образ', 'tab.build': 'Сборка', 'tab.counters': 'Контрпики',
     'tab.tiers': 'Тир-лист', 'tab.augments': 'Аугменты', 'tab.items': 'Предметы',
     'tab.lobby': 'Лобби',
-    'lobby.share': 'делиться образом', 'lobby.share.aria': 'Делиться образами с группой',
-    'lobby.share.title': 'Отправлять свой образ группе и видеть их образы в игре',
+    'lobby.share': 'обмен включён', 'lobby.share.aria': 'Делиться образами с группой',
+    'lobby.share.title': 'Выключить обмен образами',
     'lobby.off': 'Делитесь образами с группой',
-    'lobby.off.text': 'Все в группе, у кого есть tibbers, видят образы друг друга в игре.'
-      + ' Отправляются только номера выбранного образа: без имён и никому вне группы.',
+    'lobby.off.text': 'Все в группе, у кого есть tibbers, видят образы друг друга в игре.',
+    'lobby.on': 'Включить обмен образами',
     'lobby.solo': 'Делиться не с кем',
     'lobby.solo.text': 'Пригласите кого-нибудь или вступите в группу. В одиночку ничего не отправляется.',
     'lobby.party': 'группа', 'lobby.running': 'tibbers',
@@ -2612,6 +2632,9 @@ function renderLobby(s) {
   LOBBY_SIG = sig;
   const on = !!lb.enabled, members = lb.members || [];
   $('lshare').setAttribute('aria-checked', String(on));
+  $('lshare').hidden = !on;
+  // Off, the header has nothing in it: the page is the button below.
+  $('lshare').closest('.lhead').hidden = !on;
   const running = members.filter(m => m.tibbers).length;
   $('lcount').innerHTML = on && members.length
     ? `${esc(t('lobby.party'))}<b>${members.length}</b>&ensp;${esc(t('lobby.running'))}<b>${running}</b>`
@@ -2622,8 +2645,11 @@ function renderLobby(s) {
   const box = $('lrows');
   if (!on || !members.length) {
     const key = on ? 'lobby.solo' : 'lobby.off';
-    box.innerHTML = `<div class="note-empty"><b>${esc(t(key))}</b>`
-      + `<span>${esc(t(key + '.text'))}</span></div>`;
+    box.innerHTML = `<div class="note-empty"><div><b>${esc(t(key))}</b>`
+      + `<p>${esc(t(key + '.text'))}</p>`
+      + (on ? '' : `<button class="lon" id="lon" type="button">${esc(t('lobby.on'))}</button>`)
+      + `</div></div>`;
+    if (!on) $('lon').onclick = () => setSharing(true);
     return;
   }
   box.innerHTML = members.map(m => {
@@ -2647,16 +2673,16 @@ function renderLobby(s) {
   }).join('');
 }
 
-$('lshare').onclick = async () => {
-  const sw = $('lshare'), on = sw.getAttribute('aria-checked') !== 'true';
-  sw.setAttribute('aria-checked', String(on));
+async function setSharing(on) {
+  $('lshare').setAttribute('aria-checked', String(on));
   try {
     await fetch('/api/settings', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'share_skins', value: on }) });
   } catch { /* the next poll draws whatever the app really has */ }
   LOBBY_SIG = '';
-};
+}
+$('lshare').onclick = () => setSharing($('lshare').getAttribute('aria-checked') !== 'true');
 
 function renderCounters(s) {
   const g = s.guide || {}, tables = g.counterTables || {};

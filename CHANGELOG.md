@@ -9,7 +9,8 @@ in `CLAUDE.md`.
 
 **Share skins with your party**
 - Friends in your League party who also run tibbers now see the skin you picked in game, and you see theirs. It is off until you turn it on, in Settings or on the new Lobby tab. Only the ids of what each of you picked are sent -- never a name -- and each install builds the others' skins out of its own game files, so no skin files move. Nobody outside your party is ever in the room.
-- The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is armed for your game.
+- The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is armed for your game. While sharing is off it is one big button that turns it on.
+- The tabs sit on a dark band of their own, so they stay readable over any skin's splash art.
 - In a custom game with party members on the other team, your pick is held back until they could see it anyway: until you lock in, in draft, and until the loading screen, in blind pick.
 
 **Updates**
