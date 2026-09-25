@@ -5,29 +5,30 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
-## 1.2.0 — in progress
+## 1.2.0 — 2026-09-25
+
+Share skins with your party, counters before you hover, and the Windows
+patcher updating again.
 
 **Share skins with your party**
-- Friends in your League party who also run tibbers now see the skin you picked in game, and you see theirs. It is off until you turn it on, in Settings or on the new Lobby tab. Only the ids of what each of you picked are sent -- never a name -- and each install builds the others' skins out of its own game files, so no skin files move. Nobody outside your party is ever in the room.
-- The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is armed for your game. While sharing is off it is one big button that turns it on.
-- The tabs sit on a dark band of their own, so they stay readable over any skin's splash art.
-- Hovering a skin on the Lobby tab enlarges it, the same preview the Skin tab gives your own.
+- Friends in your League party who also run tibbers now see the skin you picked in game, and you see theirs -- chromas included. Turn it on with the big button on the new Lobby tab, or in Settings; it is off until you do. Each install builds the others' skins from its own game files, so nothing is downloaded, and nobody outside your party is ever included.
+- The Lobby tab shows your party before the timer starts: who runs tibbers, what each of them picked, and whether their skin is ready for your game. Hover a skin to see it larger.
+- In a custom game with party members on the other team, your pick is held back until they could see it anyway: until you lock in, in draft, and until the loading screen, in blind pick.
 
 **Counters**
 - The Counters tab has something to say before you hover: what beats each enemy who has locked in, in your lane, starting with the one likeliest to be your lane opponent.
 - Pick share is back, counted from how often each matchup is actually played in the lane, and Gold @15 -- which op.gg does not publish -- is replaced by the number of games each figure rests on.
-- In a custom game with party members on the other team, your pick is held back until they could see it anyway: until you lock in, in draft, and until the loading screen, in blind pick.
 
-**Updates**
+**The picker**
+- The tabs sit on a dark band of their own, so they stay readable over any skin's splash art.
 - Settings has a **Check now** button beside the version, instead of waiting for the next automatic check.
-- Betas. A beta is a pre-release you install once to try what is coming; it updates itself to each newer beta of the same version and then to that version when it ships, after which it is an ordinary install. Nobody on a release is ever offered one.
-- Party sharing works in the Windows build: the connection library it needs was not being bundled, so the lobby never connected. The build now installs a pinned list of what it bundles, and a test fails if any of it is missing.
 
 **Windows: the patcher updates again**
 - LTK stopped publishing an MSI at v1.20.0 and now ships only a setup program, so the patcher update added in 1.1.2 found nothing to download and every install stayed on v1.19.2. tibbers now reads the two patcher files straight out of LTK's setup, without running it: nothing is installed, and no registry entry or shortcut is added. Installs update to the current LTK on their next launch.
 - The Windows installer no longer downloads LTK itself; the app fetches it on first launch, as it already did whenever Setup's download had failed.
 
-*Before this ships:* the custom-game checks under "To verify on first contact" in `LOBBY.md` have to run on a live client. The relay has been live at `lobby.tibbers.lol` since 2026-09-14.
+**Betas**
+- Betas are pre-releases for trying what is coming. One installed by hand updates itself to each newer beta and then to the release, after which it is an ordinary install. Nobody on a release is ever offered one.
 
 ## 1.1.2 — 2026-09-13
 
