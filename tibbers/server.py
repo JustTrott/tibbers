@@ -44,6 +44,17 @@ MOCK_PAGES = {"/mock": "mock.html"}
 #: local process put any page on the user's screen with this app's name on
 #: the request.
 BROWSE_HOSTS = {"u.gg", "op.gg", "www.op.gg"}
+#: Single pages the app links to by name, rather than whole hosts: the credit
+#: in Settings. Exact URLs, so allowing one opens nothing else on its host.
+BROWSE_PAGES = {"https://github.com/Alban1911/Rose"}
+
+
+def browsable(url: str) -> bool:
+    """Whether /api/browse may hand *url* to the real browser."""
+    if url in BROWSE_PAGES:
+        return True
+    parts = urlparse(url)
+    return parts.scheme == "https" and parts.netloc.lower() in BROWSE_HOSTS
 
 # Art is immutable for a given path and every tile is fetched on each champion
 # change, so proxying it uncached means re-pulling megabytes from the client
@@ -528,9 +539,7 @@ def make_handler(state: State, get_lcu, on_select, mock=None,
 
             if path == "/api/browse":
                 url = str(payload.get("url") or "")
-                parts = urlparse(url)
-                if parts.scheme != "https" or \
-                        parts.netloc.lower() not in BROWSE_HOSTS:
+                if not browsable(url):
                     self._json({"ok": False, "error": "not a known source"}, 400)
                     return
                 import webbrowser

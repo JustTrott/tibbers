@@ -66,6 +66,10 @@
   .row:last-child { border-bottom: 0; }
   .row .txt { flex: 1; min-width: 0; }
   .row .txt b { display: block; font-weight: 600; font-size: 13.5px; }
+  a.ext { color: var(--gold-b); text-decoration: none;
+          border-bottom: 1px solid oklch(0.80 0.095 85 / .4); }
+  a.ext:hover { border-bottom-color: var(--gold); }
+  a.ext::after { content: " \2197"; font-size: .8em; }
   .row .txt span { display: block; color: var(--ink-mid); font-size: 12.5px;
                    margin-top: 2px; max-width: 60ch; }
 
@@ -300,6 +304,19 @@
     </section>
 
     <section>
+      <h2 data-t="sec.credits">Credits</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b><a class="ext" href="https://github.com/Alban1911/Rose">Rose</a></b>
+            <span data-t="credit.rose">The skin changer tibbers grew out of. Its skin
+                  library is what tibbers' own mods were first checked against.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <button class="btn gold" id="open-picker" data-t="open_picker">Open the picker</button>
     </section>
   </main>
@@ -336,7 +353,9 @@ const T = {
     'share_skins.note': 'Everyone in your League party who runs tibbers sees your skin in '
       + 'game, and you see theirs.',
     'sec.memory': 'Memory', 'sec.library': 'Library', 'sec.elevation': 'Elevation',
-    'sec.updates': 'Updates',
+    'sec.updates': 'Updates', 'sec.credits': 'Credits',
+    'credit.rose': 'The skin changer tibbers grew out of. Its skin library is what '
+      + 'tibbers’ own mods were first checked against.',
 
     'autostart.title': 'Start automatically when you sign in',
     'autostart.note': 'Opens in the background, ready for your next champ select.',
@@ -435,7 +454,9 @@ const T = {
     'share_skins.note': 'Все в вашей группе, у кого есть tibbers, видят ваш образ в игре, '
       + 'а вы видите их образы.',
     'sec.memory': 'Память', 'sec.library': 'Библиотека', 'sec.elevation': 'Права доступа',
-    'sec.updates': 'Обновления',
+    'sec.updates': 'Обновления', 'sec.credits': 'Благодарности',
+    'credit.rose': 'Скин-чейнджер, из которого вырос tibbers. Его библиотека образов — то, '
+      + 'с чем впервые сверялись моды tibbers.',
 
     'autostart.title': 'Запускать при входе в систему',
     'autostart.note': 'Запускается в фоне и ждёт следующего выбора чемпионов.',
@@ -739,6 +760,13 @@ $('language').addEventListener('change', async e => {
 const nudge = () => refresh().catch(() => {});
 
 document.addEventListener('click', async e => {
+  // Settings is not a browser either: an outside link opens in the real one.
+  const ext = e.target.closest('a.ext');
+  if (ext) {
+    e.preventDefault();
+    await api('/api/browse', {url: ext.href});
+    return;
+  }
   const sw = e.target.closest('[data-set]');
   if (sw) {
     const next = sw.getAttribute('aria-checked') !== 'true';

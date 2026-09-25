@@ -5,12 +5,15 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
-## 1.2.1 — in progress
+## 1.2.1 — 2026-09-26
+
+Party members stay on the Lobby tab through the game, and a few words and credits put right.
 
 - A skin that is set for your game now says **applied** rather than "armed", on the Skin tab, on the Lobby tab and in the status line.
 - Party members no longer drop off the Lobby tab when the game starts. Each install lets go of the party's room once its own game has loaded, and whoever loaded first used to vanish from everyone still loading -- their skin was in your game, their row was not.
 - The skin preview on the Lobby tab is no longer cut off at the bottom of the window.
 - Skin mods tibbers builds are signed as tibbers'. They used to carry another project's name as their author and a banner advertising its Discord, left from the library they were first matched against. Your library rebuilds itself without it, a champion at a time as you hover.
+- Settings has a Credits section, and its first line is Rose, the skin changer tibbers grew out of.
 
 ## 1.2.0 — 2026-09-25
 

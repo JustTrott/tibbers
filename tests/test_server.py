@@ -185,3 +185,19 @@ class ReloadChannel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Browse(unittest.TestCase):
+    """What /api/browse will open in the real browser."""
+
+    def test_the_sources_and_the_credit_open(self):
+        self.assertTrue(server.browsable("https://op.gg/lol/champions/ahri/build"))
+        self.assertTrue(server.browsable("https://github.com/Alban1911/Rose"))
+
+    def test_the_credit_opens_nothing_else_on_its_host(self):
+        self.assertFalse(server.browsable("https://github.com/Alban1911/Rose/releases"))
+        self.assertFalse(server.browsable("https://github.com/someone/else"))
+
+    def test_only_https(self):
+        self.assertFalse(server.browsable("http://op.gg/"))
+        self.assertFalse(server.browsable("file:///C:/Windows"))
