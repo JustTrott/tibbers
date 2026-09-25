@@ -1,0 +1,54 @@
+# A beta for testers on every push to a version branch (1.2.0, 1.3.0, ...).
+#
+# Tests, builds the Windows installer, and publishes it as the pre-release
+# vX.Y.Z-beta.N -- scripts/release_beta.ps1 does the numbering, stamping and
+# publishing. Beta installs update themselves to it; stable installs never
+# see it. main and the site branch are not version branches and never build.
+
+name: beta
+
+on:
+  push:
+    branches: ["[0-9]+.[0-9]+.[0-9]+"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "worker/**"
+  workflow_dispatch:
+
+# One at a time per branch, in order, so two quick pushes get beta.N and
+# beta.N+1 rather than racing for the same number.
+concurrency:
+  group: beta-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  beta:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Virtual environment
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --quiet --disable-pip-version-check -r requirements-windows.txt
+
+      - name: Tests
+        run: .venv\Scripts\python -m pytest -q -p no:cacheprovider tests
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build and publish the beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: powershell -ExecutionPolicy Bypass -File scripts\release_beta.ps1 -Publish -Branch "${{ github.ref_name }}"
