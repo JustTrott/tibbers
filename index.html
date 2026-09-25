@@ -191,6 +191,42 @@
   .dl .src a:hover { color: var(--ink); }
   .dl .src svg { width: 15px; height: 15px; fill: currentColor; }
   .meta { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 22px; }
+
+  /* ---------- the 1.2 promo, beside the headline ---------- */
+  .hero-grid { display: grid; gap: clamp(32px, 4vw, 56px); align-items: center; }
+  @media (min-width: 980px) {
+    .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+    .hero .lede { font-size: clamp(17px, 1.4vw, 19px); }
+  }
+  .promo { margin: 0; }
+  .promo .frame {
+    position: relative; aspect-ratio: 16 / 9;
+    border: 1px solid var(--rule-d);
+    background: var(--raised);
+    box-shadow: 0 30px 80px -30px oklch(0 0 0 / 0.8), 0 8px 24px -12px oklch(0 0 0 / 0.6);
+    overflow: hidden;
+  }
+  .promo video { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .promo .sound {
+    position: absolute; right: 12px; bottom: 12px;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 12px; cursor: pointer;
+    font: 400 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink); background: oklch(0.13 0.010 265 / 0.72);
+    border: 1px solid var(--gold-d);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    transition: border-color 160ms, background 160ms;
+  }
+  .promo .sound:hover { border-color: var(--gold); background: oklch(0.13 0.010 265 / 0.9); }
+  .promo .sound svg { width: 14px; height: 14px; fill: var(--gold-b); }
+  .promo .sound .on { display: none; }
+  .promo .sound[aria-pressed="true"] .on { display: inline; }
+  .promo .sound[aria-pressed="true"] .off { display: none; }
+  .promo figcaption { margin-top: 12px; }
+  .promo figcaption .v { color: var(--gold-b); }
+  @media (prefers-reduced-motion: no-preference) {
+    .promo .frame { animation: settle 1400ms var(--out-quart) both; animation-delay: 120ms; }
+  }
   .meta .v { color: var(--gold-b); }
 
   /* ---------- the picker, as the app frames it ---------- */
@@ -293,6 +329,8 @@ FORM: a product page built from the product's own table-row primitive; extension
 
 <main>
   <section class="wrap hero" style="border-top:0">
+   <div class="hero-grid">
+    <div>
     <h1>Enhance your <em>champ select.</em></h1>
     <p class="lede">Your new companion for League of Legends, on Windows and macOS. tibbers is a skin changer and build guide in one small window. <strong>Free and open source.</strong></p>
     <div class="dl">
@@ -328,6 +366,20 @@ FORM: a product page built from the product's own table-row primitive; extension
       </span>
     </div>
     <p class="meta mono"><span>Latest <span class="v" id="version">v0.1.1</span></span><span>Windows · macOS</span><span>GPL-3.0</span><span>No account, no login</span></p>
+    </div>
+    <figure class="promo">
+      <div class="frame">
+        <video id="promo" src="/img/promo-1.2.mp4" poster="/img/promo-1.2.jpg" width="1280" height="720"
+               autoplay muted loop playsinline preload="auto"
+               aria-label="tibbers 1.2: your Risen Legend Tristana and your duo's Bittersweet Lulu, both shown on the Lobby tab as applied to your game."></video>
+        <button class="sound" id="promo-sound" type="button" aria-pressed="false" aria-label="Turn the sound on">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path class="on" d="M16.5 12A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z"/><path class="off" d="M16.5 9.5l1.4-1.4L20 10.2l2.1-2.1 1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1z"/></svg>
+          <span class="off">Sound</span><span class="on">Mute</span>
+        </button>
+      </div>
+      <figcaption class="mono"><span class="v">New in 1.2</span> · skin sharing: your party sees your skin, you see theirs.</figcaption>
+    </figure>
+   </div>
   </section>
 
   <div class="wrap shot">
@@ -472,6 +524,27 @@ FORM: a product page built from the product's own table-row primitive; extension
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (rel) { if (rel && rel.tag_name) document.getElementById('version').textContent = rel.tag_name; })
     .catch(function () {});
+</script>
+<script>
+/* The promo: muted autoplay is all a browser allows, so sound is one press
+   away and restarts it from the top. Reduced motion gets the still and a
+   play control instead of a loop. */
+(() => {
+  const v = document.getElementById('promo');
+  const b = document.getElementById('promo-sound');
+  if (!v || !b) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    v.removeAttribute('autoplay'); v.pause(); v.controls = true; b.hidden = true;
+    return;
+  }
+  b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', on ? 'Mute' : 'Turn the sound on');
+    v.muted = !on;
+    if (on) { v.currentTime = 0; v.play(); }
+  });
+})();
 </script>
 </body>
 </html>
