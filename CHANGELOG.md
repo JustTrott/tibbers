@@ -5,6 +5,10 @@ landed on its branch and, under *Planned*, what it will still carry; the
 section becomes the release notes when it ships. See "Versions and branches"
 in `CLAUDE.md`.
 
+## 1.2.1 — in progress
+
+- A skin that is set for your game now says **applied** rather than "armed", on the Skin tab, on the Lobby tab and in the status line.
+
 ## 1.2.0 — 2026-09-25
 
 Share skins with your party, counters before you hover, and the Windows

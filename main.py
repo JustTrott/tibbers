@@ -918,7 +918,7 @@ def main() -> int:
                     and state.armed.get("chromaId") == meta["chromaId"]
                     and state.armed.get("party", []) == meta["party"])
         if same and inject.is_running():
-            state.say(f"{meta['label']} is already armed")
+            state.say(f"{meta['label']} is already applied")
             return
         with state.lock:
             state.arming = True
@@ -1155,7 +1155,7 @@ def main() -> int:
         if not armer.submit((mod, meta, party)):
             with state.lock:
                 state.arming = True
-            state.say(f"{label} will be armed after the current build")
+            state.say(f"{label} will be applied after the current build")
 
     def on_select(skin_id, chroma_id=KEEP_CHROMA):
         # Asked for the skin alone: bring back the chroma remembered for it,
@@ -1179,7 +1179,7 @@ def main() -> int:
         if skin_id is None:
             # The base skin, or nothing: nothing of yours to arm, though
             # whatever the party picked still is.
-            state.say("base skin -- nothing to arm")
+            state.say("base skin -- nothing to apply")
         else:
             state.say(f"queued skin {skin_id}"
                       + (f" chroma {chroma_id}" if chroma_id else ""))
