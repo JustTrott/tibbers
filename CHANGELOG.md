@@ -14,6 +14,7 @@ in `CLAUDE.md`.
 
 **Updates**
 - Settings has a **Check now** button beside the version, instead of waiting for the next automatic check.
+- Betas. A beta is a pre-release you install by hand to try what is coming; it updates itself to each newer beta and then to the release it was a beta of, after which it is an ordinary install. Nobody on a release is ever offered one.
 
 **Windows: the patcher updates again**
 - LTK stopped publishing an MSI at v1.20.0 and now ships only a setup program, so the patcher update added in 1.1.2 found nothing to download and every install stayed on v1.19.2. tibbers now reads the two patcher files straight out of LTK's setup, without running it: nothing is installed, and no registry entry or shortcut is added. Installs update to the current LTK on their next launch.

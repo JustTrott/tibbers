@@ -21,6 +21,14 @@ How the install is replaced differs by platform, on purpose:
   does all of that (Restart Manager for in-use files, a log, exit codes) and
   is the same artefact a first install uses, so there is one path to test.
 
+Betas are GitHub pre-releases, tagged `vX.Y.Z-beta.N`. `releases/latest`
+never returns a pre-release, so a stable install cannot see them and needs no
+setting to stay away. A beta build knows it is one from its own version, asks
+for every release instead, and takes the newest of them -- the next beta, or
+the stable release that supersedes the beta line, after which it is a stable
+install again and only follows `latest`. Testers join by installing a beta by
+hand; nobody is moved onto one.
+
 The two halves are separate on purpose: `stage` downloads (and unpacks), which
 can be done any time and backed out of; `launch_swap` starts the replacement,
 after which the install *will* change. The app decides between them whether
@@ -53,6 +61,8 @@ log = logging.getLogger("tibbers.update")
 
 REPO = "JustTrott/tibbers"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+#: Every release, pre-releases included, newest first. Only a beta asks it.
+RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
 
 #: How long the running app waits before asking GitHub again. Releases are
 #: days apart, and the unauthenticated API allows sixty calls an hour per
@@ -131,14 +141,53 @@ def _version_tuple(text: str) -> tuple:
     return tuple(out)
 
 
-def latest_release() -> dict:
-    """The newest release: its tag, notes, and the Tibbers.zip download URL."""
-    req = urllib.request.Request(LATEST_URL, headers={
+def is_prerelease(version: str) -> bool:
+    """True for a beta build: anything after the numbers, as in 1.2.0-beta.1."""
+    return "-" in str(version)
+
+
+def version_key(text: str) -> tuple:
+    """An ordering that puts 1.2.0-beta.1 < 1.2.0-beta.2 < 1.2.0 < 1.2.1.
+
+    A release is newer than every pre-release of the same number, and betas
+    of one number order by their own trailing number.
+    """
+    core, _, pre = str(text).lstrip("vV").partition("-")
+    nums = _version_tuple(core)
+    nums = nums + (0,) * (3 - len(nums))
+    if not pre:
+        return nums + (1, 0)
+    digits = "".join(c for c in pre.rsplit(".", 1)[-1] if c.isdigit())
+    return nums + (0, int(digits or 0))
+
+
+def _get_json(url: str):
+    req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "tibbers-updater",
     })
     with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.load(resp)
+        return json.load(resp)
+
+
+def latest_release(prereleases: bool = False) -> dict:
+    """The newest release: its tag, notes, and this platform's download URL.
+
+    With *prereleases*, the newest of every published release, betas
+    included, that carries this platform's asset -- a beta made on one
+    platform only must not strand the other on nothing.
+    """
+    if not prereleases:
+        return _release(_get_json(LATEST_URL))
+    found = [_release(r) for r in _get_json(RELEASES_URL) or []
+             if not r.get("draft")]
+    found = [r for r in found if r["url"]]
+    if not found:
+        raise RuntimeError(f"no release carries {asset_name()}")
+    return max(found, key=lambda r: version_key(r["version"]))
+
+
+def _release(data: dict) -> dict:
     tag = data.get("tag_name") or ""
     want = asset_name()
     url = digest = None
@@ -151,7 +200,8 @@ def latest_release() -> dict:
             break
     return {"tag": tag, "version": tag.lstrip("vV"), "url": url,
             "digest": digest, "name": data.get("name") or tag,
-            "notes": data.get("body") or ""}
+            "notes": data.get("body") or "",
+            "prerelease": bool(data.get("prerelease"))}
 
 
 def check(current: str = __version__) -> dict:
@@ -161,17 +211,18 @@ def check(current: str = __version__) -> dict:
     `current`, `url`, `notes`, and on failure an `error`.
     """
     try:
-        rel = latest_release()
+        rel = latest_release(prereleases=is_prerelease(current))
     except Exception as exc:  # noqa: BLE001 -- offline is a normal outcome here
         log.debug("update check failed: %s", exc)
         return {"available": False, "current": current, "error": str(exc)}
     if not rel["url"]:
         return {"available": False, "current": current,
                 "error": f"the latest release has no {asset_name()}"}
-    available = _version_tuple(rel["version"]) > _version_tuple(current)
+    available = version_key(rel["version"]) > version_key(current)
     return {"available": available, "version": rel["version"],
             "current": current, "url": rel["url"], "digest": rel["digest"],
-            "notes": rel["notes"], "name": rel["name"]}
+            "notes": rel["notes"], "name": rel["name"],
+            "prerelease": rel.get("prerelease", False)}
 
 
 def _download(url: str, dest: Path, digest: Optional[str] = None) -> None:

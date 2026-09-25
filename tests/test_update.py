@@ -52,6 +52,67 @@ class Versions(unittest.TestCase):
     def test_a_tag_prefix_is_ignored(self):
         self.assertEqual(update._version_tuple("v1.2.3"), (1, 2, 3))
 
+    def test_betas_order_before_their_release(self):
+        order = ["1.1.2", "1.2.0-beta.1", "1.2.0-beta.2", "1.2.0-beta.10",
+                 "v1.2.0", "1.2.1-beta.1", "1.2.1"]
+        self.assertEqual(sorted(reversed(order), key=update.version_key),
+                         order)
+
+    def test_a_beta_is_recognised_by_its_version(self):
+        self.assertTrue(update.is_prerelease("1.2.0-beta.1"))
+        self.assertFalse(update.is_prerelease("1.2.0"))
+
+
+def _gh(tag, prerelease=False, draft=False, asset=True):
+    """A release as GitHub's API lists it."""
+    name = update.asset_name()
+    return {"tag_name": tag, "prerelease": prerelease, "draft": draft,
+            "name": tag, "body": "",
+            "assets": [{"name": name, "digest": None,
+                        "browser_download_url": f"https://x/{tag}/{name}"}]
+            if asset else []}
+
+
+class Channels(unittest.TestCase):
+    """A stable install follows `latest`; a beta follows every release."""
+
+    RELEASES = [_gh("v1.2.0-beta.3", prerelease=True, draft=True),
+                _gh("v1.2.0-beta.2", prerelease=True),
+                _gh("v1.2.0-beta.1", prerelease=True),
+                _gh("v1.1.2")]
+
+    def _serve(self, releases, latest):
+        def fake(url):
+            return releases if url == update.RELEASES_URL else latest
+        return unittest.mock.patch.object(update, "_get_json", fake)
+
+    def test_a_stable_install_never_sees_a_beta(self):
+        with self._serve(self.RELEASES, _gh("v1.1.2")):
+            result = update.check(current="1.1.2")
+        self.assertFalse(result["available"])
+
+    def test_a_beta_moves_to_the_next_beta_but_not_a_draft(self):
+        with self._serve(self.RELEASES, _gh("v1.1.2")):
+            result = update.check(current="1.2.0-beta.1")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["version"], "1.2.0-beta.2")
+        self.assertTrue(result["prerelease"])
+
+    def test_a_beta_moves_to_the_stable_release_that_supersedes_it(self):
+        releases = [_gh("v1.2.0"), *self.RELEASES]
+        with self._serve(releases, _gh("v1.2.0")):
+            result = update.check(current="1.2.0-beta.2")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["version"], "1.2.0")
+        self.assertFalse(result["prerelease"])
+
+    def test_a_beta_skips_a_release_without_its_platform_asset(self):
+        releases = [_gh("v1.2.0-beta.3", prerelease=True, asset=False),
+                    *self.RELEASES]
+        with self._serve(releases, _gh("v1.1.2")):
+            result = update.check(current="1.2.0-beta.2")
+        self.assertFalse(result["available"])
+
 
 class Schedule(unittest.TestCase):
     """The intervals are what keeps the check inside GitHub's rate limit."""
