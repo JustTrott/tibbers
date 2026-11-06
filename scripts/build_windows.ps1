@@ -12,7 +12,8 @@
 # PATH; see scripts\tibbers.iss).
 
 param(
-    [switch]$Installer
+    [switch]$Installer,
+    [switch]$LtkBridge
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +32,11 @@ if (-not (Test-Path $python)) {
 Write-Host "==> Installing requirements-windows.txt into the venv"
 & $python -m pip install --quiet --disable-pip-version-check -r (Join-Path $root "requirements-windows.txt")
 if ($LASTEXITCODE -ne 0) { throw "pip could not install requirements-windows.txt" }
+
+if ($LtkBridge) {
+    & $python scripts/build_ltf.py
+    if ($LASTEXITCODE -ne 0) { throw "LTF bridge build failed" }
+}
 
 # A .ico is required for the window/exe icon; derive it from the png if absent.
 $ico = Join-Path $root "assets\tibbers.ico"

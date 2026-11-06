@@ -1,0 +1,133 @@
+{
+  "attach": {
+    "Attach": {
+      "pid": 424242
+    }
+  },
+  "logs": [
+    {
+      "Log": {
+        "pid": 424242,
+        "tid": 12345,
+        "timestamp": 123456789,
+        "level": "Error",
+        "text": "IPC fixture only"
+      }
+    },
+    {
+      "Log": {
+        "pid": 424242,
+        "tid": 12345,
+        "timestamp": 123456789,
+        "level": "Warn",
+        "text": "IPC fixture only"
+      }
+    },
+    {
+      "Log": {
+        "pid": 424242,
+        "tid": 12345,
+        "timestamp": 123456789,
+        "level": "Info",
+        "text": "IPC fixture only"
+      }
+    },
+    {
+      "Log": {
+        "pid": 424242,
+        "tid": 12345,
+        "timestamp": 123456789,
+        "level": "Debug",
+        "text": "IPC fixture only"
+      }
+    },
+    {
+      "Log": {
+        "pid": 424242,
+        "tid": 12345,
+        "timestamp": 123456789,
+        "level": "Trace",
+        "text": "IPC fixture only"
+      }
+    }
+  ],
+  "handshake": {
+    "version": 3,
+    "ready": true,
+    "config": {
+      "prefix": "D:\\IPC-LAB\\",
+      "log": "debug",
+      "flags": 4,
+      "min_create_time": 123456789012345,
+      "host_pid": 424242
+    }
+  },
+  "native_decode_accepted": true,
+  "validation_cases": [
+    {
+      "case": "missing root version",
+      "accepted": false,
+      "error": "missing field `version`"
+    },
+    {
+      "case": "missing root ready",
+      "accepted": false,
+      "error": "missing field `ready`"
+    },
+    {
+      "case": "missing root config",
+      "accepted": false,
+      "error": "missing field `config`"
+    },
+    {
+      "case": "missing config prefix",
+      "accepted": false,
+      "error": "missing field `prefix`"
+    },
+    {
+      "case": "missing config log",
+      "accepted": false,
+      "error": "missing field `log`"
+    },
+    {
+      "case": "missing config flags",
+      "accepted": false,
+      "error": "missing field `flags`"
+    },
+    {
+      "case": "missing config min_create_time",
+      "accepted": false,
+      "error": "missing field `min_create_time`"
+    },
+    {
+      "case": "missing config host_pid",
+      "accepted": false,
+      "error": "missing field `host_pid`"
+    },
+    {
+      "case": "host_pid width >32",
+      "accepted": true,
+      "error": null
+    },
+    {
+      "case": "flags width >32",
+      "accepted": false,
+      "error": "invalid value: integer `4294967296`, expected u32"
+    },
+    {
+      "case": "min_create_time width >32",
+      "accepted": true,
+      "error": null
+    },
+    {
+      "case": "numeric log rejected",
+      "accepted": false,
+      "error": "invalid type: integer `32`, expected string"
+    },
+    {
+      "case": "version width >32",
+      "accepted": false,
+      "error": "invalid value: integer `4294967296`, expected u32"
+    }
+  ]
+}

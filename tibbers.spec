@@ -23,6 +23,10 @@ datas = [
     ('assets', 'assets'),
 ]
 binaries = []
+if os.path.isfile('tools/ltf/ltk_launcher.exe'):
+    binaries += [('tools/ltf/ltk_launcher.exe', 'tools/ltf'),
+                 ('tools/ltf/LeagueToolFlop.dll', 'tools/ltf')]
+    datas += [('native/ltf/LICENSE.Rose', 'tools/ltf')]
 hiddenimports = ['clr']
 
 for package in ('webview', 'pystray', 'PIL'):

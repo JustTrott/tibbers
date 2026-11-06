@@ -1,0 +1,129 @@
+# Host–DLL IPC recovered for ltk_patcher-30
+
+Scope: the exact reference pair listed in ../analysis/manifest.json. This is
+an interoperability specification and codec probe, not a replacement injector.
+
+## Transport (static evidence)
+
+- Host is the named-pipe server; DLL is the client.
+- Name: `\\.\pipe\ltk-patcher-pipe`.
+- Host CreateNamedPipeW call at RVA 0x12e7a: duplex + overlapped (0x40000003),
+  message type/read mode + remote-client rejection (mode 0x0e), maximum
+  instances 254, input/output buffers 4096 bytes.
+- DLL CreateFileW at RVA 0x13ee: GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING,
+  synchronous handle. Its initial ReadFile at 0x1444 requests 4096 bytes.
+- Payloads are CBOR maps. The inspected writes send CBOR directly, without
+  a JSON wrapper, newline delimiter, or separate application length prefix.
+  Preserve message boundaries; a generic byte-stream substitute needs its
+  own framing and would not directly replace the native pipe.
+
+## Host -> DLL: initial handshake
+
+JSON notation below describes the decoded CBOR, not bytes to send verbatim:
+
+```json
+{
+  "version": 3,
+  "ready": true,
+  "config": {
+    "prefix": "D:\\IPC-LAB\\",
+    "log": "debug",
+    "flags": 4,
+    "min_create_time": 123456789012345,
+    "host_pid": 424242
+  }
+}
+```
+
+Required types (tested against DLL's native decoder at RVA 0x3b1d0):
+
+| Field | Type |
+|---|---|
+| version | uint32 |
+| ready | boolean |
+| config | map |
+| config.prefix | UTF-8 text |
+| config.log | UTF-8 text; tested with `debug` |
+| config.flags | uint32 |
+| config.min_create_time | uint64 |
+| config.host_pid | uint64; Windows PID comparison uses its lower DWORD |
+
+Every listed field is required: removal of any one produced a native
+`missing field` error. A numeric `config.log` produced `expected string`.
+Values above uint32 were accepted for host_pid/min_create_time, and rejected
+for flags/version. The supplied sample is synthetic, accepted by the DLL
+parser; it was NOT captured from a running game. Native acceptance of a
+version value does not establish that later initialization accepts that version.
+Version 3 is the current manager's declared host protocol. The host's serialized
+keys/maps were independently identified in its encoder at RVA 0x156f8 onwards;
+config is a five-entry map (0x15b37), host_pid is emitted at 0x16623.
+
+`prefix` is the overlay-root path. `min_create_time` is a raw creation-time
+threshold: its exact time base/unit still needs validation before a live host
+implementation. `log` is not the external numeric `config loglevel` command.
+Do not assume that an accepted flags bit is honored by the current scanner.
+
+## DLL -> host: events
+
+The original DLL encoder at RVA 0x407c0 produced these exact schemas:
+
+```json
+{"Attach":{"pid":424242}}
+{"Log":{"pid":424242,"tid":12345,"timestamp":123456789,"level":"Info","text":"IPC fixture only"}}
+```
+
+Attach fixture (18 bytes):
+`a166417474616368a1637069641a00067932`
+
+Log levels encoded as text: Error, Warn, Info, Debug, Trace. The in-memory
+encoder's level discriminants are respectively 0, 1, 2, 3, 4; those numbers
+are not the wire representation. Log timestamp is unsigned integer; conversion
+to wall-clock time is not established here. The DLL logger reads its timestamp
+from KUSER_SHARED_DATA+8; the fixture uses a synthetic value.
+
+DLL sends Attach after receiving/accepting the handshake. Subsequent events
+are logs. Only one imported ReadFile call was found in the DLL (initial
+handshake). No evidence of a further host->DLL control-message loop was found.
+The manager's `stop` is a separate manager->host text command, not an observed
+CBOR command to the DLL.
+
+## Identity and lifecycle checks are separate from encoding
+
+At DLL RVA 0x14f2, GetNamedPipeServerProcessId gets the pipe server PID.
+At 0x1500 it is compared with the handshake's host_pid; mismatch is rejected.
+This happens BEFORE the Attach event. The DLL also has host-chain/signature,
+game-build and overlay-content checks. Encoding a valid handshake does not
+remove or satisfy those other checks. No checks were patched in this work.
+
+## Reproduce and test
+
+`cbor_codec.py` implements the definite-length CBOR subset observed here,
+using only Python's standard library. It is not a general CBOR implementation.
+
+```powershell
+# From this protocol directory:
+python -m unittest discover -s . -p test_codec.py -v
+# Optional: rerun the original DLL's pure encode/decode functions locally:
+python -m pip install pefile==2024.8.26
+python probe_native_codec.py
+```
+
+The native probe checks the DLL's exact SHA-256, maps it with
+DONT_RESOLVE_DLL_REFERENCES (no DllMain), resolves system imports only in the
+probe's private address space, and calls the two inspected codec functions.
+It does not call hookproc, create a pipe, scan processes, or load into a game.
+Private Rust allocations are released by process exit. Keep it in a separate,
+short-lived process. Its RVAs/ABI are valid only for this pinned DLL.
+
+Fixtures were generated by the actual DLL event serializer. The handshake
+fixture was generated by our codec and accepted by its actual decoder. Missing
+fields/type/width validation results are saved in fixtures/codec-results.json.
+
+## Remaining validation
+
+A passive-host test used a privately renamed pipe and never selected `start
+scan`. Its pipe creation failed in the restricted execution environment, so
+there is NO successful live named-pipe end-to-end capture yet. Test pipe
+boundaries, ready=false behavior, version enforcement and time-base semantics
+before using this as a replacement host. Existing manager/game files were not
+changed or loaded into a game during this investigation.

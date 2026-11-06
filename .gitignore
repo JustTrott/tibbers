@@ -10,6 +10,7 @@ tools/mod-tools.exe
 tools/cslol-dll.dll
 tools/ltk_patcher_host.exe
 tools/ltk_patcher_dll.dll
+tools/ltf/
 # Fetched by scripts/fetch_python.sh: the CPython that ships inside Tibbers.app
 runtime/
 
@@ -20,3 +21,14 @@ build/
 
 # Dev instances: their own TIBBERS_HOME, made by scripts/dev.sh
 .dev/
+
+# Local bridge compiler installer
+.local-tools/
+
+# Private unmodified binaries for the native patcher audit
+native/tibbers-patcher/reference/
+native/tibbers-patcher/analysis/
+native/tibbers-patcher/lab/
+
+# Local bridge build + test binaries; never committed (LTK binaries, compiled LTF)
+tools/ltf-test/

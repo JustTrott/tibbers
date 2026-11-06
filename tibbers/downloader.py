@@ -3,26 +3,20 @@
 """
 Get a champion's skin mods ready, one champion at a time.
 
-Every mod is built here, out of the installed game (`skinsmith`): the skin's
-own entries are lifted from the champion's archive, pointed at the base skin's
-names and written back out as a `.fantome`. Nothing crosses the wire, it works
-offline, and there is no third party whose files could go stale underneath it
--- only the install, and a mod records the archive it came out of so a patch
-is noticed.
-
-A skin whose mod cannot be built simply has none, and the log says why. The
-picker already renders that as "no mod available" and leaves the skin alone.
+The LTK Manager backend downloads the ready-made LeagueSkins archives used
+by Rose. Other backends build mods from the installed game with skinsmith.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Set
 
-from . import library, skinsmith
+from . import library, skinsmith, skin_catalogue
 
 log = logging.getLogger("tibbers.download")
 
@@ -84,12 +78,22 @@ def existing(champion_id: int, target: Target):
 
 def prepare(champion_id: int, target: Target,
             champion_key: Optional[str]) -> Optional[str]:
-    """Build one mod. Returns "local", or None when it could not be built.
+    """Prepare one mod. Return its source, or None on failure.
 
     None is an ordinary answer rather than an error -- not every skin has a
     mod that can be derived from the install -- so whatever stood in the way
     is named in the log, once, and the skin is simply offered without one.
     """
+    if skin_catalogue.enabled():
+        try:
+            skin_catalogue.fetch(champion_id, target.skin_id, target.chroma_id,
+                                 mod_path(champion_id, target))
+            log.info("%s %s: ready from LeagueSkins", champion_id, target)
+            return "catalogue"
+        except Exception as exc:
+            log.warning("%s %s: catalogue download failed -- %s",
+                        champion_id, target, exc)
+            return None
     if champion_key is None:
         log.info("%s %s: not built -- no archive for this champion",
                  champion_id, target)
@@ -120,15 +124,14 @@ def _generate(champion_id: int, target: Target, champion_key: str) -> bool:
 class ChampionDownloader:
     """Gets a champion's skin mods ready in the background, once per champion.
 
-    The name is older than the behaviour: mods are built here now, not
-    fetched. It is kept because this is still the one thing that stands
-    between hovering a champion and having its skins ready.
+    Hovering a champion prepares its skins with the active backend.
     """
 
     def __init__(self, on_progress: Optional[Callable[[int, dict], None]] = None):
         self.on_progress = on_progress
         self._lock = threading.Lock()
         self._done: Set[int] = set()
+        self._retry_after: dict[int, float] = {}
         self._active: Optional[int] = None
         self._cancel = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -144,8 +147,10 @@ class ChampionDownloader:
         with self._lock:
             if champion_id is None:
                 self._done.clear()
+                self._retry_after.clear()
             else:
                 self._done.discard(champion_id)
+                self._retry_after.pop(champion_id, None)
 
     def ensure(self, champion_id: int, skins: Iterable,
                champion_key: Optional[str] = None) -> None:
@@ -162,6 +167,8 @@ class ChampionDownloader:
         # settled by the first line.
         with self._lock:
             if champion_id in self._done or self._active == champion_id:
+                return
+            if time.monotonic() < self._retry_after.get(champion_id, 0):
                 return
             self._active = champion_id
 
@@ -219,7 +226,11 @@ class ChampionDownloader:
         cancelled = cancel.is_set()
         with self._lock:
             if not cancelled:
-                self._done.add(champion_id)
+                if tally["missing"]:
+                    self._retry_after[champion_id] = time.monotonic() + 60
+                else:
+                    self._done.add(champion_id)
+                    self._retry_after.pop(champion_id, None)
             if self._active == champion_id:
                 self._active = None
 
@@ -245,6 +256,8 @@ def _outstanding(champion_id: int, target: Target) -> bool:
     should look like. A generated one carries the size and mtime of the archive
     it came out of, so a patch is visible.
     """
+    if skin_catalogue.enabled():
+        return True  # Verify against the current catalogue once per champion.
     found = existing(champion_id, target)
     if found is None:
         return True
@@ -292,7 +305,7 @@ def rebuild(champions: Iterable[dict],
         champion_id = int(champion["id"])
         done["champion"] = champion.get("name") or str(champion_id)
         key = skinsmith.champion_key(champion.get("alias") or "")
-        if key is None:
+        if key is None and not skin_catalogue.enabled():
             log.info("rebuild: no archive for %s, skipped", done["champion"])
             done["champions"] += 1
             say()
@@ -310,7 +323,7 @@ def rebuild(champions: Iterable[dict],
         for target in targets:
             if cancel.is_set():
                 break
-            if _generate(champion_id, target, key):
+            if prepare(champion_id, target, key):
                 done["made"] += 1
             else:
                 done["failed"] += 1

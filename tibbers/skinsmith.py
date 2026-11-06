@@ -329,7 +329,7 @@ def view_controller(character: str, number: int) -> Optional[str]:
 #: Value types that are a fixed number of bytes, so they can be stepped over
 #: without understanding them.
 _FIXED = {0: 0, 1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 7: 4, 8: 8, 9: 8, 10: 4,
-          11: 8, 12: 12, 13: 16, 14: 64, 15: 4, 17: 4, 18: 8,
+          11: 8, 12: 12, 13: 16, 14: 64, 15: 4, 18: 8,
           0x84: 4, 0x87: 1}
 U32, _STRING = 7, 16
 _LIST, _LIST2, _POINTER, _EMBED, _OPTION, _MAP = 0x80, 0x81, 0x82, 0x83, 0x85, 0x86
@@ -433,48 +433,119 @@ class Bin:
             if end > len(self.data):
                 raise BinError(f"entry at {start} claims {size} bytes")
             entry_hash = self._u32()
-            fields = [self._field() for _ in range(self._u16())]
+            fields = self._fields(self._u16(), end)
             if self._at != end:
                 raise BinError(f"entry at {start} ended at {self._at}, "
                                f"not {end}")
             self.entries.append(BinEntry(entry_hash, cls, start, end - start,
                                          fields))
 
-    def _field(self) -> Field:
-        name = self._u32()
-        kind = self._u8()
-        at = self._at
-        self._skip(kind)
-        return Field(name, kind, at, self._at)
+    def _fields(self, count: int, end: int) -> List[Field]:
+        """Locate fields, resolving 4/8-byte hashes against the declared end.
 
-    def _skip(self, kind: int) -> None:
-        """Step over one value of *kind*, whatever shape it is."""
+        Kind 17 stores both widths without a tag. Try the old 4-byte layout
+        first, then retry hash fields at 8 bytes if the block does not fit.
+        Nested sized blocks resolve their widths independently.
+        """
+        fields: List[Field] = []
+        alternatives: List[Tuple[int, int]] = []
+        first_error = None
+        # A malformed file must not cause an exponential width search.
+        budget = max(32, (end - self._at) * 2)
+        wide = False
+        while budget:
+            budget -= 1
+            try:
+                if len(fields) == count:
+                    if self._at != end:
+                        raise BinError(f"fields ended at {self._at}, not {end}")
+                    return fields
+                start = self._at
+                name = self._u32()
+                kind = self._u8()
+                at = self._at
+                # Optional hashes have no size of their own.
+                variable_hash = kind == 17 or (
+                    kind == _OPTION and self.data[at:at + 1] == b"\x11")
+                if variable_hash and not wide:
+                    alternatives.append((len(fields), start))
+                self._skip(kind, 8 if wide else 4)
+                wide = False
+                if self._at > end:
+                    raise BinError(f"field at {start} exceeds its block")
+                fields.append(Field(name, kind, at, self._at))
+            except BinError as exc:
+                if first_error is None:
+                    first_error = exc
+                if not alternatives:
+                    raise first_error
+                index, self._at = alternatives.pop()
+                del fields[index:]
+                wide = True
+        raise BinError("hash-width search exceeded its budget")
+
+    def _block_end(self, minimum: int) -> int:
+        size = self._u32()
+        end = self._at + size
+        if size < minimum or end > len(self.data):
+            raise BinError(f"invalid block size {size} at {self._at - 4}")
+        return end
+
+    def _skip(self, kind: int, hash_width: int = 4) -> None:
+        """Step over a value while checking the sizes of nested blocks."""
         fixed = _FIXED.get(kind)
-        if fixed is not None:
+        if kind == 17:
+            self._take(hash_width)
+        elif fixed is not None:
             self._take(fixed)
         elif kind == _STRING:
             self._string()
         elif kind in (_LIST, _LIST2):
             item = self._u8()
-            self._u32()                     # byte size, which we do not trust
-            for _ in range(self._u32()):
-                self._skip(item)
+            end = self._block_end(4)
+            count = self._u32()
+            width = 4
+            if item == 17 and count:
+                width, remainder = divmod(end - self._at, count)
+                if remainder or width not in (4, 8):
+                    raise BinError("invalid hash container size")
+            if count > len(self.data):
+                raise BinError(f"absurd container count {count}")
+            for _ in range(count):
+                self._skip(item, width)
+            if self._at != end:
+                raise BinError("container size mismatch")
         elif kind in (_POINTER, _EMBED):
-            if self._u32() == 0:            # a null pointer stops there
+            if self._u32() == 0:
                 return
-            self._u32()                     # byte size
-            for _ in range(self._u16()):
-                self._field()
+            end = self._block_end(2)
+            self._fields(self._u16(), end)
         elif kind == _OPTION:
             item = self._u8()
             for _ in range(self._u8()):
-                self._skip(item)
+                self._skip(item, hash_width)
         elif kind == _MAP:
             key, value = self._u8(), self._u8()
-            self._u32()                     # byte size
-            for _ in range(self._u32()):
-                self._skip(key)
-                self._skip(value)
+            end = self._block_end(4)
+            count = self._u32()
+            if count > len(self.data):
+                raise BinError(f"absurd map count {count}")
+            start = self._at
+            if key == value == 17 and count and end - start == count * 12:
+                raise BinError("ambiguous hash widths in map")
+            # All keys share one width, and all values share one width.
+            for key_width in ((4, 8) if key == 17 else (4,)):
+                for value_width in ((4, 8) if value == 17 else (4,)):
+                    self._at = start
+                    try:
+                        for _ in range(count):
+                            self._skip(key, key_width)
+                            self._skip(value, value_width)
+                        if self._at == end:
+                            return
+                    except BinError:
+                        pass
+            raise BinError("map size mismatch")
         else:
             raise BinError(f"unknown value type 0x{kind:02x} at {self._at}")
 

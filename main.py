@@ -440,11 +440,14 @@ def main() -> int:
     else:
         tools_dir = Path(__file__).parent / "tools"
 
+    manager_backend = IS_WINDOWS and os.environ.get("TIBBERS_LTK_BACKEND") == "manager"
+
     # The platform layer knows what the build is called and what has to sit
     # beside it -- `mod-tools` on macOS, `mod-tools.exe` plus its cslol-dll.dll
     # on Windows.
     try:
-        system.select_modtools(tools_dir)
+        if not manager_backend:
+            system.select_modtools(tools_dir)
     except FileNotFoundError as exc:
         if IS_WINDOWS:
             # Non-fatal on Windows: the picker and the skin library still work;
@@ -487,7 +490,11 @@ def main() -> int:
 
     prefs = prefs_mod.Prefs()
     state = server.State()
-    inject = injector.Injector(game_dir, tools_dir, system.data_dir() / "work",
+    injector_class = injector.Injector
+    if manager_backend:
+        from tibbers.ltk_injector import ManagerInjector
+        injector_class = ManagerInjector
+    inject = injector_class(game_dir, tools_dir, system.data_dir() / "work",
                                enabled=can_inject)
 
     if args.stop_patcher:
@@ -880,7 +887,7 @@ def main() -> int:
             refresh_availability(champion_id)
             got, miss = progress["fetched"], progress["missing"]
             if got or miss:
-                state.say(f"{got} skins built from the install "
+                state.say(f"{got} skins prepared "
                           f"({miss} have no mod available)")
 
     downloads = downloader.ChampionDownloader(on_progress=on_download_progress)
@@ -961,10 +968,10 @@ def main() -> int:
     # -- the party ---------------------------------------------------------
 
     def party_mod(champion_id: int, skin_id: int, chroma_id: Optional[int]):
-        """A party member's pick as a mod on disk, built from the install if it
-        is not there yet: ``(path, the id it dresses the champion in)``, or
-        ``(None, None)``. A chroma that cannot be built falls back to its skin,
-        which is still most of what they picked."""
+        """A party member's pick as a mod on disk, prepared if it is not there
+        yet: ``(path, the id it dresses the champion in)``, or
+        ``(None, None)``. A chroma that cannot be prepared falls back to its
+        skin, which is still most of what they picked."""
         targets = [downloader.Target(skin_id, chroma_id)] if chroma_id else []
         targets.append(downloader.Target(skin_id))
         key = None
@@ -974,7 +981,7 @@ def main() -> int:
                 if key is None:
                     alias = gamedata.champion_alias(champion_id)
                     key = (skinsmith.champion_key(alias) if alias else None) or ""
-                if key and downloader.prepare(champion_id, target, key):
+                if downloader.prepare(champion_id, target, key):
                     path = downloader.existing(champion_id, target)
             if path is not None:
                 return path, target.leaf
@@ -1547,6 +1554,13 @@ def main() -> int:
         """
         if session.rebuild is not None and session.rebuild.is_alive():
             return {"ok": False, "message": "a rebuild is already running"}
+        if downloader.skin_catalogue.enabled():
+            # Rose mirrors the whole LeagueSkins catalogue at startup; Tibbers
+            # fetches a skin when it is shown, so there is nothing to rebuild.
+            # Walking every champion here would download the entire library.
+            return {"ok": False,
+                    "message": "LTK Manager mode downloads each skin when it is "
+                               "shown -- there is nothing to rebuild"}
         if not skinsmith.available():
             return {"ok": False,
                     "message": "no League install to build mods from"}
@@ -1702,7 +1716,7 @@ def main() -> int:
         ready until this finishes, and applying a skin before then reports the
         missing tools -- so this is a soft dependency, not a gate on the app.
         """
-        if not (IS_WINDOWS and getattr(sys, "frozen", False)):
+        if manager_backend or not (IS_WINDOWS and getattr(sys, "frozen", False)):
             return
         from tibbers import wintools
 

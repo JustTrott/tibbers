@@ -237,6 +237,63 @@ class Parsing(unittest.TestCase):
                          [skinsmith.SKIN_CLASS, skinsmith.RESOLVER_CLASS,
                           0x11223344])
 
+    def test_mixed_hash_widths_preserve_field_boundaries(self):
+        # StaticMaterialDef.name from the installed Caitlyn skin54 uses 8 bytes.
+        fields = [
+            (0x8D39BDE6, HASH, bytes.fromhex("0423285aab6059b7")),
+            (0x0A6F0EB5, HASH, struct.pack("<I", 0x12345678)),
+            (fnv1a32("label"), STRING, _string("after hashes")),
+        ]
+        parsed = skinsmith.Bin(prop([(0xFF9D3409, 1, fields)]))
+        for actual, (name, kind, value) in zip(parsed.entries[0].fields, fields):
+            self.assertEqual((actual.name, actual.type), (name, kind))
+            self.assertEqual(parsed.data[actual.at:actual.end], value)
+
+    def test_nested_wide_hash_and_following_field(self):
+        nested = struct.pack("<H", 1) + struct.pack("<IBQ", 1, HASH, 0xB75960AB5A282304)
+        value = struct.pack("<II", 0xFF9D3409, len(nested)) + nested
+        parsed = skinsmith.Bin(prop([(1, 2, [
+            (3, 0x83, value), (4, STRING, _string("after")),
+        ])]))
+        self.assertEqual(len(parsed.entries[0].fields), 2)
+
+    def test_hash_containers_at_both_widths(self):
+        for kind in (0x80, 0x81):
+            for width, fmt in ((4, "<II"), (8, "<QQ")):
+                with self.subTest(kind=kind, width=width):
+                    body = struct.pack("<I", 2) + struct.pack(fmt, 10, 20)
+                    value = bytes([HASH]) + struct.pack("<I", len(body)) + body
+                    parsed = skinsmith.Bin(prop([(1, 2, [(3, kind, value)])]))
+                    field = parsed.entries[0].fields[0]
+                    self.assertEqual(parsed.data[field.at:field.end], value)
+
+    def test_wide_hash_map_keys_and_values(self):
+        for key, value, fmt in ((HASH, U32, "<QI"), (U32, HASH, "<IQ"),
+                                (HASH, HASH, "<QQ")):
+            with self.subTest(key=key, value=value):
+                body = struct.pack("<I", 1) + struct.pack(fmt, 10, 20)
+                encoded = bytes([key, value]) + struct.pack("<I", len(body)) + body
+                parsed = skinsmith.Bin(prop([(1, 2, [(3, 0x86, encoded)])]))
+                field = parsed.entries[0].fields[0]
+                self.assertEqual(parsed.data[field.at:field.end], encoded)
+
+    def test_ambiguous_hash_map_is_rejected(self):
+        body = struct.pack("<IIQ", 1, 10, 20)
+        value = bytes([HASH, HASH]) + struct.pack("<I", len(body)) + body
+        with self.assertRaises(skinsmith.BinError):
+            skinsmith.Bin(prop([(1, 2, [(3, 0x86, value)])]))
+
+    def test_optional_wide_hash(self):
+        value = bytes([HASH, 1]) + struct.pack("<Q", 0xB75960AB5A282304)
+        parsed = skinsmith.Bin(prop([(1, 2, [(3, 0x85, value)])]))
+        field = parsed.entries[0].fields[0]
+        self.assertEqual(parsed.data[field.at:field.end], value)
+
+    def test_incorrect_container_size_is_rejected(self):
+        value = bytes([HASH]) + struct.pack("<III", 9, 1, 123)
+        with self.assertRaises(skinsmith.BinError):
+            skinsmith.Bin(prop([(1, 2, [(3, 0x80, value)])]))
+
     def test_not_a_property_file(self):
         with self.assertRaises(skinsmith.BinError):
             skinsmith.Bin(b"BKHD" + b"\x00" * 40)

@@ -164,6 +164,12 @@ def find_install() -> Tuple[Optional[Path], Optional[Path]]:
 
 
 def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
+    # An explicit root also works before the League client has been opened.
+    configured = os.environ.get("TIBBERS_LEAGUE_ROOT")
+    if configured:
+        root = Path(configured).expanduser()
+        if is_client_dir(root) and is_game_dir(root / "Game"):
+            return root / "Game", root
     for proc in find_processes(CLIENT_PROCESS, CLIENT_UX_PROCESS):
         try:
             exe = proc.exe()

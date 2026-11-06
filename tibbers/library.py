@@ -8,10 +8,11 @@ drops in unchanged::
 
     skins/<championId>/<skinId>/<skinId>.fantome
 
-A `.fantome` is a zip holding `META/info.json` and a `WAD/` directory. The mods
-carry no art: they rewrite the base skin's asset pointers to reference the
-requested skin's files, which already ship with the game. That is why they are
-kilobytes rather than megabytes.
+A `.fantome` is a zip holding `META/info.json` and a `WAD/` directory. Mods can contain property files, models and sound banks.
+
+The LTK Manager backend keeps the archives it downloads from the LeagueSkins
+catalogue in a separate `skins-leagueskins/` tree, so a locally generated mod
+from an older run is never mistaken for one of them.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import skinsmith, system
+from . import skinsmith, system, skin_catalogue
 
 EXTENSIONS = (".fantome", ".zip")
 
@@ -31,10 +32,11 @@ _SKINS_DIR: Dict[Path, Path] = {}
 
 
 def skins_dir() -> Path:
-    root = system.data_dir()
+    folder = "skins-leagueskins" if skin_catalogue.enabled() else "skins"
+    root = system.data_dir() / folder
     made = _SKINS_DIR.get(root)
     if made is None:
-        made = root / "skins"
+        made = root
         made.mkdir(parents=True, exist_ok=True)
         _SKINS_DIR[root] = made
     return made

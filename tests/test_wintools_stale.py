@@ -24,6 +24,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tibbers import wintools  # noqa: E402
 
 
+def setUpModule():
+    # Keep this machine's own ltk_source.json out of every test.
+    patch = mock.patch.dict("os.environ",
+                            {"TIBBERS_HOME": tempfile.mkdtemp()})
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+
+
 class Expired(unittest.TestCase):
     """The patcher log is read for the line the expired DLL writes."""
 
@@ -64,40 +72,39 @@ class Outdated(unittest.TestCase):
         for name in wintools.LTK_FILES:
             (self.where / name).write_bytes(b"MZ\x90\x00")
 
-    def _latest(self, tag):
-        return mock.patch.object(wintools, "_latest_release",
-                                 return_value={"tag_name": tag})
+    def _staged(self, digest):
+        return mock.patch.object(
+            wintools, "staged_ltk_dll",
+            return_value=None if digest is None else
+            (self.where, {"digest": digest, "version": "ltk_patcher-30"}))
 
-    def test_an_install_with_no_record_is_outdated(self):
-        # Every install made before 1.1.2 looks like this, and every one of
-        # them is carrying a patcher that has since expired.
-        self._pair()
-        with self._latest("v1.19.2"):
-            self.assertTrue(wintools.ltk_outdated(self.where))
-
-    def test_a_matching_tag_is_current(self):
+    def test_an_install_with_no_dll_digest_is_outdated(self):
+        # Every install made before the DLL left LTK's setup looks like this.
         self._pair()
         wintools._record(self.where, ltk="v1.19.2")
-        with self._latest("v1.19.2"):
+        with self._staged("ab" * 32):
+            self.assertTrue(wintools.ltk_outdated(self.where))
+
+    def test_the_staged_dll_is_current(self):
+        self._pair()
+        wintools._record(self.where, ltk_dll="ab" * 32)
+        with self._staged("ab" * 32):
             self.assertFalse(wintools.ltk_outdated(self.where))
 
-    def test_an_older_tag_is_outdated(self):
+    def test_a_newer_staged_dll_is_outdated(self):
         self._pair()
-        wintools._record(self.where, ltk="v1.15.2")
-        with self._latest("v1.19.2"):
+        wintools._record(self.where, ltk_dll="ab" * 32)
+        with self._staged("cd" * 32):
             self.assertTrue(wintools.ltk_outdated(self.where))
 
     def test_a_missing_pair_is_outdated(self):
-        with self._latest("v1.19.2"):
+        with self._staged(None):
             self.assertTrue(wintools.ltk_outdated(self.where))
 
-    def test_an_unreachable_github_leaves_the_patcher_alone(self):
-        # Asking failed, so we do not know it is old -- and throwing away a
-        # patcher that may be working would be worse than keeping it.
+    def test_nothing_staged_leaves_the_patcher_alone(self):
+        # LTK Manager is not installed: there is nothing better to switch to.
         self._pair()
-        wintools._record(self.where, ltk="v1.15.2")
-        with mock.patch.object(wintools, "_latest_release",
-                               side_effect=OSError("offline")):
+        with self._staged(None):
             self.assertFalse(wintools.ltk_outdated(self.where))
 
     def test_the_record_merges_rather_than_replaces(self):
@@ -157,6 +164,139 @@ def _nsis(files, dict_size=1 << 20):
     return b"MZ" + b"\0" * 510 + first + body
 
 
+class StagedDll(unittest.TestCase):
+    """The DLL LTK Manager downloaded is found through its cached manifests."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data = Path(self.tmp.name) / wintools.LTK_IDENTIFIER
+        self.root = self.data / wintools.LTK_PATCHER_DIR
+        self.root.mkdir(parents=True)
+        env = mock.patch.dict("os.environ", {"APPDATA": self.tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def _stage(self, blob, channel="stable", eol=100, revoked=(), write=True):
+        import base64
+        import hashlib
+        digest = hashlib.sha256(blob).hexdigest()
+        if write:
+            (self.root / digest).mkdir(exist_ok=True)
+            (self.root / digest / wintools.LTK_DLL).write_bytes(blob)
+        manifest = {"schema": 1, "channel": channel, "sequence": 1,
+                    "release": {"version": "ltk_patcher-" + channel,
+                                "digest": digest, "size": len(blob),
+                                "protocol": 3, "managers": ">=1.0.0",
+                                "eol": eol},
+                    "revoked": list(revoked)}
+        path = self.root / wintools.LTK_DELIVERY_STATE
+        state = json.loads(path.read_text()) if path.exists() else {"channels": {}}
+        state["channels"][channel] = {"etag": None, "envelope": {
+            "manifest": base64.b64encode(json.dumps(manifest).encode()).decode(),
+            "signature": "untrusted comment: test"}}
+        path.write_text(json.dumps(state))
+        return digest
+
+    def test_nothing_installed_finds_nothing(self):
+        self.assertIsNone(wintools.staged_ltk_dll())
+
+    def test_the_staged_dll_is_found(self):
+        digest = self._stage(b"MZ dll")
+        found = wintools.staged_ltk_dll()
+        self.assertEqual(found[0], self.root / digest)
+        self.assertEqual(found[1]["digest"], digest)
+
+    def test_a_dll_that_does_not_match_its_digest_is_skipped(self):
+        digest = self._stage(b"MZ dll")
+        (self.root / digest / wintools.LTK_DLL).write_bytes(b"MZ other")
+        self.assertIsNone(wintools.staged_ltk_dll())
+
+    def test_a_revoked_dll_is_skipped(self):
+        bad = self._stage(b"MZ bad", channel="beta", eol=200)
+        self._stage(b"MZ good", channel="stable", revoked=[bad])
+        self.assertNotEqual(wintools.staged_ltk_dll()[1]["digest"], bad)
+
+    def test_the_later_end_of_life_wins(self):
+        self._stage(b"MZ old", channel="stable", eol=100)
+        newer = self._stage(b"MZ new", channel="beta", eol=200)
+        self.assertEqual(wintools.staged_ltk_dll()[1]["digest"], newer)
+
+    def test_a_moved_data_directory_is_read(self):
+        moved = Path(self.tmp.name) / "elsewhere"
+        (self.data / "settings.json").write_text(
+            json.dumps({"modStoragePath": str(moved)}))
+        self.root = moved / wintools.LTK_PATCHER_DIR
+        self.root.mkdir(parents=True)
+        digest = self._stage(b"MZ moved")
+        self.assertEqual(wintools.staged_ltk_dll()[1]["digest"], digest)
+
+    def test_fetching_without_ltk_says_what_to_do(self):
+        with self.assertRaises(wintools.LtkDllMissing):
+            wintools._fetch_ltk(Path(self.tmp.name), None)
+
+    def test_a_staged_pair_is_copied_without_the_network(self):
+        digest = self._stage(b"MZ dll")
+        (self.root / digest / wintools.LTK_HOST).write_bytes(b"MZ host")
+        into = Path(self.tmp.name) / "tools"
+        into.mkdir()
+        with mock.patch.object(wintools, "_latest_release",
+                               side_effect=AssertionError("network")):
+            wintools._fetch_ltk(into, None)
+        self.assertEqual((into / wintools.LTK_DLL).read_bytes(), b"MZ dll")
+        self.assertEqual((into / wintools.LTK_HOST).read_bytes(), b"MZ host")
+        self.assertEqual(wintools._read_record(into)["ltk_dll"], digest)
+
+
+class LocalSource(unittest.TestCase):
+    """ltk_source.json pins the pair to two files on this machine."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        data = mock.patch.object(wintools.system, "data_dir",
+                                 return_value=self.home)
+        data.start()
+        self.addCleanup(data.stop)
+        self.fork = self.home / "fork"
+        self.fork.mkdir()
+        (self.fork / "host.exe").write_bytes(b"MZ fork host")
+        (self.fork / "patched.dll").write_bytes(b"MZ patched dll")
+        (self.home / wintools.LTK_SOURCE).write_text(json.dumps(
+            {"host": str(self.fork / "host.exe"), "dll": "fork/patched.dll"}))
+        self.into = self.home / "tools"
+        self.into.mkdir()
+
+    def test_no_file_means_no_source(self):
+        (self.home / wintools.LTK_SOURCE).unlink()
+        self.assertIsNone(wintools.ltk_source())
+
+    def test_the_named_files_are_copied_without_ltk(self):
+        with mock.patch.object(wintools, "staged_ltk_dll",
+                               side_effect=AssertionError("staged")), \
+                mock.patch.object(wintools, "_latest_release",
+                                  side_effect=AssertionError("network")):
+            wintools._fetch_ltk(self.into, None)
+        self.assertEqual((self.into / wintools.LTK_HOST).read_bytes(),
+                         b"MZ fork host")
+        self.assertEqual((self.into / wintools.LTK_DLL).read_bytes(),
+                         b"MZ patched dll")
+
+    def test_a_changed_source_is_outdated(self):
+        wintools._fetch_ltk(self.into, None)
+        self.assertFalse(wintools.ltk_outdated(self.into))
+        (self.fork / "patched.dll").write_bytes(b"MZ patched again")
+        self.assertTrue(wintools.ltk_outdated(self.into))
+
+    def test_a_missing_source_keeps_the_pair(self):
+        wintools._fetch_ltk(self.into, None)
+        (self.fork / "host.exe").unlink()
+        self.assertFalse(wintools.ltk_outdated(self.into))
+        with self.assertRaises(RuntimeError):
+            wintools._fetch_ltk(self.into, None)
+
+
 class UnpackNsis(unittest.TestCase):
     """LTK's patcher is read out of its NSIS setup, never by running it."""
 
@@ -204,13 +344,23 @@ class UnpackNsis(unittest.TestCase):
             for name in names:
                 (Path(into) / name).write_bytes(b"MZ")
 
+        # LTK has staged a DLL but not yet run a session, so no host sits
+        # beside it and the host comes out of the setup.
+        staged = self.where / "staged"
+        staged.mkdir()
+        (staged / wintools.LTK_DLL).write_bytes(b"MZ dll")
+        into = self.where / "tools"
+        into.mkdir()
         with mock.patch.object(wintools, "_latest_release",
                                return_value={**release, "tag_name": "v1.22.1"}), \
                 mock.patch.object(wintools, "_download"), \
+                mock.patch.object(wintools, "staged_ltk_dll",
+                                  return_value=(staged, {"digest": "ab" * 32})), \
                 mock.patch.object(wintools, "unpack_nsis", fake_unpack):
-            wintools._fetch_ltk(self.where, None)
+            wintools._fetch_ltk(into, None)
         self.assertEqual(seen, ["LTK.Manager_1.22.1_x64-setup.exe"])
-        self.assertEqual(wintools._read_record(self.where)["ltk"], "v1.22.1")
+        self.assertEqual((into / wintools.LTK_DLL).read_bytes(), b"MZ dll")
+        self.assertEqual(wintools._read_record(into)["ltk"], "v1.22.1")
 
 
 class Orphans(unittest.TestCase):

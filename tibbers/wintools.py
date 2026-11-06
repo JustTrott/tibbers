@@ -20,9 +20,12 @@ which is writable, unlike the install directory under Program Files.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import lzma
+import os
 import shutil
 import struct
 import subprocess
@@ -30,7 +33,7 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from . import system
 
@@ -46,6 +49,29 @@ CSLOL_ASSET = "cslol-manager-windows.exe"
 #: The four files a working Windows install needs, and which pair each is in.
 CSLOL_FILES = ("mod-tools.exe", "cslol-dll.dll")
 LTK_FILES = ("ltk_patcher_host.exe", "ltk_patcher_dll.dll")
+LTK_HOST, LTK_DLL = LTK_FILES
+
+#: LTK Manager's Tauri identifier, which names its app data directory under
+#: %APPDATA%. Its settings.json there may move the data directory elsewhere.
+LTK_IDENTIFIER = "dev.leaguetoolkit.manager"
+
+#: Since LTK Manager's ADR-0074 (2026-10-31) its setup carries the host and no
+#: DLL. The manager downloads the DLL from its own delivery service and stages
+#: it under `<data dir>/patcher/<sha256>/`, next to `delivery.json`, which
+#: caches the signed manifest of each channel. A build without LTK's
+#: attestation is meant to read exactly these staged DLLs, so that is what
+#: tibbers does: it never talks to the delivery service itself.
+LTK_PATCHER_DIR = "patcher"
+LTK_DELIVERY_STATE = "delivery.json"
+LTK_CHANNELS = ("stable", "beta")
+
+#: A local override, in the data directory, for where the LTK pair comes from:
+#: ``{"host": "<ltk_patcher_host.exe>", "dll": "<ltk_patcher_dll.dll>"}``.
+#: With it, tibbers copies exactly those two files -- a fork's own host, a DLL
+#: built or patched by hand -- and never reads LTK Manager's staged copy or its
+#: releases. Whenever either source file changes, the pair is copied again.
+#: Relative paths are taken from the directory the file sits in.
+LTK_SOURCE = "ltk_source.json"
 
 
 def tools_dir() -> Path:
@@ -120,26 +146,31 @@ def expired(log_path: Path) -> bool:
 
 
 def ltk_outdated(where: Optional[Path] = None) -> bool:
-    """True when the installed LTK patcher is not the latest release.
+    """True when LTK Manager has staged a different DLL than the one we copied.
 
-    An install from before this was recorded has no record at all, which is
-    exactly the population whose patcher has since expired -- so a missing
-    record counts as outdated rather than as up to date. A network failure
-    counts as up to date: a machine that cannot ask must not throw away a
-    patcher that may be working.
+    The DLL no longer ships in LTK's releases, so a release tag says nothing
+    about it; what LTK Manager last downloaded is the latest patcher this
+    machine can have. An install whose record names no DLL digest -- every
+    install from before the DLL moved -- counts as outdated whenever LTK has
+    staged one. With nothing staged there is nothing better to switch to, so
+    the pair in place stays (and its expiry still shows up in its log).
     """
     where = Path(where) if where is not None else tools_dir()
     if not all((where / name).exists() for name in LTK_FILES):
         return True
-    have = _read_record(where).get("ltk")
-    if not have:
-        return True
-    try:
-        latest = _latest_release(LTK_LATEST).get("tag_name") or ""
-    except Exception as exc:  # noqa: BLE001
-        log.info("could not check for a newer LTK patcher: %s", exc)
+    source = ltk_source()
+    if source is not None:
+        # A missing source is a fork mid-rebuild: keep the pair in place.
+        if not all(src.exists() for src in source):
+            log.warning("%s names a file that does not exist; keeping the "
+                        "patcher in place", LTK_SOURCE)
+            return False
+        return any(_sha256(src) != _sha256(where / name)
+                   for src, name in zip(source, LTK_FILES))
+    staged = staged_ltk_dll()
+    if staged is None:
         return False
-    return bool(latest) and latest != have
+    return staged[1].get("digest") != _read_record(where).get("ltk_dll")
 
 
 def _report(progress: Optional[Progress], message: str,
@@ -335,7 +366,135 @@ def unpack_nsis(exe: Path, names, into: Path) -> None:
         (Path(into) / name).write_bytes(blob)
 
 
+class LtkDllMissing(RuntimeError):
+    """LTK Manager has not staged a patcher DLL on this machine."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "LTK Manager has not downloaded its patcher yet. Install LTK "
+            "Manager (github.com/LeagueToolkit/ltk-manager), open it once and "
+            "let it finish, then try again -- tibbers uses the patcher it "
+            "downloads.")
+
+
+def ltk_data_dirs() -> List[Path]:
+    """Where LTK Manager may keep its data, the configured folder first."""
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return []
+    default = Path(appdata) / LTK_IDENTIFIER
+    dirs = [default]
+    try:
+        settings = json.loads((default / "settings.json").read_text("utf-8"))
+        moved = settings.get("modStoragePath") if isinstance(settings, dict) else None
+        if moved:
+            dirs.insert(0, Path(moved))
+    except (OSError, ValueError):
+        pass
+    return dirs
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _cached_releases(root: Path) -> List[dict]:
+    """The releases LTK's cached manifests offer, with the revoked ones dropped.
+
+    The manifests are minisign-signed and LTK verified them before caching;
+    tibbers has no Ed25519 verifier in its bundle, so it trusts the cache only
+    as far as the DLL's own SHA-256 matching the digest the manifest names.
+    """
+    try:
+        state = json.loads((root / LTK_DELIVERY_STATE).read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    manifests = []
+    for channel in LTK_CHANNELS:
+        entry = (state.get("channels") or {}).get(channel) or {}
+        try:
+            body = base64.b64decode(entry["envelope"]["manifest"])
+            manifest = json.loads(body)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if manifest.get("schema") == 1 and manifest.get("channel") == channel:
+            manifests.append(manifest)
+    revoked = {d for m in manifests for d in m.get("revoked") or []}
+    return [m["release"] for m in manifests
+            if isinstance(m.get("release"), dict)
+            and m["release"].get("digest") not in revoked]
+
+
+def staged_ltk_dll() -> Optional[Tuple[Path, dict]]:
+    """The newest patcher DLL LTK Manager has staged, and its release.
+
+    Returns the staging directory, which holds ``ltk_patcher_dll.dll`` and,
+    once LTK has run a session from it, the matching host. Stable comes
+    before beta; within those the release with the later end of life wins.
+    """
+    for data in ltk_data_dirs():
+        root = data / LTK_PATCHER_DIR
+        releases = sorted(_cached_releases(root),
+                          key=lambda r: r.get("eol") or 0, reverse=True)
+        for release in releases:
+            digest = str(release.get("digest") or "")
+            dll = root / digest / LTK_DLL
+            try:
+                if digest and _sha256(dll) == digest:
+                    return dll.parent, release
+            except OSError:
+                continue
+    return None
+
+
+def ltk_source() -> Optional[Tuple[Path, Path]]:
+    """The host and DLL named in ``ltk_source.json``, or None without one."""
+    path = system.data_dir() / LTK_SOURCE
+    try:
+        data = json.loads(path.read_text("utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"could not read {path}: {exc}") from exc
+    if not (isinstance(data, dict) and data.get("host") and data.get("dll")):
+        raise RuntimeError(f'{path} must name both "host" and "dll"')
+    return (path.parent / Path(data["host"]).expanduser(),
+            path.parent / Path(data["dll"]).expanduser())
+
+
 def _fetch_ltk(into: Path, progress) -> None:
+    source = ltk_source()
+    if source is not None:
+        _report(progress, "copying the patcher named in " + LTK_SOURCE)
+        for src in source:
+            if not src.exists():
+                raise RuntimeError(f"{src}, named in {LTK_SOURCE}, does not "
+                                   "exist")
+        for src, name in zip(source, LTK_FILES):
+            shutil.copy2(src, into / name)
+        _record(into, ltk_source=[str(src) for src in source],
+                ltk_dll=_sha256(into / LTK_DLL))
+        return
+
+    _report(progress, "looking for LTK Manager's patcher...")
+    staged = staged_ltk_dll()
+    if staged is None:
+        raise LtkDllMissing()
+    dll_dir, dll_release = staged
+
+    # The host LTK staged beside the DLL is the one it runs that DLL with, so
+    # the pair is matched by construction. Only before LTK's first session is
+    # it absent; then the host comes out of LTK's latest setup, as before.
+    if (dll_dir / LTK_HOST).exists():
+        _install_pair(dll_dir, LTK_FILES, into)
+        _record(into, ltk_dll=dll_release.get("digest"),
+                ltk_release=dll_release.get("version"))
+        return
+
     release = _latest_release(LTK_LATEST)
     asset = _pick_asset(
         release,
@@ -351,9 +510,12 @@ def _fetch_ltk(into: Path, progress) -> None:
         _report(progress, "extracting injection patcher...")
         # Read out of the installer, never run: no install, no service, no
         # registry, no Vanguard interaction.
-        unpack_nsis(setup, LTK_FILES, extract)
+        unpack_nsis(setup, (LTK_HOST,), extract)
+        shutil.copy2(dll_dir / LTK_DLL, extract / LTK_DLL)
         _install_pair(extract, LTK_FILES, into)
-        _record(into, ltk=release.get("tag_name") or "")
+        _record(into, ltk=release.get("tag_name") or "",
+                ltk_dll=dll_release.get("digest"),
+                ltk_release=dll_release.get("version"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

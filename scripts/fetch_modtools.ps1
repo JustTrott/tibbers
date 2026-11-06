@@ -79,35 +79,20 @@ Write-Host "==> Installed mod-tools.exe and cslol-dll.dll into $tools"
 # LTK patcher -- the injection host + hook DLL
 # ---------------------------------------------------------------------------
 #
-# LTK ships only an NSIS setup (its MSI went away in v1.20.0). Running that
-# would install LTK Manager, so its two patcher files are read out of the
-# setup instead by tibbers' own unpacker -- the one the packaged app uses --
-# which never runs it: no install, no registry, no Vanguard interaction.
+# Since late October 2026 LTK's setup carries the host and no DLL: LTK Manager
+# downloads the DLL itself and stages it under its own data directory. So LTK
+# Manager has to be installed and opened once; tibbers copies the DLL it
+# staged (and the host beside it, or else reads the host out of LTK's setup
+# without running it). wintools does all of it, exactly as the app does.
 
-Write-Host "==> Resolving latest LTK Manager release"
-$ltkApi = "https://api.github.com/repos/LeagueToolkit/ltk-manager/releases/latest"
-$ltkRel = Invoke-RestMethod -Uri $ltkApi -Headers @{ "User-Agent" = "tibbers" }
-$setup = $ltkRel.assets | Where-Object { $_.name -like "*-setup.exe" } | Select-Object -First 1
-if (-not $setup) {
-    throw ("no -setup.exe in the latest ltk-manager release. Install LTK " +
-           "Manager yourself and copy ltk_patcher_host.exe and " +
-           "ltk_patcher_dll.dll from its install folder into $tools")
-}
-
-$ltkTmp = Join-Path $env:TEMP "tibbers-ltk"
-New-Item -ItemType Directory -Force -Path $ltkTmp | Out-Null
-$setupPath = Join-Path $ltkTmp $setup.name
-
-Write-Host "==> Downloading $($setup.name)"
-Invoke-WebRequest -Uri $setup.browser_download_url -OutFile $setupPath
-
-Write-Host "==> Extracting LTK patcher (read out of the setup; nothing is run)"
+Write-Host "==> Installing the LTK patcher from LTK Manager's staged copy"
 $python = Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { $python = "python" }
-& $python -c "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); from tibbers import wintools; wintools.unpack_nsis(Path(sys.argv[2]), wintools.LTK_FILES, Path(sys.argv[3]))" $root $setupPath $tools
+& $python -c "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); from tibbers import wintools; wintools.refresh_ltk(Path(sys.argv[2]))" $root $tools
 if ($LASTEXITCODE -ne 0) {
-    throw ("could not unpack $setupPath. Install LTK Manager yourself and " +
-           "copy ltk_patcher_host.exe and ltk_patcher_dll.dll into $tools")
+    throw ("could not install the LTK patcher. Install LTK Manager " +
+           "(github.com/LeagueToolkit/ltk-manager), open it once so it " +
+           "downloads its patcher, then run this again")
 }
 Write-Host "==> Installed ltk_patcher_host.exe and ltk_patcher_dll.dll into $tools"
 
