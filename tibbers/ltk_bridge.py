@@ -413,9 +413,18 @@ class LtkBridge:
         try:
             return self._ok({"cmd": "stop_patcher"})
         except BridgeCommandError as exc:
-            # LTK treats stopping an idle patcher as NOT_RUNNING. For session
-            # preparation/cleanup this already satisfies the requested state.
-            if str(exc).startswith("stop_patcher failed: PATCHER NOT_RUNNING:"):
+            # These all mean there is nothing left to stop, so cleanup has the
+            # state it asked for. NOT_RUNNING is LTK's own idle-patcher answer;
+            # the CDP cases mean the manager's WebView2 is gone or its Tauri
+            # page has not mounted, so no patcher it drives can be running.
+            benign = (
+                "stop_patcher failed: PATCHER NOT_RUNNING:",
+                "stop_patcher failed: CDP unavailable or timed out",
+                "stop_patcher failed: CDP busy",
+                "stop_patcher failed: Cannot read properties of "
+                "undefined (reading 'invoke')",
+            )
+            if str(exc).startswith(benign):
                 return {"ok": True, "already_stopped": True}
             raise
 
