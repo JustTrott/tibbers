@@ -31,8 +31,9 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from tibbers import (autostart, downloader, i18n, importer, injector, lcu,
-                       library, lobby as lobby_mod, modes, prefs as prefs_mod,
-                       server, shell, skinsmith, system)  # noqa: E402
+                       library, lobby as lobby_mod, ltk_backend, modes,
+                       prefs as prefs_mod, server, shell, skinsmith,
+                       system)  # noqa: E402
 
 log = logging.getLogger("tibbers")
 
@@ -440,7 +441,7 @@ def main() -> int:
     else:
         tools_dir = Path(__file__).parent / "tools"
 
-    manager_backend = IS_WINDOWS and os.environ.get("TIBBERS_LTK_BACKEND") == "manager"
+    manager_backend = ltk_backend.configure(tools_dir)
 
     # The platform layer knows what the build is called and what has to sit
     # beside it -- `mod-tools` on macOS, `mod-tools.exe` plus its cslol-dll.dll
@@ -520,6 +521,10 @@ def main() -> int:
 
     stats = library.stats()
     state.say(f"game: {game_dir}")
+    if (IS_WINDOWS and can_inject and not manager_backend
+            and not ltk_backend.explicit_direct()):
+        state.say("LTK Manager not found -- skins need it; install it from "
+                  "github.com/LeagueToolkit/ltk-manager")
     if privileged is None:
         state.say("elevation: none needed on Windows")
     elif privileged.stale(Path(__file__).parent / "tools"):

@@ -186,7 +186,25 @@ def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
     for root in INSTALL_ROOTS:
         if is_client_dir(root) and is_game_dir(root / "Game"):
             return root / "Game", root
+    # A Riot folder on another drive, before the client has been opened: the
+    # launcher script used to do this scan, so a plain launch should too.
+    for root in _other_drives():
+        if is_client_dir(root) and is_game_dir(root / "Game"):
+            return root / "Game", root
     return None, None
+
+
+def _other_drives() -> List[Path]:
+    """League installs under ``<drive>:\\Riot Games\\League of Legends``."""
+    if not sys.platform.startswith("win"):
+        return []
+    try:
+        import string
+        return [Path(f"{letter}:\\Riot Games\\League of Legends")
+                for letter in string.ascii_uppercase
+                if Path(f"{letter}:\\").exists()]
+    except OSError:
+        return []
 
 
 def lockfile_path() -> Optional[Path]:

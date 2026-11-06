@@ -33,9 +33,13 @@ Write-Host "==> Installing requirements-windows.txt into the venv"
 & $python -m pip install --quiet --disable-pip-version-check -r (Join-Path $root "requirements-windows.txt")
 if ($LASTEXITCODE -ne 0) { throw "pip could not install requirements-windows.txt" }
 
-if ($LtkBridge) {
+if ($LtkBridge -or -not (Test-Path (Join-Path $root "tools\ltf\ltk_launcher.exe"))) {
+    Write-Host "==> Building the LTF bridge"
     & $python scripts/build_ltf.py
-    if ($LASTEXITCODE -ne 0) { throw "LTF bridge build failed" }
+    if ($LASTEXITCODE -ne 0) {
+        if ($LtkBridge) { throw "LTF bridge build failed" }
+        Write-Warning "the LTF bridge was not built; the app will use the direct backend"
+    }
 }
 
 # A .ico is required for the window/exe icon; derive it from the png if absent.

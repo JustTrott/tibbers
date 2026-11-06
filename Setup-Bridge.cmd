@@ -5,5 +5,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Build Tools installed. Run Start-Bridge.cmd to build and start Tibbers.
+echo Build Tools installed. Launch Tibbers; it builds its bridge on first start.
 pause

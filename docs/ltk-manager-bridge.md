@@ -1,26 +1,33 @@
-# Windows LTK Manager backend (opt-in)
+# Windows LTK Manager backend
 
-This backend replaces Tibbers' direct patcher-host launch with the LTF bridge
-used by Rose. It requires an installed LTK Manager. macOS is unaffected.
-It has automated session tests; native compilation and an actual League match
-must still be verified on a Windows development machine with MSVC and LTK.
-It is deliberately opt-in until that verification is complete.
+Tibbers applies skins on Windows through an installed LTK Manager, using the
+LTF bridge that Rose uses. The backend is chosen automatically: when LTK
+Manager is found, Tibbers uses it; otherwise it keeps the older direct
+patcher-host backend. macOS is unaffected.
+
+No launcher script is needed. Starting `main.py` or `Tibbers.exe` is enough:
+Tibbers installs a staged bridge, or builds one from this checkout the first
+time, and switches itself to the Manager backend.
 
 ## Build and run
 
-Install Visual Studio C++ Build Tools (x64, Windows SDK) and Tibbers' Python
-dependencies as described in WINDOWS.md, then run from the repository root:
+Install LTK Manager from
+[LeagueToolkit/ltk-manager](https://github.com/LeagueToolkit/ltk-manager/releases).
+A source checkout also needs Visual Studio C++ Build Tools (x64, Windows SDK)
+the first time, because the bridge is compiled locally; `Setup-Bridge.cmd`
+installs them. Then run from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/build_ltf.py
-$env:TIBBERS_LTK_BACKEND = 'manager'
-# Optional when LTK is outside its usual installation directories:
-$env:TIBBERS_LTK_MANAGER = 'C:\path\to\ltk-manager.exe'
 .\.venv\Scripts\python.exe main.py
 ```
 
+`TIBBERS_LTK_BACKEND=manager` forces the Manager backend, `=direct` keeps the
+old one, and `TIBBERS_LTK_MANAGER` points at an LTK Manager installed
+somewhere unusual. `Start-Bridge.cmd` is only a convenience launcher for a
+checkout and sets none of these.
+
 Close any existing LTK Manager instance first. Tibbers refuses to take over
-an instance it did not launch. The new backend stages the original .fantome
+an instance it did not launch. The backend stages the original .fantome
 archives and lets LTK build the overlay: it does not run cslol mkoverlay.
 Each staged archive gets a unique META/info.json Name, to avoid replacing a
 mod already in the manager's library. Mod WAD contents are preserved.
@@ -29,8 +36,8 @@ For packaging use `scripts/build_windows.ps1 -LtkBridge` (optionally with
 `-Installer`). The spec includes the locally compiled launcher, bridge and
 MIT notice when available. Only these own-built components are bundled;
 users must install LTK Manager separately. In manager mode automatic standalone
-LTK patcher downloads/refreshes are skipped. To switch back, unset
-TIBBERS_LTK_BACKEND after stopping the session with Tibbers while idle.
+LTK patcher downloads/refreshes are skipped. To switch back, set
+TIBBERS_LTK_BACKEND=direct after stopping the session with Tibbers while idle.
 
 ## Where the mods come from
 
@@ -88,7 +95,7 @@ remain errors even if the bridge itself answered successfully. Manager logs:
 ## Manual acceptance check (still required)
 
 1. Start with an enabled personal mod in LTK; close LTK and launch Tibbers
-   with manager mode enabled. Select a skin before the game starts.
+   (it picks the Manager backend itself). Select a skin before the game.
 2. Confirm manager scanning is reported, launch a practice match and check
    both its visible skin and `overlay verified` / `redirected wad` logs.
 3. Restart Tibbers mid-match: the manager must remain alive and be adopted.

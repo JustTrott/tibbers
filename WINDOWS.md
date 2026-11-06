@@ -1,9 +1,9 @@
 # tibbers on Windows
 
 An opt-in backend for recent LTK versions drives the installed LTK Manager
-through a locally built bridge. See [the bridge setup and validation notes](docs/ltk-manager-bridge.md).
-The direct-host backend described below remains the default pending a live
-match verification of the new backend.
+through a locally built bridge. It is selected automatically when LTK Manager
+is installed; set `TIBBERS_LTK_BACKEND=direct` to force the older direct-host
+backend. See [the bridge setup and validation notes](docs/ltk-manager-bridge.md).
 
 The whole picker, the op.gg guide, on-hover skin building and the WAD
 reading/writing are pure Python and already cross-platform. Windows differs in
