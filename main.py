@@ -20,6 +20,7 @@ import argparse
 import logging
 import logging.handlers
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -55,6 +56,41 @@ LOG_BACKUPS = 3
 PATCHER_WATCH_INTERVAL = 3.0
 #: Wad redirects copied into tibbers.log before the rest are only counted.
 PATCHER_REDIRECTS_SHOWN = 3
+
+
+#: How long a restarted copy waits for the old one to quit.
+RESTART_WAIT = 30.0
+#: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: the new copy outlives this one
+#: and opens no console of its own.
+RESTART_FLAGS = 0x00000008 | 0x00000200
+
+
+def _wait_for_exit(pid: int, timeout: float = RESTART_WAIT) -> None:
+    import psutil
+    try:
+        psutil.Process(pid).wait(timeout=timeout)
+    except psutil.NoSuchProcess:
+        pass
+    except psutil.TimeoutExpired:
+        log.warning("the copy being restarted (pid %d) has not quit; "
+                    "starting anyway", pid)
+
+
+def _restart_command() -> list:
+    """This program again, with the arguments it was given, after this pid."""
+    args, skip = [], False
+    for arg in sys.argv[1:]:
+        if skip:
+            skip = False
+            continue
+        if arg == "--after-pid":
+            skip = True
+            continue
+        if not arg.startswith("--after-pid="):
+            args.append(arg)
+    head = [sys.executable] if getattr(sys, "frozen", False) \
+        else [sys.executable, str(Path(__file__).resolve())]
+    return head + args + ["--after-pid", str(os.getpid())]
 
 
 def _running_instance(port: int = 7777, span: int = 12) -> Optional[int]:
@@ -326,6 +362,8 @@ def main() -> int:
     ap.add_argument("--quiet", action="store_true",
                     help="start without taking focus and without opening a "
                          "window -- for relaunching while a game is running")
+    ap.add_argument("--after-pid", type=int, default=None,
+                    help=argparse.SUPPRESS)  # a restart: wait for the old copy
     ap.add_argument("--mock", action="store_true",
                     help="drive the UI from a mock client overlay, so every "
                          "state can be opened without queueing a game")
@@ -378,6 +416,12 @@ def main() -> int:
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
     )
+
+    if args.after_pid:
+        # A restart started by the copy that is quitting. It still holds the
+        # instance mutex and the port, so taking either now would hand off to
+        # it -- and it is on its way out.
+        _wait_for_exit(args.after_pid)
 
     if portable:
         log.info("portable mode -- data beside the app in %s",
@@ -520,6 +564,13 @@ def main() -> int:
             return 0
 
     state = server.State()
+    # LTK Manager applies the skins on Windows. When it is missing the picker
+    # and Settings offer to install it -- an auto-update never does.
+    if IS_WINDOWS:
+        from tibbers import ltk_install
+        if not ltk_install.installed():
+            state.ltk = {"missing": True, "state": "idle"}
+            log.info("LTK Manager is not installed -- the picker offers to install it")
     injector_class = injector.Injector
     if manager_backend:
         from tibbers.ltk_injector import ManagerInjector
@@ -1302,6 +1353,15 @@ def main() -> int:
         while True:
             time.sleep(PATCHER_WATCH_INTERVAL)
             try:
+                # LTK installed by hand while tibbers is open: stop offering
+                # the button and ask for the restart that puts it to use.
+                with state.lock:
+                    offered = (state.ltk.get("missing")
+                               and state.ltk.get("state") in ("idle", "error"))
+                if offered:
+                    from tibbers import ltk_install
+                    if ltk_install.installed():
+                        note_ltk_installed()
                 if not inject.is_running():
                     continue
                 status = inject.patcher_status()
@@ -1970,6 +2030,51 @@ def main() -> int:
             "install": str(client_dir),
         }
 
+    def install_ltk() -> dict:
+        """Download LTK's official setup and run it, on a thread of its own."""
+        if not IS_WINDOWS:
+            return {"ok": False, "error": "LTK Manager is Windows-only"}
+        from tibbers import ltk_install
+        with state.lock:
+            if state.ltk.get("state") in ("resolving", "downloading", "installing"):
+                return {"ok": True, "busy": True}
+            state.ltk = {"missing": True, "state": "resolving", "percent": None}
+
+        def progress(stage: str, percent) -> None:
+            with state.lock:
+                state.ltk = {"missing": True, "state": stage, "percent": percent}
+
+        def work() -> None:
+            try:
+                ltk_install.install(system.data_dir() / "work", progress)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("LTK Manager was not installed: %s", exc)
+                with state.lock:
+                    state.ltk = {"missing": True, "state": "error", "error": str(exc)}
+                state.say(f"LTK Manager was not installed: {exc}")
+                return
+            note_ltk_installed()
+
+        threading.Thread(target=work, name="ltk-install", daemon=True).start()
+        return {"ok": True}
+
+    def note_ltk_installed() -> None:
+        # The backend was picked at launch, so LTK only takes over on the next.
+        with state.lock:
+            state.ltk = {"missing": False, "state": "installed"}
+        state.say("LTK Manager is installed -- restart tibbers to use it")
+
+    def restart_app() -> dict:
+        """Start a fresh copy that waits for this one, then quit."""
+        try:
+            subprocess.Popen(_restart_command(), close_fds=True,
+                             creationflags=RESTART_FLAGS if IS_WINDOWS else 0)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        log.info("restarting")
+        threading.Timer(0.3, quit_app).start()
+        return {"ok": True}
+
     def collect_diagnostics() -> dict:
         """Gather every log a report needs into one zip on the desktop."""
         from tibbers import diagnostics
@@ -2057,6 +2162,10 @@ def main() -> int:
             return pick_league_root()
         if action == "diagnostics":
             return collect_diagnostics()
+        if action == "install_ltk":
+            return install_ltk()
+        if action == "restart":
+            return restart_app()
         if action == "check_update":
             # The button: a fresh check now, however recently the last one
             # ran. `checking` is what the page shows meanwhile; the check

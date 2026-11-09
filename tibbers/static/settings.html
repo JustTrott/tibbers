@@ -171,6 +171,14 @@
           <button class="btn" id="league-save" data-t="league_root.save">Save</button>
           <button class="btn" id="league-auto" data-t="league_root.auto">Automatic</button>
         </div>
+        <!-- Shown only while LTK Manager is missing or needs a restart. -->
+        <div class="row" id="ltk-row" hidden>
+          <div class="txt">
+            <b>LTK Manager</b>
+            <span id="ltk-note"></span>
+          </div>
+          <button class="btn gold" id="ltk-btn" hidden></button>
+        </div>
       </div>
     </section>
 
@@ -428,6 +436,14 @@ const T = {
     'league_root.using': 'In use: {path}',
     'league_root.restart': 'Restart tibbers to switch to {path}.',
     'league_root.invalid': 'There is no League install in that folder.',
+    'ltk.missing': 'Not installed. Skins are applied through it.',
+    'ltk.install': 'Install',
+    'ltk.resolving': 'Looking for the latest version…',
+    'ltk.downloading': 'Downloading… {percent}',
+    'ltk.installing': 'Finish its setup in its own window.',
+    'ltk.installed': 'Installed. Close it if it opened, then restart tibbers.',
+    'ltk.restart': 'Restart tibbers',
+    'ltk.error': 'Not installed: {error}', 'ltk.retry': 'Try again',
 
     'auto_show.title': 'Open the picker on lock-in',
     'auto_show.note': 'Opens the picker when you lock in a champion, so a skin is one '
@@ -545,6 +561,14 @@ const T = {
     'league_root.using': 'Используется: {path}',
     'league_root.restart': 'Перезапустите tibbers, чтобы перейти на {path}.',
     'league_root.invalid': 'В этой папке нет установленной League.',
+    'ltk.missing': 'Не установлен. Образы применяются через него.',
+    'ltk.install': 'Установить',
+    'ltk.resolving': 'Ищем последнюю версию…',
+    'ltk.downloading': 'Скачивание… {percent}',
+    'ltk.installing': 'Завершите установку в его окне.',
+    'ltk.installed': 'Установлен. Закройте его, если он открылся, и перезапустите tibbers.',
+    'ltk.restart': 'Перезапустить tibbers',
+    'ltk.error': 'Не установлен: {error}', 'ltk.retry': 'Попробовать снова',
 
     'auto_show.title': 'Открывать окно выбора при подтверждении',
     'auto_show.note': 'Открывает окно выбора, когда вы подтверждаете чемпиона, чтобы '
@@ -764,6 +788,25 @@ function draw(s, cfg) {
     : using ? t('league_root.using', {path: using}) : '';
   $('league-path').classList.toggle('warn', pending);
 
+  // LTK Manager: offered while it is missing, then the restart it needs.
+  const ltk = s.ltk || {}, ls = ltk.state || 'idle';
+  $('ltk-row').hidden = !(ltk.missing || ls === 'installed');
+  if (!$('ltk-row').hidden) {
+    $('ltk-note').textContent = ls === 'error' ? t('ltk.error', {error: ltk.error || ''})
+      : ls === 'downloading' ? t('ltk.downloading', {percent: ltk.percent != null ? ltk.percent + '%' : ''})
+      : ['resolving', 'installing', 'installed'].includes(ls) ? t('ltk.' + ls)
+      : t('ltk.missing');
+    const action = ls === 'installed' ? 'restart'
+      : (ls === 'idle' || ls === 'error') ? 'install_ltk' : null;
+    const lb = $('ltk-btn');
+    lb.hidden = !action;
+    if (action) {
+      lb.dataset.action = action;
+      lb.textContent = t(action === 'restart' ? 'ltk.restart'
+        : ls === 'error' ? 'ltk.retry' : 'ltk.install');
+    }
+  }
+
   // Only numbers from the server go into this markup; the words are ours.
   $('mem-line').innerHTML = t('memory.count', {
     champions: count('n.champions', cfg.memory.champions),
@@ -935,6 +978,12 @@ document.addEventListener('click', async e => {
   if (e.target.id === 'league-auto') {
     $('league-input').value = '';
     await saveLeague(''); return;
+  }
+  if (e.target.id === 'ltk-btn') {
+    e.target.disabled = true;
+    await api('/api/settings', {action: e.target.dataset.action});
+    e.target.disabled = false;
+    nudge(); return;
   }
   if (e.target.id === 'diag-btn') {
     const btn = e.target;

@@ -167,6 +167,17 @@
   .setup.indeterminate .sbar i { width: 35%; animation: slide 1.1s ease-in-out infinite; }
   @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 
+  /* LTK Manager missing: the same bottom banner, with the button that
+     installs it. Hidden while the first-run download bar has the spot. */
+  .ltkbar .lrow { display: flex; align-items: center; gap: 10px; }
+  .ltkbar .lrow span { flex: 1; min-width: 0; }
+  .ltkbar .lbtn { flex: none; font: inherit; font-size: 11px; font-weight: 600;
+                  padding: 5px 10px; cursor: pointer; border-radius: 4px;
+                  color: var(--void); background: var(--gold); border: 1px solid var(--gold); }
+  .ltkbar .lbtn:hover { background: var(--gold-b); }
+  .ltkbar .lbtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .ltkbar.error .lrow span { color: var(--warn, var(--ink-mid)); }
+
   /* ═══ tabs ═════════════════════════════════════════════════════════ */
   /* A plate of their own: the splash behind is whatever skin is picked, and
      a bright one washed the labels out. Dark enough for any art, still
@@ -1085,6 +1096,16 @@
     <div class="sbar"><i id="setup-fill"></i></div>
   </div>
 
+  <!-- LTK Manager is missing (Windows): offer to install it, then to restart.
+       Driven by state.ltk. -->
+  <div class="setup ltkbar" id="ltk" hidden role="status">
+    <div class="lrow">
+      <span id="ltk-msg"></span>
+      <button class="lbtn" id="ltk-btn" hidden></button>
+    </div>
+    <div class="sbar" id="ltk-bar" hidden><i id="ltk-fill"></i></div>
+  </div>
+
 <script>
 let SEL = null, CHROMA = null, PEEK = null, CHAMP = null, SKINS = [];
 let RAIL_SIG = '', STRIP_SIG = '', RAIL_T = 0;
@@ -1240,6 +1261,15 @@ const T = {
       + ' whenever — it keeps running there. Hover a champion, pick a skin, and launch your game.',
     'home.tray': 'system tray', 'home.menubar': 'menu bar',
     'welcome.settings': 'Open settings', 'welcome.ok': 'Got it',
+    'ltk.missing': 'LTK Manager is not installed. Skins need it to apply.',
+    'ltk.install': 'Install LTK Manager',
+    'ltk.resolving': 'Looking for the latest LTK Manager…',
+    'ltk.downloading': 'Downloading LTK Manager…',
+    'ltk.installing': 'Finish LTK Manager’s setup in its own window.',
+    'ltk.installed': 'LTK Manager is installed. Close it if it opened, then restart tibbers.',
+    'ltk.restart': 'Restart tibbers',
+    'ltk.error': 'LTK Manager was not installed: {error}',
+    'ltk.retry': 'Try again',
   },
   ru: {
     'pill.hovering': 'выбор', 'pill.locked': 'выбор подтверждён', 'pill.ingame': 'в игре',
@@ -1372,6 +1402,15 @@ const T = {
       + ' и запускайте игру.',
     'home.tray': 'системном трее', 'home.menubar': 'строке меню',
     'welcome.settings': 'Открыть настройки', 'welcome.ok': 'Понятно',
+    'ltk.missing': 'LTK Manager не установлен. Без него образы не применяются.',
+    'ltk.install': 'Установить LTK Manager',
+    'ltk.resolving': 'Ищем последнюю версию LTK Manager…',
+    'ltk.downloading': 'Скачиваем LTK Manager…',
+    'ltk.installing': 'Завершите установку LTK Manager в его окне.',
+    'ltk.installed': 'LTK Manager установлен. Закройте его, если он открылся, и перезапустите tibbers.',
+    'ltk.restart': 'Перезапустить tibbers',
+    'ltk.error': 'LTK Manager не установлен: {error}',
+    'ltk.retry': 'Попробовать снова',
   },
 };
 let LANG = 'en';
@@ -1429,6 +1468,47 @@ const srcline = (src, key = 'credit') => !src || !src.url ? '' :
       t(key, { name: esc(src.name) })}&#8202;&#8599;</a>`;
 /* The picker window is not a browser, so the click is handed to the server
    to open in the real one; cmd-click and middle-click keep the plain href. */
+/* The LTK Manager banner: one line and one button for each step of
+   "missing -> download -> its setup -> restart". */
+function drawLtk(ltk, setupShown) {
+  const el = $('ltk'), st = ltk.state || 'idle';
+  el.hidden = setupShown || !(ltk.missing || st === 'installed');
+  if (el.hidden) return;
+  const msg = st === 'error' ? t('ltk.error', {error: ltk.error || ''})
+    : st === 'installed' ? t('ltk.installed')
+    : ['resolving', 'downloading', 'installing'].includes(st) ? t('ltk.' + st)
+    : t('ltk.missing');
+  $('ltk-msg').textContent = msg;
+  el.classList.toggle('error', st === 'error');
+  const btn = $('ltk-btn');
+  const action = st === 'installed' ? 'restart'
+    : (st === 'idle' || st === 'error') ? 'install_ltk' : null;
+  btn.hidden = !action;
+  if (action) {
+    btn.dataset.action = action;
+    btn.textContent = t(action === 'restart' ? 'ltk.restart'
+      : st === 'error' ? 'ltk.retry' : 'ltk.install');
+  }
+  const busy = st === 'resolving' || st === 'downloading';
+  $('ltk-bar').hidden = !busy;
+  const known = ltk.percent !== null && ltk.percent !== undefined;
+  el.classList.toggle('indeterminate', busy && !known);
+  $('ltk-fill').style.width = known ? ltk.percent + '%' : '0';
+}
+
+$('ltk-btn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try {
+    await fetch('/api/settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: btn.dataset.action}),
+    });
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 document.addEventListener('click', e => {
   const a = e.target.closest('.srca');
   if (!a || e.metaKey || e.ctrlKey || e.button !== 0) return;
@@ -1600,6 +1680,8 @@ function render(s) {
     $('setup-fill').style.width = known ? setup.percent + '%'
                                         : (setup.error ? '100%' : '0');
   }
+  drawLtk(s.ltk || {}, !setupEl.hidden);
+
   const d = s.download || {}, busy = d.state === 'downloading';
   const bar = $('bar');
   bar.hidden = !busy || !d.total;

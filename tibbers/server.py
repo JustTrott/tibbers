@@ -277,6 +277,11 @@ class State:
         # The one-time "installed, and I live in the tray" welcome, shown once
         # on the first launch: {"show": bool, "home": "system tray"|"menu bar"}.
         self.welcome: dict = {}
+        # LTK Manager, which applies the skins on Windows, when it is missing:
+        # {"missing": bool, "state": "idle"|"resolving"|"downloading"|
+        # "installing"|"installed"|"error", "percent": int|None, "error": str}.
+        # Drives the install button in the picker and in Settings.
+        self.ltk: dict = {}
         self.log_lines: list = []
         # Champ select, for the build guide. `role` is what the client
         # assigned; `opponent` is the enemy the user nominated as their lane,
@@ -327,6 +332,7 @@ class State:
                 "askElevation": self.ask_elevation,
                 "setup": self.setup,
                 "welcome": self.welcome,
+                "ltk": dict(self.ltk),
                 "status": self.status,
                 "log": self.log_lines[-40:],
                 "role": self.role,
