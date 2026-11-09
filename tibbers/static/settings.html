@@ -90,6 +90,15 @@
          border: 1px solid var(--rule); border-radius: 5px; flex: none; }
   .sel:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+  .field { font: 13px ui-monospace, Menlo, monospace; padding: 7px 9px; flex: 1;
+           min-width: 0; color: var(--ink); background: oklch(0.22 0.014 265);
+           border: 1px solid var(--rule); border-radius: 5px; }
+  .field::placeholder { color: var(--ink-low); }
+  .field:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .row .txt .path { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+                    color: var(--ink-low); word-break: break-all; margin-top: 6px; }
+  .row .txt .path.warn { color: var(--warn); }
+
   .btn { font: inherit; font-size: 13px; padding: 7px 13px; cursor: pointer;
          color: var(--ink); background: oklch(0.22 0.014 265);
          border: 1px solid var(--rule); border-radius: 5px;
@@ -139,6 +148,28 @@
             <option value="en">English</option>
             <option value="ru">Русский</option>
           </select>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-t="sec.league">League of Legends</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b id="league-title" data-t="league_root.title">Game folder</b>
+            <span data-t="league_root.note">Where League is installed. Set it when League is
+                  not in Riot's default folder, so tibbers finds it even while
+                  the client is closed.</span>
+            <span class="path" id="league-path"></span>
+          </div>
+          <button class="btn" id="league-pick" data-t="league_root.pick">Choose…</button>
+        </div>
+        <div class="memory">
+          <input class="field" id="league-input" spellcheck="false" autocomplete="off"
+                 aria-labelledby="league-title">
+          <button class="btn" id="league-save" data-t="league_root.save">Save</button>
+          <button class="btn" id="league-auto" data-t="league_root.auto">Automatic</button>
         </div>
       </div>
     </section>
@@ -365,6 +396,17 @@ const T = {
       + 'display language of Windows or macOS.',
     'language.system': 'System',
 
+    'sec.league': 'League of Legends',
+    'league_root.title': 'Game folder',
+    'league_root.note': "Where League is installed. Set it when League is not in "
+      + "Riot's default folder, so tibbers finds it even while the client is closed.",
+    'league_root.placeholder': 'Found automatically',
+    'league_root.pick': 'Choose…', 'league_root.save': 'Save',
+    'league_root.auto': 'Automatic',
+    'league_root.using': 'In use: {path}',
+    'league_root.restart': 'Restart tibbers to switch to {path}.',
+    'league_root.invalid': 'There is no League install in that folder.',
+
     'auto_show.title': 'Open the picker on lock-in',
     'auto_show.note': 'Opens the picker when you lock in a champion, so a skin is one '
       + 'click away.',
@@ -465,6 +507,17 @@ const T = {
     'language.note': 'Язык окон приложения. «Системный» — язык интерфейса Windows '
       + 'или macOS.',
     'language.system': 'Системный',
+
+    'sec.league': 'League of Legends',
+    'league_root.title': 'Папка игры',
+    'league_root.note': 'Где установлена League. Укажите её, если игра стоит не в папке '
+      + 'Riot по умолчанию, — тогда tibbers найдёт её и при закрытом клиенте.',
+    'league_root.placeholder': 'Определяется автоматически',
+    'league_root.pick': 'Выбрать…', 'league_root.save': 'Сохранить',
+    'league_root.auto': 'Автоматически',
+    'league_root.using': 'Используется: {path}',
+    'league_root.restart': 'Перезапустите tibbers, чтобы перейти на {path}.',
+    'league_root.invalid': 'В этой папке нет установленной League.',
 
     'auto_show.title': 'Открывать окно выбора при подтверждении',
     'auto_show.note': 'Открывает окно выбора, когда вы подтверждаете чемпиона, чтобы '
@@ -593,6 +646,9 @@ let last = null;
 /* Bumped by a language change. A poll that left before the bump answers
    with the old choice, and would flip the page back until the next one. */
 let epoch = 0;
+/* Set while the League folder field holds typing that has not been saved, so
+   the next poll does not put the stored folder back over it. */
+let leagueDirty = false;
 
 function applyLanguage(code) {
   LANG = T[code] ? code : 'en';
@@ -668,6 +724,18 @@ function draw(s, cfg) {
   // "system" is the empty option; a concrete code is its own.
   const lang = $('language'), choice = cfg.settings.language;
   if (document.activeElement !== lang) lang.value = T[choice] ? choice : '';
+
+  /* The chosen League folder, and the install this run is using. They differ
+     after a change until tibbers is restarted, and the line under the note
+     says so rather than claiming the new one is already in use. */
+  const field = $('league-input'), chosen = cfg.settings.league_root || '';
+  field.placeholder = t('league_root.placeholder');
+  if (document.activeElement !== field && !leagueDirty) field.value = chosen;
+  const using = cfg.install || '';
+  const pending = !!chosen && chosen.toLowerCase() !== using.toLowerCase();
+  $('league-path').textContent = pending ? t('league_root.restart', {path: chosen})
+    : using ? t('league_root.using', {path: using}) : '';
+  $('league-path').classList.toggle('warn', pending);
 
   // Only numbers from the server go into this markup; the words are ours.
   $('mem-line').innerHTML = t('memory.count', {
@@ -759,6 +827,25 @@ $('language').addEventListener('change', async e => {
 // rejection if the app has gone away between the click and the answer.
 const nudge = () => refresh().catch(() => {});
 
+/* The server's refusal of a League folder, in the page's language. */
+function leagueError(r) {
+  return r.error === 'no League install in that folder'
+    ? t('league_root.invalid') : (r.error || t('failed'));
+}
+
+/* Store the typed folder; an empty one goes back to finding it by itself. */
+async function saveLeague(value) {
+  const r = await api('/api/settings', {name: 'league_root', value: value.trim() || null});
+  if (r && r.ok === false) { alert(leagueError(r)); return; }
+  leagueDirty = false;
+  nudge();
+}
+
+$('league-input').addEventListener('input', () => { leagueDirty = true; });
+$('league-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') saveLeague(e.target.value).catch(() => {});
+});
+
 document.addEventListener('click', async e => {
   // Settings is not a browser either: an outside link opens in the real one.
   const ext = e.target.closest('a.ext');
@@ -809,6 +896,18 @@ document.addEventListener('click', async e => {
       alert(r.error || t('update.failed'));
     }
     return;
+  }
+  if (e.target.id === 'league-pick') {
+    // Blocks until the folder picker closes; a cancel comes back as ok.
+    const r = await api('/api/settings', {action: 'pick_league_root'});
+    if (r && r.ok === false) alert(leagueError(r));
+    else leagueDirty = false;
+    nudge(); return;
+  }
+  if (e.target.id === 'league-save') { await saveLeague($('league-input').value); return; }
+  if (e.target.id === 'league-auto') {
+    $('league-input').value = '';
+    await saveLeague(''); return;
   }
   if (e.target.id === 'open-picker') { await api('/api/window', {open: 'picker'}); return; }
   if (e.target.id === 'helper-btn') {

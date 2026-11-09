@@ -66,6 +66,11 @@ DEFAULTS: Dict[str, Any] = {
     # it records the first-run choice so the question is asked only once. The
     # Elevation section governs it after that.
     "elevation_choice": None,
+    # Where League is installed, chosen in Settings: the folder that holds the
+    # client, or anything inside it the folder picker lands on. None finds it
+    # from the running client and Riot's default folders, which misses an
+    # install on another drive for as long as the client is closed.
+    "league_root": None,
 }
 
 #: How long a geometry change waits before it is written. The picker is

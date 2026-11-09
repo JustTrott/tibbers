@@ -202,6 +202,59 @@ class InstallShape(unittest.TestCase):
         self.assertFalse(win.is_game_dir(self.root / "Game"))
 
 
+class ChosenFolder(unittest.TestCase):
+    """The League folder chosen in Settings is found without the client."""
+
+    def setUp(self):
+        from unittest import mock
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "League of Legends"
+        (self.root / "Game" / "DATA" / "FINAL").mkdir(parents=True)
+        (self.root / "LeagueClient.exe").write_bytes(b"")
+        (self.root / "Game" / "League of Legends.exe").write_bytes(b"")
+        self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(win.set_league_root, None)
+        # No running client, no default install and no other drive, so only
+        # the chosen folder can answer -- and the env override cannot get in
+        # first.
+        for patch in (mock.patch.object(win, "find_processes", return_value=[]),
+                      mock.patch.object(win, "INSTALL_ROOTS", ()),
+                      mock.patch.object(win, "_other_drives", return_value=[]),
+                      mock.patch.dict("os.environ", {"TIBBERS_LEAGUE_ROOT": ""})):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_the_root_its_game_folder_and_the_exes_all_resolve(self):
+        for picked in (self.root, self.root / "Game",
+                       self.root / "LeagueClient.exe",
+                       self.root / "Game" / "League of Legends.exe"):
+            self.assertEqual(win.resolve_league_root(picked), self.root, picked)
+
+    def test_a_folder_without_an_install_is_refused(self):
+        self.assertIsNone(win.resolve_league_root(self.tmp.name))
+        self.assertIsNone(win.resolve_league_root(""))
+        self.assertIsNone(win.set_league_root(self.tmp.name))
+
+    def test_found_with_the_client_closed(self):
+        win.set_league_root(None)
+        self.assertEqual(win.find_install(), (None, None))
+        win.set_league_root(self.root / "Game")
+        self.assertEqual(win.find_install(), (self.root / "Game", self.root))
+
+    def test_the_drives_are_not_scanned_when_a_folder_is_chosen(self):
+        from unittest import mock
+        win.set_league_root(self.root)
+        with mock.patch.object(win, "_other_drives",
+                               side_effect=AssertionError("scanned")):
+            self.assertEqual(win.find_install()[1], self.root)
+
+    def test_clearing_it_forgets_the_cached_answer(self):
+        win.set_league_root(self.root)
+        self.assertEqual(win.find_install()[1], self.root)
+        win.set_league_root(None)
+        self.assertEqual(win.find_install(), (None, None))
+
+
 class NoElevation(unittest.TestCase):
     def test_windows_does_not_elevate(self):
         self.assertFalse(win.INJECTION_NEEDS_ROOT)

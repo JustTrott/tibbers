@@ -423,9 +423,15 @@ def main() -> int:
             print(msg)
             return 0 if ok else 1
 
+    # Read before the install is looked for: the folder chosen in Settings is
+    # where it looks first.
+    prefs = prefs_mod.Prefs()
+    system.set_league_root(prefs.get("league_root"))
     game_dir, client_dir = system.find_install()
     if game_dir is None:
-        print("League of Legends installation not found.")
+        print("League of Legends installation not found. Start the League "
+              "client and open tibbers again; Settings can then remember "
+              "the folder for next time.")
         return 1
 
     # The overlay builder (and, on Windows, the injection patcher) live in a
@@ -489,7 +495,6 @@ def main() -> int:
                 _ask(other, "/api/window", {"open": "settings"})
             return 0
 
-    prefs = prefs_mod.Prefs()
     state = server.State()
     injector_class = injector.Injector
     if manager_backend:
@@ -1849,7 +1854,47 @@ def main() -> int:
                             else int(time.monotonic() - update_checked)),
             },
             "version": __import__("tibbers").__version__,
+            # The install this run is using, which the chosen folder is shown
+            # against; it is fixed at launch, so a new folder needs a restart.
+            "install": str(client_dir),
         }
+
+    def set_league_root(value) -> dict:
+        """Store the League folder chosen in Settings, or clear it."""
+        text = str(value or "").strip().strip('"')
+        if not text:
+            prefs.set("league_root", None)
+            system.set_league_root(None)
+            return {"ok": True, "league_root": None}
+        root = system.resolve_league_root(text)
+        if root is None:
+            return {"ok": False, "error": "no League install in that folder"}
+        prefs.set("league_root", str(root))
+        system.set_league_root(root)
+        # The game folder, the injector and the overlay were all settled at
+        # launch, so a different install only takes over on the next one.
+        restart = os.path.normcase(str(root)) != os.path.normcase(str(client_dir))
+        state.say(f"League folder set to {root}"
+                  + (" -- restart tibbers to use it" if restart else ""))
+        return {"ok": True, "league_root": str(root), "restart": restart}
+
+    def pick_league_root() -> dict:
+        """Ask for the League folder with the system's folder picker."""
+        import webview
+        windows = list(webview.windows)
+        # Owned by the settings window, so the picker opens in front of it
+        # rather than behind a hidden picker window.
+        owner = next((w for w in windows if str(getattr(w, "original_url", "")
+                                                ).endswith("/settings")),
+                     windows[0] if windows else None)
+        if owner is None:
+            return {"ok": False, "error": "no window to open a folder picker from"}
+        chosen = owner.create_file_dialog(
+            webview.FOLDER_DIALOG,
+            directory=prefs.get("league_root") or str(client_dir))
+        if not chosen:
+            return {"ok": True, "cancelled": True}
+        return set_league_root(chosen[0])
 
     def change_setting(payload: dict) -> dict:
         from tibbers import privileged as priv
@@ -1867,6 +1912,8 @@ def main() -> int:
             return {"ok": ok, "message": message}
         if action == "rebuild":
             return start_rebuild()
+        if action == "pick_league_root":
+            return pick_league_root()
         if action == "check_update":
             # The button: a fresh check now, however recently the last one
             # ran. `checking` is what the page shows meanwhile; the check
@@ -1908,6 +1955,8 @@ def main() -> int:
             state.say("starts when you sign in" if now
                       else "no longer starts when you sign in")
             return {"ok": now == bool(value), "autostart": now}
+        if name == "league_root":
+            return set_league_root(value)
         # Not every setting is a switch: the patch is a string, and coercing
         # it to a bool would quietly store True.
         if name == "patch":

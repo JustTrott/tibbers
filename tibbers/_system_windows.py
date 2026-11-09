@@ -163,6 +163,35 @@ def find_install() -> Tuple[Optional[Path], Optional[Path]]:
     return found
 
 
+#: The install folder chosen in Settings, asked before the running client.
+_CONFIGURED_ROOT: Optional[Path] = None
+
+
+def resolve_league_root(path) -> Optional[Path]:
+    """The install root *path* points at, or None if it is not one.
+
+    Takes the root itself, its Game folder, or either executable -- what a
+    folder picker or a pasted path tends to land on.
+    """
+    if not path:
+        return None
+    p = Path(path).expanduser()
+    for root in (p, p.parent, p.parent.parent):
+        if is_client_dir(root) and is_game_dir(root / "Game"):
+            return root
+    return None
+
+
+def set_league_root(path) -> Optional[Path]:
+    """Look in *path* first from now on. Returns the root it resolved to;
+    None (an empty *path*, or one that holds no install) clears it."""
+    global _CONFIGURED_ROOT, _INSTALL
+    root = resolve_league_root(path)
+    with _INSTALL_LOCK:
+        _CONFIGURED_ROOT, _INSTALL = root, None
+    return root
+
+
 def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
     # An explicit root also works before the League client has been opened.
     configured = os.environ.get("TIBBERS_LEAGUE_ROOT")
@@ -170,6 +199,11 @@ def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
         root = Path(configured).expanduser()
         if is_client_dir(root) and is_game_dir(root / "Game"):
             return root / "Game", root
+    # The folder chosen in Settings: no process walk, and found while the
+    # client is closed.
+    root = _CONFIGURED_ROOT
+    if root is not None and is_client_dir(root) and is_game_dir(root / "Game"):
+        return root / "Game", root
     for proc in find_processes(CLIENT_PROCESS, CLIENT_UX_PROCESS):
         try:
             exe = proc.exe()
