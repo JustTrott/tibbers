@@ -240,6 +240,8 @@ class ChosenFolder(unittest.TestCase):
         self.assertEqual(win.find_install(), (None, None))
         win.set_league_root(self.root / "Game")
         self.assertEqual(win.find_install(), (self.root / "Game", self.root))
+        # The log's header says where it came from.
+        self.assertEqual(win.install_source(), "settings")
 
     def test_the_drives_are_not_scanned_when_a_folder_is_chosen(self):
         from unittest import mock

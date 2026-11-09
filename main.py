@@ -449,6 +449,14 @@ def main() -> int:
 
     manager_backend = ltk_backend.configure(tools_dir)
 
+    # Every session in the log opens with the facts a bug report needs: the
+    # version, where League was found and how, the patcher pair and rights.
+    from tibbers import diagnostics
+    diagnostics.log_session(diagnostics.session_lines(
+        client_dir=client_dir, data_dir=system.data_dir(), tools_dir=tools_dir,
+        manager_backend=manager_backend,
+        install_source=getattr(system, "install_source", lambda: None)()))
+
     # The platform layer knows what the build is called and what has to sit
     # beside it -- `mod-tools` on macOS, `mod-tools.exe` plus its cslol-dll.dll
     # on Windows.

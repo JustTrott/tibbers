@@ -192,18 +192,34 @@ def set_league_root(path) -> Optional[Path]:
     return root
 
 
+#: How the install in use was found, for the log: "settings", "env",
+#: "client", "default" or "drive scan"; None while it has not been.
+_INSTALL_SOURCE: Optional[str] = None
+
+
+def install_source() -> Optional[str]:
+    """How the last lookup found League, or None if it did not."""
+    return _INSTALL_SOURCE
+
+
+def _found(root: Path, source: Optional[str]) -> Tuple[Optional[Path], Optional[Path]]:
+    global _INSTALL_SOURCE
+    _INSTALL_SOURCE = source
+    return (root / "Game", root) if root is not None else (None, None)
+
+
 def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
     # An explicit root also works before the League client has been opened.
     configured = os.environ.get("TIBBERS_LEAGUE_ROOT")
     if configured:
         root = Path(configured).expanduser()
         if is_client_dir(root) and is_game_dir(root / "Game"):
-            return root / "Game", root
+            return _found(root, "env")
     # The folder chosen in Settings: no process walk, and found while the
     # client is closed.
     root = _CONFIGURED_ROOT
     if root is not None and is_client_dir(root) and is_game_dir(root / "Game"):
-        return root / "Game", root
+        return _found(root, "settings")
     for proc in find_processes(CLIENT_PROCESS, CLIENT_UX_PROCESS):
         try:
             exe = proc.exe()
@@ -216,16 +232,16 @@ def _look_for_install() -> Tuple[Optional[Path], Optional[Path]]:
             if is_client_dir(parent):
                 game = parent / "Game"
                 if is_game_dir(game):
-                    return game, parent
+                    return _found(parent, "client")
     for root in INSTALL_ROOTS:
         if is_client_dir(root) and is_game_dir(root / "Game"):
-            return root / "Game", root
+            return _found(root, "default")
     # A Riot folder on another drive, before the client has been opened: the
     # launcher script used to do this scan, so a plain launch should too.
     for root in _other_drives():
         if is_client_dir(root) and is_game_dir(root / "Game"):
-            return root / "Game", root
-    return None, None
+            return _found(root, "drive scan")
+    return _found(None, None)
 
 
 def _other_drives() -> List[Path]:
