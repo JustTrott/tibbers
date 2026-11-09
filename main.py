@@ -51,6 +51,11 @@ IS_WINDOWS = sys.platform.startswith("win")
 LOG_MAX_BYTES = 2_000_000
 LOG_BACKUPS = 3
 
+#: How often a running patcher is read while nothing else asks, in seconds.
+PATCHER_WATCH_INTERVAL = 3.0
+#: Wad redirects copied into tibbers.log before the rest are only counted.
+PATCHER_REDIRECTS_SHOWN = 3
+
 
 def _running_instance(port: int = 7777, span: int = 12) -> Optional[int]:
     """The port of a tibbers already serving on this machine, if there is one.
@@ -1223,12 +1228,99 @@ def main() -> int:
         # watching before the game launches.
         arm()
 
+    #: What the last patcher tick already reported, so a status reaches the log
+    #: once per transition instead of on every LCU change. Without it a rejected
+    #: overlay leaves no trace here at all: the verdict is only in LTK's log.
+    patcher_note = {"found": False, "patched": False, "error": None,
+                    "found_at": 0.0, "reported_missing": False,
+                    "mirrored": 0, "redirects": 0}
+    #: on_change and the patcher clock both report; one at a time.
+    patcher_note_lock = threading.Lock()
+
+    def mirror_patcher_lines(lines: list) -> None:
+        """Copy the patcher's own new lines into tibbers.log, so the verdict
+        is in the one file a report sends. A wad redirect is logged once per
+        archive the game opens, so after the first few they are counted."""
+        if lines and len(lines) < patcher_note["mirrored"]:
+            # A new session: the patcher's log started over. (No lines at all
+            # is a stopped patcher, which note_patcher closes out itself.)
+            patcher_note["mirrored"] = patcher_note["redirects"] = 0
+        for line in lines[patcher_note["mirrored"]:]:
+            if "redirected wad" in line:
+                patcher_note["redirects"] += 1
+                if patcher_note["redirects"] > PATCHER_REDIRECTS_SHOWN:
+                    continue
+            log.info("patcher | %s", line)
+        patcher_note["mirrored"] = len(lines)
+
+    def note_patcher(status: dict) -> None:
+        with patcher_note_lock:
+            _note_patcher(status)
+
+    def _note_patcher(status: dict) -> None:
+        mirror_patcher_lines(status.get("lines") or [])
+        error = str(status.get("error") or "").strip()
+        if error and error != patcher_note["error"]:
+            patcher_note["error"] = error
+            state.say(f"patcher: {error}")
+        elif not error:
+            patcher_note["error"] = None
+        if not status:
+            if patcher_note["redirects"] > PATCHER_REDIRECTS_SHOWN:
+                log.info("patcher | ... %d wads redirected in all",
+                         patcher_note["redirects"])
+            patcher_note["found"] = patcher_note["patched"] = False
+            patcher_note["reported_missing"] = False
+            patcher_note["mirrored"] = patcher_note["redirects"] = 0
+            return
+        if status.get("found") and not patcher_note["found"]:
+            patcher_note["found"] = True
+            patcher_note["found_at"] = time.monotonic()
+            state.say("LTK found the game -- hooking it")
+        if status.get("patched") and not patcher_note["patched"]:
+            patcher_note["patched"] = True
+            state.say("overlay verified -- the skin is applied")
+        elif (patcher_note["found"] and not patcher_note["patched"]
+              and not patcher_note["reported_missing"] and not error
+              and time.monotonic() - patcher_note["found_at"] > 15
+              and system.game_pid() is not None):
+            # Hooked, but the DLL never loaded into the game: the game keeps
+            # running with the base skin. Antivirus blocking the injection is
+            # the usual cause; a game that started mid-rebuild looks the same.
+            patcher_note["reported_missing"] = True
+            state.say("LTK hooked the game but its overlay never loaded -- "
+                      "check the antivirus, then pick the skin earlier next game")
+
+    def watch_patcher() -> None:
+        """Follow the patcher on a clock while it runs.
+
+        on_change fires only when the client's state changes, and a game is
+        one long InProgress: without this the outcome reached the log when
+        the game ended, the settings lamp stayed on "watching" through it,
+        and a DLL that never loaded was never reported at all.
+        """
+        while True:
+            time.sleep(PATCHER_WATCH_INTERVAL)
+            try:
+                if not inject.is_running():
+                    continue
+                status = inject.patcher_status()
+                with state.lock:
+                    state.patcher = status
+                note_patcher(status)
+            except Exception:  # noqa: BLE001
+                log.debug("patcher watch failed", exc_info=True)
+
+    threading.Thread(target=watch_patcher, name="patcher-watch",
+                     daemon=True).start()
+
     def on_change(snapshot: dict) -> None:
         with state.lock:
             state.connected = snapshot["connected"]
             state.phase = snapshot["phase"]
-            state.patcher = (inject.patcher_status()
-                             if inject.is_running() else {})
+            status = inject.patcher_status() if inject.is_running() else {}
+            state.patcher = status
+        note_patcher(status)
         # The lobby reads the phase for itself; this only spares it waiting
         # for its next poll to notice.
         share.nudge()

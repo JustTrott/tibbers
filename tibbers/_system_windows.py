@@ -699,7 +699,18 @@ def parse_patcher_log(text: str) -> dict:
         "exited": "dll detached" in text or " exited " in text,
         "error": error,
         "tail": "\n".join(text.splitlines()[-6:]),
+        # The patcher's own lines, in order, for tibbers.log: the verdict was
+        # only ever in the patcher's log, which a report rarely included.
+        "lines": [line.strip() for line in text.splitlines()
+                  if _is_patcher_line(line)],
     }
+
+
+def _is_patcher_line(line: str) -> bool:
+    """A line the host or the DLL wrote, out of LTK Manager's mixed log."""
+    s = line.strip()
+    return bool(s) and (s.startswith(("status ", "ok ", "error ", "dll "))
+                        or "patcher" in s.lower())
 
 
 # ---------------------------------------------------------------------------

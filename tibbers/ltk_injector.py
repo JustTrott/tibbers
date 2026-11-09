@@ -268,7 +268,8 @@ class ManagerInjector(Injector):
                     text = stream.read().decode("utf-8", "replace")
                 parsed = system.parse_patcher_log(text)
                 status.update(found=parsed["found"], patched=parsed["patched"],
-                              exited=parsed["exited"], tail=parsed["tail"])
+                              exited=parsed["exited"], tail=parsed["tail"],
+                              lines=parsed.get("lines", []))
                 if parsed["error"]:
                     status["error"] = parsed["error"]
         except Exception as exc:

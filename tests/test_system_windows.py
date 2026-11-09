@@ -350,6 +350,25 @@ class PatcherLog(unittest.TestCase):
         self.assertIsNotNone(s["error"])
         self.assertIn("could not open overlay", s["error"])
 
+    def test_the_patchers_own_lines_are_kept_in_order(self):
+        # runoverlay.log is the host's alone; every line of it is kept.
+        host = ("   0.002s  INFO ltk_patcher_host::worker: session started\n"
+                "ok 0.001 config flags set\n"
+                "status 10.6 injecting game found\n"
+                "dll 18.07 25504 19828 INFO ltk_patcher_dll::entry: init done\n")
+        self.assertEqual(len(win.parse_patcher_log(host)["lines"]), 4)
+
+    def test_the_managers_other_lines_are_left_out(self):
+        # LTK Manager's log is shared with everything else it does; only the
+        # patcher's lines belong in tibbers.log.
+        mixed = ("INFO ltk_manager_assets::hashtables: No hashtables loaded\n"
+                 "INFO ltk_manager_runtime::patcher::session: started\n"
+                 "DEBUG ritoclient_core::endpoint: GET answered HTTP 404\n"
+                 "status 21.6 injecting scanning for game\n")
+        lines = win.parse_patcher_log(mixed)["lines"]
+        self.assertEqual(lines, ["INFO ltk_manager_runtime::patcher::session: started",
+                                 "status 21.6 injecting scanning for game"])
+
 
 if __name__ == "__main__":
     unittest.main()
