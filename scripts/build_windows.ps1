@@ -139,6 +139,10 @@ if ($Installer) {
     # LTK's patcher is not among them: it ships only as an NSIS setup now,
     # which Setup cannot open, so the app unpacks it on first launch.
     $cslol = Resolve-Asset "LeagueToolkit/cslol-manager" { param($n) $n -eq "cslol-manager-windows.exe" }
+    # LTK Manager itself, which applies the skins: its official setup, run as
+    # it is. Linked, never bundled -- the patcher inside is under LTK's own
+    # licence, which lets it travel signed only in LTK's release artifact.
+    $ltk = Resolve-Asset "LeagueToolkit/ltk-manager" { param($n) $n -like "*_x64-setup.exe" }
     $defines = @("/DMyAppVersion=$version")
     if ($cslol) {
         $defines += "/DCslolUrl=$($cslol.url)", "/DCslolSize=$($cslol.size)"
@@ -146,6 +150,13 @@ if ($Installer) {
         Write-Host "    $($cslol.url)"
     } else {
         Write-Warning "building an installer that downloads no tools; the app fetches them on first launch"
+    }
+    if ($ltk) {
+        $defines += "/DLtkUrl=$($ltk.url)", "/DLtkSize=$($ltk.size)"
+        Write-Host "==> Setup will offer LTK Manager:"
+        Write-Host "    $($ltk.url)"
+    } else {
+        Write-Warning "building an installer that does not offer LTK Manager"
     }
 
     Write-Host "==> Building the installer with Inno Setup (v$version)"

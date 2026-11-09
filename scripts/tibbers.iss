@@ -8,6 +8,9 @@
 ;   * downloads the injection tools and the build-data fetcher as part of
 ;     Setup, on the wizard's own download page, and unpacks them into the
 ;     app's data directory -- so the first launch is ready to apply a skin;
+;   * offers LTK Manager when it is missing: downloads its official setup
+;     from LTK's latest release and runs it, so nothing has to be fetched
+;     from anywhere else;
 ;   * speaks English and Russian, chosen from the Windows display language
 ;     and changeable on Setup's first page;
 ;   * is also the update: the running app downloads this same file from the
@@ -55,6 +58,18 @@
 #endif
 #ifndef CslolSize
   #define CslolSize 38000000
+#endif
+
+; LTK Manager, which applies the skins: the official setup from LTK's latest
+; release, downloaded and run as it is when LTK Manager is not installed yet.
+; Linked rather than bundled -- the patcher inside it is under LTK's own
+; licence, which lets it travel with LTK's signature only in LTK's own release
+; artifact. Empty URL = Setup does not offer it.
+#ifndef LtkUrl
+  #define LtkUrl ""
+#endif
+#ifndef LtkSize
+  #define LtkSize 25000000
 #endif
 
 ; The instance mutex the running app holds (tibbers/_system_windows.py
@@ -109,12 +124,18 @@ english.ToolsGroup=Game tools:
 english.ToolsTask=Download the overlay builder (about %1 MB)
 english.ToolsUnpacking=Unpacking the game tools...
 english.ToolsFailed=The game tools could not be unpacked (%1).%n%n%2 will download them itself the first time it runs.
+english.LtkTask=Install LTK Manager, which applies the skins (about %1 MB, from its official release)
+english.LtkInstalling=Installing LTK Manager...
+english.LtkFailed=LTK Manager's setup could not be started (%1).%n%nInstall it from github.com/LeagueToolkit/ltk-manager to apply skins.
 russian.StillRunning=%1 всё ещё запущен.%n%nЗакройте его через значок в трее и нажмите «Повторить».
 russian.StillRunningGiveUp=%1 всё ещё запущен. Закройте его через значок в трее и запустите установку заново.
 russian.ToolsGroup=Игровые инструменты:
 russian.ToolsTask=Скачать сборщик оверлея (около %1 МБ)
 russian.ToolsUnpacking=Распаковка игровых инструментов...
 russian.ToolsFailed=Не удалось распаковать игровые инструменты (%1).%n%n%2 скачает их самостоятельно при первом запуске.
+russian.LtkTask=Установить LTK Manager, который применяет образы (около %1 МБ, из официального релиза)
+russian.LtkInstalling=Установка LTK Manager...
+russian.LtkFailed=Не удалось запустить установщик LTK Manager (%1).%n%nУстановите его с github.com/LeagueToolkit/ltk-manager, чтобы применять образы.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -123,6 +144,10 @@ Name: "startup"; Description: "{cm:AutoStartProgram,{#MyAppName}}"; GroupDescrip
 ; already in place (an update over a working install skips the whole thing).
 #define ToolsMB Int(CslolSize) / 1048576
 Name: "tools"; Description: "{cm:ToolsTask,{#ToolsMB}}"; GroupDescription: "{cm:ToolsGroup}"; Check: ToolsOffered
+; Offered only when LTK Manager is not installed, and never in a silent run --
+; a self-update must not open another program's setup on its own.
+#define LtkMB Int(LtkSize) / 1048576
+Name: "ltk"; Description: "{cm:LtkTask,{#LtkMB}}"; GroupDescription: "{cm:ToolsGroup}"; Check: LtkOffered
 
 [Files]
 ; The whole PyInstaller onedir. tools\ is deliberately absent: the tools live
@@ -133,6 +158,11 @@ Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsub
 ; 7-Zip console self-extractor.
 #if CslolUrl != ""
 Source: "{#CslolUrl}"; DestDir: "{tmp}"; DestName: "cslol.exe"; ExternalSize: {#CslolSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: tools
+#endif
+; LTK Manager's own setup, on the same download page, run in
+; CurStepChanged(ssPostInstall) below.
+#if LtkUrl != ""
+Source: "{#LtkUrl}"; DestDir: "{tmp}"; DestName: "ltk-manager-setup.exe"; ExternalSize: {#LtkSize}; Flags: external download ignoreversion deleteafterinstall; Tasks: ltk
 #endif
 
 [Icons]
@@ -230,6 +260,52 @@ begin
   Result := ('{#CslolUrl}' <> '') and not HaveTools;
 end;
 
+// -- LTK Manager -------------------------------------------------------------
+//
+// Looked for where the app looks (tibbers/ltk_injector.py manager_path): its
+// per-machine folder under Program Files, or a per-user one.
+
+function LtkInstalled: Boolean;
+var
+  bases: array of String;
+  i: Integer;
+begin
+  Result := False;
+  bases := [ExpandConstant('{commonpf64}\LTK Manager'),
+            ExpandConstant('{localappdata}\Programs\LTK Manager'),
+            ExpandConstant('{localappdata}\LTK Manager')];
+  for i := 0 to GetArrayLength(bases) - 1 do
+    if FileExists(bases[i] + '\ltk-manager.exe')
+       or FileExists(bases[i] + '\LTK Manager.exe') then
+    begin
+      Result := True;
+      exit;
+    end;
+end;
+
+function LtkOffered: Boolean;
+begin
+  Result := ('{#LtkUrl}' <> '') and not WizardSilent and not LtkInstalled;
+end;
+
+// LTK Manager's setup asks for administrator rights itself (it installs per
+// machine), so it is started through the shell, which shows that prompt;
+// Exec from this unelevated Setup would be refused outright. Its own wizard
+// is shown -- it is another program's install, and the user should see it.
+procedure InstallLtk;
+var
+  setup: String;
+  code: Integer;
+begin
+  setup := ExpandConstant('{tmp}\ltk-manager-setup.exe');
+  if not FileExists(setup) then
+    exit;
+  WizardForm.StatusLabel.Caption := CustomMessage('LtkInstalling');
+  if not ShellExec('open', setup, '', '', SW_SHOWNORMAL, ewWaitUntilTerminated, code) then
+    RaiseException(SysErrorMessage(code));
+  Log('LTK Manager setup exited with code ' + IntToStr(code));
+end;
+
 // The one file we want out of an unpacked tree, wherever the packer put it.
 function FindFile(Dir, Name: String): String;
 var
@@ -323,6 +399,17 @@ begin
       end;
     finally
       WizardForm.ProgressGauge.Style := npbstNormal;
+    end;
+  end;
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('ltk') then
+  begin
+    try
+      InstallLtk;
+    except
+      // Not fatal either: tibbers is installed, and the app names LTK
+      // Manager as missing until it is.
+      MsgBox(FmtMessage(CustomMessage('LtkFailed'), [GetExceptionMessage]), mbInformation, MB_OK);
+      Log('ltk: ' + GetExceptionMessage);
     end;
   end;
 end;
