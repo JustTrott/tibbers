@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import logging.handlers
 import os
 import sys
 import threading
@@ -44,6 +45,11 @@ log = logging.getLogger("tibbers")
 #: `sys.platform` through the file.
 IS_MACOS = sys.platform == "darwin"
 IS_WINDOWS = sys.platform.startswith("win")
+
+#: tibbers.log rolls over at this size into tibbers.log.1 .. .3, so a few
+#: sessions back are kept and the whole thing stays small enough to send.
+LOG_MAX_BYTES = 2_000_000
+LOG_BACKUPS = 3
 
 
 def _running_instance(port: int = 7777, span: int = 12) -> Optional[int]:
@@ -347,19 +353,24 @@ def main() -> int:
     handlers = [logging.StreamHandler()]
     # Launched from the Dock there is no console to print to, and a menu bar
     # app with nothing on screen has no other way to say what went wrong.
+    # Rotated rather than deleted once it is big, so the session a report is
+    # about is still there; small enough to send whole. UTF-8, not the system
+    # code page, which cannot hold every path a user name puts in it.
     try:
         from tibbers import system as _system
         log_path = _system.data_dir() / "tibbers.log"
-        if log_path.exists() and log_path.stat().st_size > 2_000_000:
-            log_path.unlink()
-        handlers.append(logging.FileHandler(log_path))
+        handlers.append(logging.handlers.RotatingFileHandler(
+            log_path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS,
+            encoding="utf-8"))
     except OSError:
         pass
 
+    # Dated, because a report is read days later and set beside LTK's log,
+    # whose times are UTC with a date; the session header names the offset.
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s | %(levelname)-7s | %(message)s",
-        datefmt="%H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
     )
 
