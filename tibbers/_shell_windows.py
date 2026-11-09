@@ -348,10 +348,12 @@ class MenuBar:
 
     def __init__(self, on_settings: Callable[[], None],
                  on_picker: Callable[[], None],
-                 on_quit: Callable[[], None]):
+                 on_quit: Callable[[], None],
+                 on_diagnostics: Optional[Callable[[], object]] = None):
         self.on_settings = on_settings
         self.on_picker = on_picker
         self.on_quit = on_quit
+        self.on_diagnostics = on_diagnostics
         self._icon = None
 
     def install(self) -> None:
@@ -374,9 +376,14 @@ class MenuBar:
         except Exception:  # noqa: BLE001
             image = Image.new("RGBA", (64, 64), (212, 176, 88, 255))
 
+        items = [pystray.MenuItem("Open picker", lambda: self.on_picker()),
+                 pystray.MenuItem("Settings", lambda: self.on_settings())]
+        if self.on_diagnostics is not None:
+            # Off the tray's thread: zipping the logs must not freeze the menu.
+            items.append(pystray.MenuItem("Collect diagnostics", lambda: threading.Thread(
+                target=self.on_diagnostics, name="diagnostics", daemon=True).start()))
         menu = pystray.Menu(
-            pystray.MenuItem("Open picker", lambda: self.on_picker()),
-            pystray.MenuItem("Settings", lambda: self.on_settings()),
+            *items,
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit Tibbers", lambda: self.on_quit()),
         )

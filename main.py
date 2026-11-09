@@ -1970,6 +1970,36 @@ def main() -> int:
             "install": str(client_dir),
         }
 
+    def collect_diagnostics() -> dict:
+        """Gather every log a report needs into one zip on the desktop."""
+        from tibbers import diagnostics
+        with state.lock:
+            patcher = {k: v for k, v in (state.patcher or {}).items()
+                       if k not in ("lines", "tail")}
+            moment = [
+                f"Client:   {'connected' if state.connected else 'not connected'}, "
+                f"phase {state.phase or '-'}",
+                f"Champion: {state.champion_name or '-'} ({state.champion_id or '-'})",
+            ]
+        moment += [f"Game:     {'running' if system.game_pid() else 'not running'}",
+                   f"Patcher:  {'running' if inject.is_running() else 'stopped'} {patcher}"]
+        header = diagnostics.session_lines(
+            client_dir=client_dir, data_dir=system.data_dir(), tools_dir=tools_dir,
+            manager_backend=manager_backend,
+            install_source=getattr(system, "install_source", lambda: None)())
+        secrets = []
+        if IS_WINDOWS:
+            from tibbers import ltk_bridge
+            secrets.append(ltk_bridge.read_token() or "")
+        try:
+            path = diagnostics.collect(header + ["", "At collection:"] + moment,
+                                       system.data_dir(), tools_dir, secrets=secrets)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        state.say(f"diagnostics saved to {path}")
+        diagnostics.reveal(path)
+        return {"ok": True, "path": str(path)}
+
     def set_league_root(value) -> dict:
         """Store the League folder chosen in Settings, or clear it."""
         text = str(value or "").strip().strip('"')
@@ -2025,6 +2055,8 @@ def main() -> int:
             return start_rebuild()
         if action == "pick_league_root":
             return pick_league_root()
+        if action == "diagnostics":
+            return collect_diagnostics()
         if action == "check_update":
             # The button: a fresh check now, however recently the last one
             # ran. `checking` is what the page shows meanwhile; the check
@@ -2306,9 +2338,12 @@ def main() -> int:
     # lock-in entirely and the picker never appears.
     watcher.resync()
 
+    # The tray's diagnostics item is Windows' alone; the macOS menu keeps its
+    # three actions.
+    extra = {"on_diagnostics": collect_diagnostics} if IS_WINDOWS else {}
     bar = shell.MenuBar(on_settings=windows.open_settings,
                         on_picker=lambda: windows.open_picker(True),
-                        on_quit=quit_app)
+                        on_quit=quit_app, **extra)
     menubar = bar
 
     # Built before the run loop starts, because pywebview needs a window to

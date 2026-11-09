@@ -335,6 +335,22 @@
     </section>
 
     <section>
+      <h2 data-t="sec.diagnostics">Diagnostics</h2>
+      <div class="rows">
+        <div class="row">
+          <div class="txt">
+            <b data-t="diag.title">Collect diagnostics</b>
+            <span data-t="diag.note">Puts the logs of tibbers and LTK Manager into one
+                  file on your desktop, with your user name and keys taken out.
+                  Send it when a skin does not apply.</span>
+            <span class="path" id="diag-path"></span>
+          </div>
+          <button class="btn" id="diag-btn" data-t="diag.collect">Collect</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <h2 data-t="sec.credits">Credits</h2>
       <div class="rows">
         <div class="row">
@@ -384,7 +400,13 @@ const T = {
     'share_skins.note': 'Everyone in your League party who runs tibbers sees your skin in '
       + 'game, and you see theirs.',
     'sec.memory': 'Memory', 'sec.library': 'Library', 'sec.elevation': 'Elevation',
-    'sec.updates': 'Updates', 'sec.credits': 'Credits',
+    'sec.updates': 'Updates', 'sec.credits': 'Credits', 'sec.diagnostics': 'Diagnostics',
+    'diag.title': 'Collect diagnostics',
+    'diag.note': 'Puts the logs of tibbers and LTK Manager into one file on your '
+      + 'desktop, with your user name and keys taken out. Send it when a skin does '
+      + 'not apply.',
+    'diag.collect': 'Collect', 'diag.working': 'Collecting…',
+    'diag.saved': 'Saved: {path}',
     'credit.rose': 'The skin changer tibbers grew out of. Its skin library is what '
       + 'tibbers’ own mods were first checked against.',
 
@@ -496,7 +518,12 @@ const T = {
     'share_skins.note': 'Все в вашей группе, у кого есть tibbers, видят ваш образ в игре, '
       + 'а вы видите их образы.',
     'sec.memory': 'Память', 'sec.library': 'Библиотека', 'sec.elevation': 'Права доступа',
-    'sec.updates': 'Обновления', 'sec.credits': 'Благодарности',
+    'sec.updates': 'Обновления', 'sec.credits': 'Благодарности', 'sec.diagnostics': 'Диагностика',
+    'diag.title': 'Собрать диагностику',
+    'diag.note': 'Складывает логи tibbers и LTK Manager в один файл на рабочем столе, '
+      + 'убирая имя пользователя и ключи. Отправьте его, если образ не применился.',
+    'diag.collect': 'Собрать', 'diag.working': 'Сборка…',
+    'diag.saved': 'Сохранено: {path}',
     'credit.rose': 'Скин-чейнджер, из которого вырос tibbers. Его библиотека образов — то, '
       + 'с чем впервые сверялись моды tibbers.',
 
@@ -908,6 +935,15 @@ document.addEventListener('click', async e => {
   if (e.target.id === 'league-auto') {
     $('league-input').value = '';
     await saveLeague(''); return;
+  }
+  if (e.target.id === 'diag-btn') {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = t('diag.working');
+    const r = await api('/api/settings', {action: 'diagnostics'});
+    btn.disabled = false; btn.textContent = t('diag.collect');
+    if (r && r.ok) $('diag-path').textContent = t('diag.saved', {path: r.path});
+    else alert((r && r.error) || t('failed'));
+    return;
   }
   if (e.target.id === 'open-picker') { await api('/api/window', {open: 'picker'}); return; }
   if (e.target.id === 'helper-btn') {

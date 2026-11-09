@@ -19,10 +19,13 @@ import hashlib
 import logging
 import os
 import platform
+import re
+import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Tuple
 
 log = logging.getLogger("tibbers.diagnostics")
 
@@ -285,3 +288,142 @@ def _probe_lines(fn: Callable[[], List[str]], label: str) -> List[str]:
 def log_session(lines: Iterable[str]) -> None:
     for line in lines:
         log.info("%s", line)
+
+
+# -- the archive ---------------------------------------------------------------
+#
+# What used to be "send me these four logs from these five folders": one zip,
+# made by a button, landing on the desktop. Files are taken whole up to a cap
+# -- the end of a log is the part a report is about -- and scrubbed of the
+# user's name and of the bridge's and the client's secrets on the way in,
+# because it is going to be posted somewhere people can read it.
+
+#: The most of any one file the archive takes; past it, the end is kept.
+FILE_CAP = 2_000_000
+
+#: The bridge's own logs: C:\Users\Public when its launcher could write
+#: there, else the temp folder (native/ltf/LeagueToolFlop-inj.cpp).
+BRIDGE_LOGS = ("ltk_launcher.log", "ltk_bridge.log", "ltk_api.log")
+
+
+def report_files(data_dir: Path, tools_dir: Optional[Path]) -> List[Tuple[str, Path]]:
+    """Every file a report may need, as (name in the archive, path)."""
+    files = [(f"tibbers/{name}", data_dir / name)
+             for name in ("tibbers.log", "tibbers.log.1", "tibbers.log.2", "tibbers.log.3")]
+    files.append(("tibbers/runoverlay.log", data_dir / "work" / "runoverlay.log"))
+    files.append(("tibbers/preferences.json", data_dir / "preferences.json"))
+    if tools_dir is not None:
+        files.append(("tibbers/installed.json", Path(tools_dir) / "installed.json"))
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        logs = Path(appdata) / "dev.leaguetoolkit.manager" / "logs"
+        try:
+            newest = sorted(logs.glob("ltk-manager.*.log"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)[:2]
+        except OSError:
+            newest = []
+        files += [(f"ltk-manager/{p.name}", p) for p in newest]
+    for env, label in (("PUBLIC", "bridge-public"), ("TEMP", "bridge-temp")):
+        base = os.environ.get(env)
+        if base:
+            files += [(f"{label}/{name}", Path(base) / name) for name in BRIDGE_LOGS]
+    return files
+
+
+def redactor(user: Optional[str] = None, secrets: Iterable[str] = ()) -> Callable[[str], str]:
+    """A function that takes the user's name and the known secrets out of text.
+
+    The name is replaced where it is a profile folder -- in plain paths and in
+    JSON-escaped ones -- which is where logs carry it. The secrets are the
+    bridge token and anything shaped like the client's credentials.
+    """
+    rules: List[Tuple[re.Pattern, str]] = []
+    if user:
+        rules.append((re.compile(r"(?i)(Users(?:\\\\|\\|/))" + re.escape(user)
+                                 + r"(?=\\|/|\"|'|\s|$)"), r"\1<user>"))
+    for secret in secrets:
+        if secret and len(secret) >= 8:
+            rules.append((re.compile(re.escape(secret)), "<token>"))
+    rules += [
+        (re.compile(r"(?i)(riot:)[A-Za-z0-9_\-]{8,}"), r"\1<password>"),
+        (re.compile(r"(?i)(Basic\s+)[A-Za-z0-9+/=]{12,}"), r"\1<auth>"),
+        (re.compile(r"(?i)(\btoken[\"'\s:=]+)[A-Za-z0-9_\-]{16,}"), r"\1<token>"),
+    ]
+
+    def scrub(text: str) -> str:
+        for pattern, replacement in rules:
+            text = pattern.sub(replacement, text)
+        return text
+    return scrub
+
+
+def _read_capped(path: Path) -> str:
+    with open(path, "rb") as stream:
+        size = stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, size - FILE_CAP))
+        data = stream.read()
+    text = data.decode("utf-8", errors="replace")
+    if size > FILE_CAP:
+        text = f"[first {size - FILE_CAP} bytes left out]\n" + text
+    return text
+
+
+def desktop_dir() -> Path:
+    """The user's desktop, wherever it was moved to (OneDrive, often)."""
+    if IS_WINDOWS:
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r"Software\Microsoft\Windows\CurrentVersion\Explorer"
+                                r"\User Shell Folders") as key:
+                value, _ = winreg.QueryValueEx(key, "Desktop")
+            path = Path(os.path.expandvars(value))
+            if path.is_dir():
+                return path
+        except OSError:
+            pass
+    desktop = Path.home() / "Desktop"
+    return desktop if desktop.is_dir() else Path.home()
+
+
+def collect(summary: List[str], data_dir: Path, tools_dir: Optional[Path],
+            dest_dir: Optional[Path] = None, secrets: Iterable[str] = ()) -> Path:
+    """Write the archive and return its path.
+
+    *summary* is the header taken now plus whatever the app knows about the
+    moment; the list of files found and not found is added to it, so a reply
+    can tell "no LTK log" from "forgot to attach it".
+    """
+    dest_dir = Path(dest_dir) if dest_dir is not None else desktop_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    path = dest_dir / f"tibbers-diagnostics-{time.strftime('%Y-%m-%d-%H%M%S')}.zip"
+    scrub = redactor(os.environ.get("USERNAME") or os.environ.get("USER"), secrets)
+
+    included, missing = [], []
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, source in report_files(data_dir, tools_dir):
+            try:
+                text = _read_capped(source)
+            except FileNotFoundError:
+                missing.append(name)
+                continue
+            except OSError as exc:
+                missing.append(f"{name} ({exc})")
+                continue
+            archive.writestr(name, scrub(text))
+            included.append(name)
+        lines = list(summary) + ["", "Included: " + (", ".join(included) or "nothing"),
+                                 "Not found: " + (", ".join(missing) or "nothing"),
+                                 "The user's name in paths is <user>; tokens and "
+                                 "passwords are <token>, <password> and <auth>."]
+        archive.writestr("summary.txt", scrub("\n".join(lines)) + "\n")
+    return path
+
+
+def reveal(path: Path) -> None:
+    """Show *path* selected in its folder, ready to drag into a chat."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if IS_WINDOWS:
+        subprocess.Popen(["explorer", f"/select,{path}"], creationflags=flags)
+    else:
+        subprocess.Popen(["open", "-R", str(path)], creationflags=flags)

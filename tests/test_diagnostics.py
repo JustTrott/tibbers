@@ -80,6 +80,88 @@ class SessionLines(unittest.TestCase):
             self.assertNotIn("\u00b7", line)
 
 
+class Redaction(unittest.TestCase):
+    """The archive is posted where others read it."""
+
+    def setUp(self):
+        self.scrub = diagnostics.redactor("BG", secrets=["a1b2c3d4e5f6a7b8"])
+
+    def test_the_user_name_leaves_every_spelling_of_the_profile_path(self):
+        text = self.scrub(r'C:\Users\BG\AppData "C:\\Users\\BG\\AppData" C:/Users/bg/x')
+        self.assertNotIn("BG", text.replace("<user>", ""))
+        self.assertEqual(text.count("<user>"), 3)
+
+    def test_a_longer_name_that_starts_the_same_is_left_alone(self):
+        self.assertIn(r"\Users\BGamer", self.scrub(r"C:\Users\BGamer\AppData"))
+
+    def test_the_bridge_token_and_client_password_go(self):
+        text = self.scrub("hello token=a1b2c3d4e5f6a7b8 https://riot:Zq9xW_k2LmPa@127.0.0.1")
+        self.assertNotIn("a1b2c3d4e5f6a7b8", text)
+        self.assertNotIn("Zq9xW_k2LmPa", text)
+        self.assertIn("riot:<password>", text)
+
+
+class Collect(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.data = root / "data"
+        (self.data / "work").mkdir(parents=True)
+        (self.data / "tibbers.log").write_text(
+            r"2026-11-09 14:48:13 | INFO | game: C:\Users\BG\Game" + "\n", encoding="utf-8")
+        (self.data / "work" / "runoverlay.log").write_text("status 1 injecting\n")
+        appdata = root / "appdata"
+        (appdata / "dev.leaguetoolkit.manager" / "logs").mkdir(parents=True)
+        (appdata / "dev.leaguetoolkit.manager" / "logs" / "ltk-manager.2026-11-09.log"
+         ).write_text("INFO patcher started\n")
+        public = root / "public"
+        public.mkdir()
+        (public / "ltk_api.log").write_text("token=a1b2c3d4e5f6a7b8\n")
+        self.out = root / "out"
+        env = mock.patch.dict("os.environ", {
+            "APPDATA": str(appdata), "PUBLIC": str(public),
+            "TEMP": str(root / "no-temp"), "USERNAME": "BG"})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def collect(self):
+        import zipfile
+        path = diagnostics.collect(["===== tibbers test"], self.data, None,
+                                   dest_dir=self.out, secrets=["a1b2c3d4e5f6a7b8"])
+        with zipfile.ZipFile(path) as archive:
+            return path, {n: archive.read(n).decode() for n in archive.namelist()}
+
+    def test_the_logs_from_every_folder_land_in_one_zip(self):
+        path, files = self.collect()
+        self.assertTrue(path.name.startswith("tibbers-diagnostics-"))
+        for name in ("summary.txt", "tibbers/tibbers.log", "tibbers/runoverlay.log",
+                     "ltk-manager/ltk-manager.2026-11-09.log", "bridge-public/ltk_api.log"):
+            self.assertIn(name, files)
+
+    def test_the_summary_says_what_was_not_there(self):
+        _, files = self.collect()
+        summary = files["summary.txt"]
+        self.assertIn("===== tibbers test", summary)
+        self.assertIn("Not found:", summary)
+        self.assertIn("tibbers/preferences.json", summary.split("Not found:")[1])
+
+    def test_nothing_in_the_zip_names_the_user_or_holds_the_token(self):
+        _, files = self.collect()
+        everything = "\n".join(files.values())
+        self.assertNotIn(r"\Users\BG", everything)
+        self.assertNotIn("a1b2c3d4e5f6a7b8", everything)
+
+    def test_a_huge_log_keeps_its_end(self):
+        with mock.patch.object(diagnostics, "FILE_CAP", 100):
+            (self.data / "tibbers.log").write_text("old\n" * 100 + "THE END\n")
+            _, files = self.collect()
+        log = files["tibbers/tibbers.log"]
+        self.assertTrue(log.startswith("[first "))
+        self.assertTrue(log.rstrip().endswith("THE END"))
+
+
 @unittest.skipUnless(diagnostics.IS_WINDOWS, "Windows signature check")
 class Signature(unittest.TestCase):
 
