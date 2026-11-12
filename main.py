@@ -187,6 +187,9 @@ class Session:
     #: for the Lobby tab. Forgotten when champ select is over.
     party_seen: tuple = ()
     party_unavailable: set = field(default_factory=set)
+    #: Bumped per party-prewarm run, so a superseded run stops downloading
+    #: and does not arm over the newer one.
+    party_prewarm: int = 0
 
 
 def memoise(memo: OrderedDict, key, value, keep: int):
@@ -1020,7 +1023,12 @@ def main() -> int:
             mods = [mod] if mod is not None else []
             # A party member's skin is built here when it is not on disk yet,
             # on this thread: skinsmith takes about a second a skin, and arm()
-            # is called from threads that must not wait for one.
+            # is called from threads that must not wait for one. These are the
+            # overlay's own files, so the hover preload waits while they fetch
+            # -- only when one is missing: prewarm_party has usually fetched
+            # them all already, and stopping the preload then gains nothing.
+            if any(not party_on_disk(*pick) for pick in party):
+                downloads.cancel()
             for champion_id, skin_id, chroma_id in party:
                 path, leaf = party_mod(champion_id, skin_id, chroma_id)
                 if path is None:
@@ -1051,6 +1059,12 @@ def main() -> int:
     armer = LatestOnly(apply_request)
 
     # -- the party ---------------------------------------------------------
+
+    def party_on_disk(champion_id: int, skin_id: int, chroma_id: Optional[int]) -> bool:
+        """Whether party_mod would find this pick without fetching anything."""
+        targets = [downloader.Target(skin_id, chroma_id)] if chroma_id else []
+        targets.append(downloader.Target(skin_id))
+        return any(downloader.existing(champion_id, t) is not None for t in targets)
 
     def party_mod(champion_id: int, skin_id: int, chroma_id: Optional[int]):
         """A party member's pick as a mod on disk, prepared if it is not there
@@ -1136,6 +1150,42 @@ def main() -> int:
             champion = state.champion_id
         share.publish(champion, session.selected, session.chroma)
 
+    def prewarm_party(picks) -> None:
+        """Download the party's picks in the background, then arm.
+
+        Each pick is fetched from the skin catalogue, a network call that can
+        take seconds a skin. Running it on the lobby's thread would block the
+        arming on that network -- and the game can start while it is still
+        fetching, so the overlay would then miss the party. Fetching on a
+        thread of its own and arming only once the files are on disk keeps the
+        two apart.
+
+        A newer pick change bumps `session.party_prewarm`, so an older run
+        stops downloading and leaves the arming to the newer one. `arm` runs
+        even when a fetch fails, so the overlay still gathers whatever landed.
+        """
+        session.party_prewarm += 1
+        generation = session.party_prewarm
+
+        def work() -> None:
+            try:
+                # The party's skins are what the overlay needs now, so the
+                # hover preload (which fetches every skin of one champion)
+                # must wait instead of competing for the same download slots.
+                downloads.cancel()
+                for pick in picks:
+                    if session.party_prewarm != generation:
+                        return  # a newer pick change superseded this run
+                    party_mod(*pick)
+            except Exception:  # noqa: BLE001 -- one failed fetch must not stop the arm
+                log.exception("party prewarm failed")
+            finally:
+                if session.party_prewarm == generation:
+                    arm()
+
+        threading.Thread(target=work, daemon=True,
+                         name="tibbers-party-prewarm").start()
+
     def on_lobby(snapshot: dict) -> None:
         """The room changed: redraw the tab, and arm again if the picks did."""
         paint_lobby(snapshot)
@@ -1144,7 +1194,7 @@ def main() -> int:
         picks = lobby_mod.party_picks(snapshot, session.champion_id or on_screen)
         if picks != session.party_seen:
             session.party_seen = picks
-            arm()
+            prewarm_party(picks)
 
     # A mock instance plays its party over a relay in memory, unless
     # TIBBERS_LOBBY_URL points it at a real one.
@@ -1330,7 +1380,33 @@ def main() -> int:
             state.say("LTK found the game -- hooking it")
         if status.get("patched") and not patcher_note["patched"]:
             patcher_note["patched"] = True
-            state.say("overlay verified -- the skin is applied")
+            with state.lock:
+                armed = dict(state.armed)
+                on_screen = state.champion_id
+            applied = armed.get("label") or "the overlay"
+            # What is in the overlay now, against what the party has picked:
+            # a pick that landed after the overlay was built never reaches this
+            # game, so it is said so rather than counted as applied.
+            current = lobby_mod.party_picks(share.snapshot(),
+                                            session.champion_id or on_screen)
+            armed_party = {tuple(pick) for pick in armed.get("party") or []}
+            late = sum(1 for pick in current if pick not in armed_party)
+            # Asked for in this build, but with no mod to put in it.
+            failed = len(armed_party & set(session.party_unavailable))
+            # Your own pick, against the one this overlay was built with. The
+            # base skin needs no mod, so picking it is never late.
+            picked = session.selected
+            own_late = (bool(picked) and picked % 1000 != 0
+                        and (picked, session.chroma)
+                        != (armed.get("skinId"), armed.get("chromaId")))
+            parts = [f"overlay verified -- {applied} applied"]
+            if own_late:
+                parts.append("your skin pick arrived too late for this game")
+            if late:
+                parts.append(f"{late} party pick(s) arrived too late for this game")
+            if failed:
+                parts.append(f"{failed} party pick(s) could not be built")
+            state.say("; ".join(parts))
         elif (patcher_note["found"] and not patcher_note["patched"]
               and not patcher_note["reported_missing"] and not error
               and time.monotonic() - patcher_note["found_at"] > 15
