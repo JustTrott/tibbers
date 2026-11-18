@@ -176,10 +176,39 @@ class ManagerInjector(Injector):
                                     else original.read(entry))
                             staged.writestr(entry, data)
                     self._mods.append(target.resolve())
+                self._stage_sound_mods(stage)
             except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
                 self._mods = []
                 return InjectionResult(False, f"could not stage mod: {exc}")
         return InjectionResult(True, "mods staged for LTK Manager")
+
+    def _stage_sound_mods(self, stage):
+        """Build the sound mods a rebase listed (META/rose_sounds.json) and
+        stage them beside the skin mods.
+
+        Rebase moves a skin's banks off their Skin<n> paths, and the game banks
+        at the new paths are copied from the player's own WADs into a mod of
+        their own (baseskin.skin_sounds). A sound mod is a nicety: its failure
+        never blocks the skin itself.
+        """
+        game, _client = system.find_install()
+        if game is None:
+            return
+        try:
+            from .baseskin import skin_sounds
+            for index, mod in enumerate(list(self._mods)):
+                folder = skin_sounds.build(game, stage, mod.name)
+                if folder is None:
+                    continue
+                sound_dir = stage / folder
+                archive = stage / f"sound-{index}.fantome"
+                with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
+                    for path in sorted(sound_dir.rglob("*")):
+                        if path.is_file():
+                            zipped.write(path, path.relative_to(sound_dir).as_posix())
+                self._mods.append(archive.resolve())
+        except Exception as exc:  # noqa: BLE001 - a sound mod must not stop the skin
+            log.warning("could not stage the sound mods: %s", exc)
 
     def start_patcher(self, wait=45.0, meta=None):
         if not self.enabled:

@@ -135,32 +135,40 @@ def fetch(champion_id: int, skin_id: int, chroma_id: int | None, dest: Path) -> 
     expected_hash, expected_size = files[path]
     lock = _download_locks[hash(str(dest.resolve())) % len(_download_locks)]
     with lock:
-        if dest.is_file() and _matches(dest, expected_size, expected_hash):
-            return
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=dest.parent, prefix=".download-", delete=False) as file:
-            staging = Path(file.name)
-            try:
-                url = f"https://raw.githubusercontent.com/{REPOSITORY}/{commit}/{path}"
-                with _request(url) as response:
-                    received = 0
-                    while chunk := response.read(1024 * 1024):
-                        received += len(chunk)
-                        if received > expected_size:
-                            raise ValueError("skin download exceeds the catalogue size")
-                        file.write(chunk)
-                file.close()
-                if received != expected_size or _blob_hash(staging) != expected_hash:
-                    raise ValueError("skin download does not match the catalogue hash")
-                with zipfile.ZipFile(staging) as archive:
-                    names = archive.namelist()
-                    if "META/info.json" not in names or not any(n.startswith("WAD/") for n in names):
-                        raise ValueError("skin archive is missing mod data")
-                    if archive.testzip() is not None:
-                        raise ValueError("skin archive has a corrupt member")
-                staging.replace(dest)
-                stat = dest.stat()
-                _verified[str(dest)] = (stat.st_size, stat.st_mtime_ns)
-            finally:
-                file.close()
-                staging.unlink(missing_ok=True)
+        from . import baseskin
+        pristine = dest.is_file() and _matches(dest, expected_size, expected_hash)
+        rebased = dest.is_file() and baseskin.sidecar_commit(dest) == commit
+        if not pristine and not rebased:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=dest.parent, prefix=".download-", delete=False) as file:
+                staging = Path(file.name)
+                try:
+                    url = f"https://raw.githubusercontent.com/{REPOSITORY}/{commit}/{path}"
+                    with _request(url) as response:
+                        received = 0
+                        while chunk := response.read(1024 * 1024):
+                            received += len(chunk)
+                            if received > expected_size:
+                                raise ValueError("skin download exceeds the catalogue size")
+                            file.write(chunk)
+                    file.close()
+                    if received != expected_size or _blob_hash(staging) != expected_hash:
+                        raise ValueError("skin download does not match the catalogue hash")
+                    with zipfile.ZipFile(staging) as archive:
+                        names = archive.namelist()
+                        if "META/info.json" not in names or not any(n.startswith("WAD/") for n in names):
+                            raise ValueError("skin archive is missing mod data")
+                        if archive.testzip() is not None:
+                            raise ValueError("skin archive has a corrupt member")
+                    staging.replace(dest)
+                    stat = dest.stat()
+                    _verified[str(dest)] = (stat.st_size, stat.st_mtime_ns)
+                finally:
+                    file.close()
+                    staging.unlink(missing_ok=True)
+        # The download is verified; now make its base skin carry the base
+        # identity so the patcher's skinhack rule accepts it. Run once per
+        # manifest commit and per game patch (tracked beside the mod).
+        game, _client = system.find_install()
+        if game is not None:
+            baseskin.rebase_mod(dest, game, commit)
