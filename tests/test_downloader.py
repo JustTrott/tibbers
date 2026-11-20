@@ -15,6 +15,8 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
+from unittest import mock
 import unittest
 from pathlib import Path
 
@@ -192,6 +194,94 @@ class BaseSkins(unittest.TestCase):
                  103000, 103005]
         got = [(t.skin_id, t.chroma_id) for t in downloader.targets_from(skins)]
         self.assertEqual(got, [(102008, None), (102008, 102009), (103005, None)])
+
+
+class PartyQueue(unittest.TestCase):
+    def setUp(self):
+        self.prepared = []
+        self.progress = []
+        self.queue = downloader.ChampionDownloader(
+            lambda champion, status: self.progress.append((champion, status["state"])))
+        patches = [
+            mock.patch.object(downloader, "_outstanding", return_value=True),
+            mock.patch.object(skinsmith, "champion_key", side_effect=lambda name: name),
+            mock.patch.object(downloader, "prepare", side_effect=self.prepare),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        self.addCleanup(self.stop)
+
+    def prepare(self, champion, target, key):
+        self.prepared.append((champion, target.leaf))
+        return "catalogue"
+
+    def stop(self):
+        self.queue.cancel()
+        if self.queue._thread:
+            self.queue._thread.join(timeout=5)
+
+    def finish(self):
+        self.queue._thread.join(timeout=5)
+        self.assertFalse(self.queue._thread.is_alive(), "download queue did not finish")
+
+    def test_more_than_eight_skins_resume_after_party_preparation(self):
+        entered = threading.Event()
+        original = self.queue._wait_until_ready
+        def wait(cancel):
+            entered.set()
+            return original(cancel)
+        with mock.patch.object(self.queue, "_wait_until_ready", side_effect=wait):
+            with self.queue.paused():
+                self.queue.ensure(96, range(96001, 96020), "KogMaw")
+                self.assertTrue(entered.wait(5))
+                self.assertEqual(self.prepared, [])
+            self.finish()
+        self.assertEqual(sorted(self.prepared), [(96, skin) for skin in range(96001, 96020)])
+        self.assertIn((96, "complete"), self.progress)
+
+    def test_overlapping_party_preparations_hold_the_queue(self):
+        entered = threading.Event()
+        original = self.queue._wait_until_ready
+        def wait(cancel):
+            entered.set()
+            return original(cancel)
+        with mock.patch.object(self.queue, "_wait_until_ready", side_effect=wait):
+            with self.queue.paused():
+                with self.queue.paused():
+                    self.queue.ensure(96, [96009], "KogMaw")
+                    self.assertTrue(entered.wait(5))
+                self.assertEqual(self.prepared, [])
+                self.assertEqual(self.queue._pauses, 1)
+            self.finish()
+        self.assertEqual(self.prepared, [(96, 96009)])
+
+    def test_switching_champion_while_paused_discards_old_queue(self):
+        with self.queue.paused():
+            self.queue.ensure(96, [96009], "KogMaw")
+            previous = self.queue._thread
+            self.queue.ensure(84, [84102], "Akali")
+            previous.join(timeout=5)
+            self.assertFalse(previous.is_alive())
+        self.finish()
+        self.assertEqual(self.prepared, [(84, 84102)])
+        self.assertNotIn(96, self.queue._done)
+
+    def test_cancelling_while_paused_wakes_workers_without_downloads(self):
+        with self.queue.paused():
+            self.queue.ensure(96, [96009], "KogMaw")
+            self.queue.cancel()
+            self.finish()
+        self.assertEqual(self.prepared, [])
+        self.assertNotIn(96, self.queue._done)
+
+    def test_party_failure_releases_the_queue(self):
+        with self.assertRaisesRegex(RuntimeError, "party failed"):
+            with self.queue.paused():
+                self.queue.ensure(96, [96009], "KogMaw")
+                raise RuntimeError("party failed")
+        self.finish()
+        self.assertEqual(self.prepared, [(96, 96009)])
 
 
 if __name__ == "__main__":

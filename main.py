@@ -1021,21 +1021,16 @@ def main() -> int:
         result, others = None, []
         try:
             mods = [mod] if mod is not None else []
-            # A party member's skin is built here when it is not on disk yet,
-            # on this thread: skinsmith takes about a second a skin, and arm()
-            # is called from threads that must not wait for one. These are the
-            # overlay's own files, so the hover preload waits while they fetch
-            # -- only when one is missing: prewarm_party has usually fetched
-            # them all already, and stopping the preload then gains nothing.
-            if any(not party_on_disk(*pick) for pick in party):
-                downloads.cancel()
-            for champion_id, skin_id, chroma_id in party:
-                path, leaf = party_mod(champion_id, skin_id, chroma_id)
-                if path is None:
-                    session.party_unavailable.add((champion_id, skin_id, chroma_id))
-                    continue
-                mods.append(path)
-                others.append(leaf)
+            # Party preparation has priority over the champion's preload.
+            # The queued skins resume when preparation ends, including errors.
+            with downloads.paused():
+                for champion_id, skin_id, chroma_id in party:
+                    path, leaf = party_mod(champion_id, skin_id, chroma_id)
+                    if path is None:
+                        session.party_unavailable.add((champion_id, skin_id, chroma_id))
+                        continue
+                    mods.append(path)
+                    others.append(leaf)
             if mods:
                 result = inject.prepare(mods, progress=state.say, meta=meta)
         finally:
@@ -1059,12 +1054,6 @@ def main() -> int:
     armer = LatestOnly(apply_request)
 
     # -- the party ---------------------------------------------------------
-
-    def party_on_disk(champion_id: int, skin_id: int, chroma_id: Optional[int]) -> bool:
-        """Whether party_mod would find this pick without fetching anything."""
-        targets = [downloader.Target(skin_id, chroma_id)] if chroma_id else []
-        targets.append(downloader.Target(skin_id))
-        return any(downloader.existing(champion_id, t) is not None for t in targets)
 
     def party_mod(champion_id: int, skin_id: int, chroma_id: Optional[int]):
         """A party member's pick as a mod on disk, prepared if it is not there
@@ -1169,14 +1158,11 @@ def main() -> int:
 
         def work() -> None:
             try:
-                # The party's skins are what the overlay needs now, so the
-                # hover preload (which fetches every skin of one champion)
-                # must wait instead of competing for the same download slots.
-                downloads.cancel()
-                for pick in picks:
-                    if session.party_prewarm != generation:
-                        return  # a newer pick change superseded this run
-                    party_mod(*pick)
+                with downloads.paused():
+                    for pick in picks:
+                        if session.party_prewarm != generation:
+                            return  # a newer pick change superseded this run
+                        party_mod(*pick)
             except Exception:  # noqa: BLE001 -- one failed fetch must not stop the arm
                 log.exception("party prewarm failed")
             finally:

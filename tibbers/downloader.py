@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Set
 
@@ -130,6 +131,8 @@ class ChampionDownloader:
     def __init__(self, on_progress: Optional[Callable[[int, dict], None]] = None):
         self.on_progress = on_progress
         self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
+        self._pauses = 0
         self._done: Set[int] = set()
         self._retry_after: dict[int, float] = {}
         self._active: Optional[int] = None
@@ -140,7 +143,26 @@ class ChampionDownloader:
 
     def cancel(self) -> None:
         """Stop the in-flight run. Files already written are kept."""
-        self._cancel.set()
+        with self._condition:
+            self._cancel.set()
+            self._condition.notify_all()
+
+    @contextmanager
+    def paused(self):
+        """Defer queued work until every overlapping party preparation ends."""
+        with self._condition:
+            self._pauses += 1
+        try:
+            yield
+        finally:
+            with self._condition:
+                self._pauses -= 1
+                self._condition.notify_all()
+
+    def _wait_until_ready(self, cancel: threading.Event) -> bool:
+        with self._condition:
+            self._condition.wait_for(lambda: self._pauses == 0 or cancel.is_set())
+            return not cancel.is_set()
 
     def forget(self, champion_id: Optional[int] = None) -> None:
         """Let a champion be looked at again, after the library changed."""
@@ -179,7 +201,7 @@ class ChampionDownloader:
                      champion_id, champion_key)
 
         # A new champion supersedes whatever was in flight.
-        self._cancel.set()
+        self.cancel()
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=2)
         self._cancel = threading.Event()
@@ -197,6 +219,8 @@ class ChampionDownloader:
 
         if not wanted:
             with self._lock:
+                if cancel is not self._cancel or cancel.is_set():
+                    return
                 self._done.add(champion_id)
                 self._active = None
             self._report(champion_id, {"state": "complete", "fetched": 0,
@@ -209,7 +233,7 @@ class ChampionDownloader:
         tally = {"made": 0, "missing": 0}
 
         def one(target: Target) -> Optional[str]:
-            if cancel.is_set():
+            if not self._wait_until_ready(cancel):
                 return None
             return prepare(champion_id, target, champion_key)
 
@@ -225,6 +249,8 @@ class ChampionDownloader:
 
         cancelled = cancel.is_set()
         with self._lock:
+            if cancel is not self._cancel:
+                return
             if not cancelled:
                 if tally["missing"]:
                     self._retry_after[champion_id] = time.monotonic() + 60
