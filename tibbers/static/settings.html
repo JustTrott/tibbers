@@ -302,7 +302,8 @@
         <div class="memory">
           <span id="lib-line"><b>0</b> skins across <b>0</b> champions
                 &middot; <b>0</b> built here</span>
-          <button class="btn" id="rebuild" style="margin-left:auto" data-t="library.rebuild">Rebuild library</button>
+          <button class="btn" id="clear-cache" style="margin-left:auto" data-t="library.clear_cache">Clear cache</button>
+          <button class="btn" id="rebuild" data-t="library.rebuild">Rebuild library</button>
         </div>
       </div>
     </section>
@@ -477,6 +478,7 @@ const T = {
     'library.count': '{skins} across {champions} · <b>{made}</b> built here',
     'library.foreign': ' · {n} not built here',
     'library.rebuild': 'Rebuild library', 'library.rebuilding': 'Rebuilding…',
+    'library.clear_cache': 'Clear cache',
 
     'helper.title': 'Passwordless injection',
     'helper.title_on': 'Passwordless injection is on',
@@ -604,6 +606,7 @@ const T = {
     'library.count': '{skins} · {champions} · собрано здесь: <b>{made}</b>',
     'library.foreign': ' · собрано не здесь: {n}',
     'library.rebuild': 'Пересобрать библиотеку', 'library.rebuilding': 'Пересборка…',
+    'library.clear_cache': 'Очистить кэш',
 
     'helper.title': 'Инъекция без пароля',
     'helper.title_on': 'Инъекция без пароля включена',
@@ -939,6 +942,14 @@ document.addEventListener('click', async e => {
   }
   if (e.target.id === 'forget') {
     await api('/api/settings', {action: 'forget'});
+    nudge(); return;
+  }
+  if (e.target.id === 'clear-cache') {
+    const btn = e.target;
+    btn.disabled = true;
+    const r = await api('/api/settings', {action: 'clear_cache'});
+    btn.disabled = false;
+    if (!r.ok) alert(r.error || t('failed'));
     nudge(); return;
   }
   if (e.target.id === 'rebuild') {

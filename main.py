@@ -1056,21 +1056,24 @@ def main() -> int:
     # -- the party ---------------------------------------------------------
 
     def party_mod(champion_id: int, skin_id: int, chroma_id: Optional[int]):
-        """A party member's pick as a mod on disk, prepared if it is not there
-        yet: ``(path, the id it dresses the champion in)``, or
-        ``(None, None)``. A chroma that cannot be prepared falls back to its
-        skin, which is still most of what they picked."""
+        """A party member's pick as a mod on disk: ``(path, the id it dresses
+        the champion in)``, or ``(None, None)``. A chroma that cannot be
+        prepared falls back to its skin, which is still most of what they picked.
+
+        ``prepare`` always runs, not only when the file is missing: the
+        catalogue backend re-downloads a stale cached archive (one fetched
+        before RoseBin rebased it) and re-rebases it, so a party pick is always
+        checked against the current manifest and game.
+        """
         targets = [downloader.Target(skin_id, chroma_id)] if chroma_id else []
         targets.append(downloader.Target(skin_id))
         key = None
         for target in targets:
+            if key is None:
+                alias = gamedata.champion_alias(champion_id)
+                key = (skinsmith.champion_key(alias) if alias else None) or ""
+            downloader.prepare(champion_id, target, key)
             path = downloader.existing(champion_id, target)
-            if path is None:
-                if key is None:
-                    alias = gamedata.champion_alias(champion_id)
-                    key = (skinsmith.champion_key(alias) if alias else None) or ""
-                if downloader.prepare(champion_id, target, key):
-                    path = downloader.existing(champion_id, target)
             if path is not None:
                 return path, target.leaf
         return None, None
@@ -2220,6 +2223,13 @@ def main() -> int:
             return {"ok": ok, "message": message}
         if action == "rebuild":
             return start_rebuild()
+        if action == "clear_cache":
+            from tibbers import skin_catalogue
+            removed = library.clear_cache()
+            skin_catalogue._manifests.clear()
+            skin_catalogue._verified.clear()
+            state.say("cleared the skin cache")
+            return {"ok": True, "cleared": removed}
         if action == "pick_league_root":
             return pick_league_root()
         if action == "diagnostics":

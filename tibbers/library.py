@@ -17,6 +17,7 @@ from an older run is never mistaken for one of them.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -135,3 +136,26 @@ def stats() -> dict:
             generated += skinsmith.sidecar_path(mod).is_file()
     return {"champions": len(champs), "skins": total, "generated": generated,
             "foreign": total - generated, "path": str(skins_dir())}
+
+
+def clear_cache() -> int:
+    """Delete every downloaded mod, its sidecar and the catalogue manifest, so
+    the next pick fetches them again. Returns how many files were removed.
+
+    This is the ``skins-leagueskins`` tree in manager mode -- the archives the
+    catalogue served -- so a stale copy from before RoseBin rebased a skin is
+    thrown away and fetched fresh. The directory itself stays, empty.
+    """
+    directory = skins_dir()
+    removed = 0
+    try:
+        for child in directory.iterdir():
+            if child.is_dir():
+                removed += sum(1 for _ in child.rglob("*") if _.is_file())
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                removed += 1
+                child.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return removed
