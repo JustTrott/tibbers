@@ -51,6 +51,12 @@ DEFAULT_TIMEOUT_S = 60.0
 # voiceover is large): wait for that answer rather than give up first
 IMPORT_TIMEOUT_S = 200.0
 
+# LTK Manager's WebView2 mounts slowly, and while it does its CDP answers come
+# back "CDP unavailable or timed out" / "invoke not ready". Those clear on
+# their own, so a command that hit one is retried a few times before giving up.
+CDP_RETRIES = 6
+CDP_RETRY_DELAY = 1.0
+
 _IN_PROGRESS = {0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY, 10035}
 
 
@@ -275,7 +281,10 @@ def _ltk_error_text(error: Dict[str, Any]) -> str:
 def _error_text(response: Dict[str, Any]) -> str:
     """The reason a command failed, from wherever the DLL or LTK put it."""
     nested = response.get("response")
-    for candidate in (response.get("error"), nested.get("error") if isinstance(nested, dict) else None):
+    raw = response.get("raw")
+    for candidate in (response.get("error"),
+                      nested.get("error") if isinstance(nested, dict) else None,
+                      raw.get("error") if isinstance(raw, dict) else None):
         if isinstance(candidate, dict):
             if candidate.get("code"):
                 candidate = _ltk_error_text(candidate)
@@ -284,6 +293,23 @@ def _error_text(response: Dict[str, Any]) -> str:
         if candidate:
             return str(candidate)
     return json.dumps(response)[:300]
+
+
+_TRANSIENT_CDP = (
+    "CDP unavailable or timed out",
+    "CDP busy",
+    "Cannot read properties of undefined",
+)
+
+
+def is_transient_cdp_error(response: Dict[str, Any]) -> bool:
+    """Whether a failed answer is the WebView2 still mounting: a transient
+    state that clears on its own, and one where the command was never run, so
+    it can be sent again."""
+    if response.get("ok") is not False:
+        return False
+    text = _error_text(response).lower()
+    return any(marker.lower() in text for marker in _TRANSIENT_CDP)
 
 
 class LtkBridge:
@@ -345,6 +371,11 @@ class LtkBridge:
     def _ok(self, payload: Dict[str, Any], timeout: float = DEFAULT_TIMEOUT_S) -> Dict[str, Any]:
         """Send a command and fail when the bridge reports ok=false."""
         response = self.request(payload, timeout=timeout)
+        for _ in range(CDP_RETRIES):
+            if not is_transient_cdp_error(response):
+                break
+            time.sleep(CDP_RETRY_DELAY)
+            response = self.request(payload, timeout=timeout)
         if response.get("ok") is False:
             raise BridgeCommandError(f"{payload.get('cmd')} failed: {_error_text(response)}")
         return response
@@ -377,6 +408,11 @@ class LtkBridge:
         would then take every entry for one it just created.
         """
         response = self.list_mods()
+        for _ in range(CDP_RETRIES):
+            if not is_transient_cdp_error(response):
+                break
+            time.sleep(CDP_RETRY_DELAY)
+            response = self.list_mods()
         library = response.get("library")
         if response.get("ok") is False or not isinstance(library, list):
             raise BridgeCommandError(f"list failed: {_error_text(response)}")

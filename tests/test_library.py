@@ -123,5 +123,48 @@ class Lookups(unittest.TestCase):
         self.assertEqual(library.available_chromas(1, 2), set())
 
 
+class CacheVersion(unittest.TestCase):
+    """The downloaded cache is cleared once, when its recorded version is old."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.before_home = os.environ.get("TIBBERS_HOME")
+        self.before_backend = os.environ.get("TIBBERS_LTK_BACKEND")
+        os.environ["TIBBERS_HOME"] = self.tmp.name
+        os.environ["TIBBERS_LTK_BACKEND"] = "manager"
+        self.saved_data, self.saved_skins = (dict(system._DATA_DIRS),
+                                             dict(library._SKINS_DIR))
+        system._DATA_DIRS.clear()
+        library._SKINS_DIR.clear()
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        for key, val in (("TIBBERS_HOME", self.before_home),
+                         ("TIBBERS_LTK_BACKEND", self.before_backend)):
+            if val is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = val
+        system._DATA_DIRS.clear()
+        system._DATA_DIRS.update(self.saved_data)
+        library._SKINS_DIR.clear()
+        library._SKINS_DIR.update(self.saved_skins)
+
+    def test_cache_is_cleared_once_when_version_changes(self):
+        root = library.skins_dir()
+        (root / "222" / "222001").mkdir(parents=True)
+        (root / "222" / "222001" / "222001.fantome").write_bytes(b"PK\x03\x04")
+        self.assertEqual(library.champions_present(), [222])
+
+        library.ensure_cache_version()  # first call clears and stamps
+        self.assertEqual(library.champions_present(), [])
+
+        (root / "222" / "222002").mkdir(parents=True)
+        (root / "222" / "222002" / "222002.fantome").write_bytes(b"PK\x03\x04")
+        library.ensure_cache_version()  # version matches: a no-op
+        self.assertEqual(library.champions_present(), [222])
+
+
 if __name__ == "__main__":
     unittest.main()

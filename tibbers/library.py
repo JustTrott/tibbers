@@ -17,11 +17,14 @@ from an older run is never mistaken for one of them.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from . import skinsmith, system, skin_catalogue
+
+log = logging.getLogger("tibbers.library")
 
 EXTENSIONS = (".fantome", ".zip")
 
@@ -159,3 +162,31 @@ def clear_cache() -> int:
     except OSError:
         pass
     return removed
+
+
+#: Bumped when the downloaded mod cache must be invalidated. Version 1 is the
+#: one that began rebasing the skins onto the base skin, so archives fetched
+#: before it are stale and fetched again.
+CACHE_VERSION = 1
+
+
+def ensure_cache_version() -> None:
+    """Clear the downloaded mod cache once, when it was made by an older cache
+    version. A no-op on the direct backend, whose mods are generated rather
+    than cached. Runs once at startup, after the backend is chosen."""
+    if not skin_catalogue.enabled():
+        return
+    marker = system.data_dir() / ".skins-cache-version"
+    try:
+        stored = int(marker.read_text().strip())
+    except (OSError, ValueError):
+        stored = 0
+    if stored == CACHE_VERSION:
+        return
+    removed = clear_cache()
+    try:
+        marker.write_text(str(CACHE_VERSION))
+    except OSError:
+        pass
+    log.info("cleared %d downloaded skin mod(s) (cache version %d)",
+             removed, CACHE_VERSION)

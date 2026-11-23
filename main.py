@@ -512,6 +512,11 @@ def main() -> int:
 
     manager_backend = ltk_backend.configure(tools_dir)
 
+    # Once the backend is chosen: drop a downloaded mod cache that an older
+    # version fetched, so the next picks fetch them again (the version that
+    # began rebasing skins onto the base skin invalidates the old archives).
+    library.ensure_cache_version()
+
     # Every session in the log opens with the facts a bug report needs: the
     # version, where League was found and how, the patcher pair and rights.
     from tibbers import diagnostics

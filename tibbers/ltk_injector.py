@@ -20,7 +20,7 @@ import psutil
 
 from . import system
 from .injector import Injector, InjectionResult
-from .ltk_bridge import LtkBridge, BridgeUnavailable
+from .ltk_bridge import LtkBridge, BridgeUnavailable, is_transient_cdp_error
 
 log = logging.getLogger("tibbers.ltk")
 
@@ -282,6 +282,10 @@ class ManagerInjector(Injector):
             response = answer.get("response", {})
             value = response.get("value", {})
             if answer.get("ok") is False or response.get("ok") is False or not isinstance(value, dict):
+                if is_transient_cdp_error(answer):
+                    # The WebView2 is still mounting; not an error, just not
+                    # ready. Keep waiting rather than fail the arming.
+                    return status
                 raise RuntimeError(f"LTK status unavailable: {answer}")
             phase = str(value.get("phase", "")).lower()
             status["watching"] = bool(value.get("running")) and phase not in ("", "idle", "building", "failed", "error")
